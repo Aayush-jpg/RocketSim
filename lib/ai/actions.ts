@@ -6,11 +6,6 @@ export function runQuickSim() {
   // Client-side physics simulation using rocket data from store
   const { rocket, setSim } = useRocket.getState();
   
-  // Extract parts data
-  const noseParts = rocket.parts.filter(p => p.type === 'nose') as Nose[];
-  const bodyParts = rocket.parts.filter(p => p.type === 'body') as Body[];
-  const finParts = rocket.parts.filter(p => p.type === 'fin') as Fin[];
-  
   // Get motor data (in production, this would come from a motor database)
   // Define our complete propulsion systems database
   const propulsionSystems = {
@@ -130,8 +125,14 @@ export function runQuickSim() {
     const acceleration = motorThrust / totalMass;
     const impulse = motorThrust * burnTime;
     const velocityFactor = selectedMotor.type === 'hybrid' ? 0.85 : 0.8;
+    
+    // Calculate burnout velocity using impulse (F*t = m*Δv)
     maxVelocity = impulse / totalMass * velocityFactor;
-    maxAltitude = (maxVelocity * maxVelocity) / (2 * 9.81) * 0.7;
+    
+    // Add powered flight contribution and ballistic flight
+    const poweredHeight = 0.5 * acceleration * (burnTime * burnTime) * 0.8;
+    const ballisticHeight = (maxVelocity * maxVelocity) / (2 * 9.81) * 0.7;
+    maxAltitude = poweredHeight + ballisticHeight;
   }
   
   // Calculate stability margin (calibers)
@@ -205,33 +206,47 @@ export function estimateRocketMass(rocket: any) {
 
 // Helper function to calculate stability margin in calibers
 export function calculateStability(rocket: any) {
-  // Get diameter from the first body part (or use default)
-  const bodyPart = rocket.parts.find((p: any) => p.type === 'body');
-  const diameter = bodyPart ? bodyPart.Ø : 5; // Default diameter in cm
+  // Get parts data
+  const noseParts = rocket.parts.filter((p: Part) => p.type === 'nose') as Nose[];
+  const bodyParts = rocket.parts.filter((p: Part) => p.type === 'body') as Body[];
+  const finParts = rocket.parts.filter((p: Part) => p.type === 'fin') as Fin[];
   
-  // Count fins
-  const finCount = rocket.parts.filter((p: any) => p.type === 'fin').length;
+  // Get diameter from the first body part (or use default)
+  const diameter = bodyParts.length > 0 ? bodyParts[0].Ø : 5; // Default diameter in cm
   
   // Calculate stability (simplified)
   // More fins = more stability
-  // Larger fins = more stability
-  let stabilityBase = 1.0 + (finCount * 0.2);
+  let stabilityBase = 1.0 + (finParts.length * 0.2);
   
   // Fin size effect
   let finAreaSum = 0;
-  rocket.parts.forEach((part: any) => {
-    if (part.type === 'fin' && part.root && part.span) {
+  finParts.forEach((fin) => {
+    if (fin.root && fin.span) {
       // Approximate fin area as 1/2 * root * span
-      const finArea = 0.5 * part.root * part.span;
+      const finArea = 0.5 * fin.root * fin.span;
       finAreaSum += finArea;
     }
   });
+  
+  // Add nose cone shape effect on stability
+  let noseEffect = 0;
+  if (noseParts.length > 0) {
+    const nose = noseParts[0];
+    // Ogive nose cones provide slightly better stability than conical ones
+    if (nose.shape === 'ogive') {
+      noseEffect = 0.1;
+    }
+    // Longer nose cones affect center of pressure
+    if (nose.length) {
+      noseEffect += (nose.length / 50) * 0.2; // Small effect based on length
+    }
+  }
   
   // Adjust stability based on fin area relative to body diameter
   // More fin area relative to diameter = more stability
   const finAreaEffect = finAreaSum / (diameter * diameter) * 0.5;
   
-  return stabilityBase + finAreaEffect;
+  return stabilityBase + finAreaEffect + noseEffect;
 }
 
 // Main dispatcher function to process agent actions

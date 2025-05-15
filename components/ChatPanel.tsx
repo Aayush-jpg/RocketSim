@@ -8,6 +8,7 @@ import { dispatchActions } from '@/lib/ai/actions'
 export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
+  agent?: string; // Add agent field to store which agent handled the message
 }
 
 export default function ChatPanel() {
@@ -15,12 +16,14 @@ export default function ChatPanel() {
     {
       role: 'assistant',
       content: 'Welcome to RocketSim! I can help you design and optimize your rocket. What would you like to work on today?',
+      agent: 'master'
     }
   ]);
   
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastUsedAgent, setLastUsedAgent] = useState<string>('master');
+  const [currentlyRunningAgent, setCurrentlyRunningAgent] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   
   // Auto-scroll chat to bottom on new messages
@@ -49,6 +52,7 @@ export default function ChatPanel() {
     setMessages(history);
     setInputValue('');
     setIsLoading(true);
+    setCurrentlyRunningAgent(lastUsedAgent); // Show that the last used agent is initially running
     
     try {
       // Get rocket data from store
@@ -61,7 +65,11 @@ export default function ChatPanel() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ history, rocket })
+        body: JSON.stringify({ 
+          history, 
+          rocket,
+          preferredAgent: lastUsedAgent // Send previous agent for context continuity
+        })
       });
       
       if (!res.ok) {
@@ -72,6 +80,13 @@ export default function ChatPanel() {
       
       const json = await res.json();
       console.log('Received response from agent:', JSON.stringify(json, null, 2));
+      
+      // If agent changed during processing, show a transition animation
+      if (json.agent_used && json.agent_used !== lastUsedAgent) {
+        setCurrentlyRunningAgent(json.agent_used);
+        // Give time to see the transition animation
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
       
       // Apply actions returned by the agent
       if (json.actions) {
@@ -91,11 +106,12 @@ export default function ChatPanel() {
       // Add assistant response to chat
       const assistantMessage: ChatMessage = { 
         role: 'assistant', 
-        content: json.final_output 
+        content: json.final_output,
+        agent: json.agent_used // Store the agent that handled this message
       };
       setMessages([...history, assistantMessage]);
       
-      // Store which agent was used (for debugging)
+      // Store which agent was used for next request
       if (json.agent_used) {
         setLastUsedAgent(json.agent_used);
         console.log(`Request handled by agent: ${json.agent_used}`);
@@ -104,11 +120,13 @@ export default function ChatPanel() {
       console.error('Error communicating with agent:', error);
       const errorMessage: ChatMessage = { 
         role: 'assistant', 
-        content: 'Sorry, I encountered an error. Please try again later.' 
+        content: 'Sorry, I encountered an error. Please try again later.',
+        agent: 'error'
       };
       setMessages([...history, errorMessage]);
     } finally {
       setIsLoading(false);
+      setCurrentlyRunningAgent(null);
     }
   }
   
@@ -134,10 +152,17 @@ export default function ChatPanel() {
               {msg.role === 'user' ? (
                 <p className="text-small text-white">{msg.content}</p>
               ) : (
-                <div 
-                  className="text-small text-white formatted-content"
-                  dangerouslySetInnerHTML={{ __html: msg.content }}
-                />
+                <div className="relative">
+                  {msg.agent && (
+                    <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] rounded-full px-2 py-0.5 opacity-80">
+                      {msg.agent.replace('_', ' ')}
+                    </div>
+                  )}
+                  <div 
+                    className="text-small text-white formatted-content"
+                    dangerouslySetInnerHTML={{ __html: msg.content }}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -146,10 +171,24 @@ export default function ChatPanel() {
         {isLoading && (
           <div className="flex justify-start">
             <div className="glass-panel rounded-2xl rounded-tl-none px-4 py-3 shadow-md">
-              <div className="flex space-x-2">
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-75" />
-                <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-150" />
+              <div className="flex flex-col items-center space-y-2">
+                <div className="flex space-x-2">
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-75" />
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-150" />
+                </div>
+                {currentlyRunningAgent && (
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="w-3 h-3 rounded-full bg-blue-500 animate-ping opacity-75 relative">
+                      <div className="absolute inset-0 rounded-full bg-blue-500 opacity-75"></div>
+                    </div>
+                    <span className="text-xs text-white animate-pulse">
+                      {currentlyRunningAgent === 'router' 
+                        ? 'Choosing best agent...' 
+                        : `${currentlyRunningAgent.replace('_', ' ')} agent running...`}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
