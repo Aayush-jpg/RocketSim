@@ -1,6 +1,5 @@
 """Metrics agent for analyzing rocket performance."""
 
-from openai import OpenAI
 from agents import Agent
 
 # Metrics agent instructions
@@ -30,5 +29,6 @@ Recommendations: Consider [specific improvement suggestions based on physics pri
 metrics_agent = Agent(
     name="MetricsAgent",
     instructions=METRICS_AGENT_INSTRUCTIONS,
+    handoff_description="Analyzes rocket performance metrics",
     model="gpt-4o-mini"
 ) 
