@@ -11,44 +11,74 @@ export async function POST(req: NextRequest) {
   try {
     const { rocket } = await req.json();
     
-    // Call the RocketPy service
-    const response = await fetch(process.env.ROCKETPY_URL ?? "http://rocketpy:8000/simulate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(rocket),
-    });
+    // Create an AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    
+    try {
+      // Call the RocketPy service with timeout - use /simulate_full for high-fidelity
+      const response = await fetch(process.env.ROCKETPY_URL?.replace('/simulate', '/simulate_full') ?? "http://rocketpy:8000/simulate_full", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(rocket),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Error from RocketPy service:", errorText);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error from RocketPy service:", errorText);
+        
+        // Fall back to local simulation if service unavailable
+        if (response.status === 503 || response.status === 404) {
+          return NextResponse.json(
+            fallbackSimulation(rocket),
+            { status: 200 }
+          );
+        }
+        
+        return NextResponse.json(
+          { error: "Simulation service error", details: errorText },
+          { status: response.status }
+        );
+      }
+
+      const simResults = await response.json();
+      return NextResponse.json(simResults);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
       
-      // Fall back to local simulation if service unavailable
-      if (response.status === 503 || response.status === 404) {
+      // Handle timeout specifically
+      if (fetchError.name === 'AbortError') {
+        console.log("RocketPy simulation timed out, falling back to local simulation");
         return NextResponse.json(
           fallbackSimulation(rocket),
           { status: 200 }
         );
       }
       
-      return NextResponse.json(
-        { error: "Simulation service error", details: errorText },
-        { status: response.status }
-      );
+      throw fetchError; // Re-throw other errors
     }
-
-    const simResults = await response.json();
-    return NextResponse.json(simResults);
   } catch (error) {
     console.error("Error in high-fidelity simulation:", error);
     
     // Fall back to local simulation on error
-    const { rocket } = await req.json();
-    return NextResponse.json(
-      fallbackSimulation(rocket),
-      { status: 200 }
-    );
+    try {
+      const { rocket } = await req.json();
+      return NextResponse.json(
+        fallbackSimulation(rocket),
+        { status: 200 }
+      );
+    } catch (parseError) {
+      // If we can't even parse the request, return a generic error
+      return NextResponse.json(
+        { error: "Invalid request format" },
+        { status: 400 }
+      );
+    }
   }
 }
 
