@@ -1,25 +1,62 @@
-version: '3'
-
 services:
   web:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    env_file: .env
-    depends_on: [agentpy]
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: npm run dev
+    environment:
+      - NODE_ENV=production
+      - AGENT_URL=http://agentpy:8002
+      - ROCKETPY_URL=http://rocketpy:8000
+    env_file:
+      - .env
+    depends_on:
+      - agentpy
+      - rocketpy
+    networks:
+      - rocket-network
 
   agentpy:
-    build: ./services/agentpy
-    ports: ["8002:8002"]
-    env_file: .env
-    volumes:
-      - ./services/agentpy:/app
+    build: 
+      context: ./services/agentpy
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    env_file:
+      - .env
+    networks:
+      - rocket-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   rocketpy:
-    build: ./services/rocketpy
-    ports: ["8000:8000"]
-    env_file: .env 
+    build: 
+      context: ./services/rocketpy
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - rocket-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - rocket-data:/app/data
+
+networks:
+  rocket-network:
+    driver: bridge
+
+volumes:
+  rocket-data:
+    driver: local 
