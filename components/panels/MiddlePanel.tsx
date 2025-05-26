@@ -134,8 +134,26 @@ function RocketModel({
 }) {
   const rocketRef = useRef<THREE.Group>(null)
   
-  // Get rocket parts from the store
-  const { parts } = useRocket(state => state.rocket)
+  // Get rocket parts from the store with explicit subscription to force re-renders
+  const rocket = useRocket(state => state.rocket)
+  const { parts } = rocket
+  
+  // Force re-render when rocket parts change
+  const [renderKey, setRenderKey] = useState(0)
+  const prevPartsRef = useRef(parts)
+  
+  useEffect(() => {
+    const currentPartsStr = JSON.stringify(parts)
+    const prevPartsStr = JSON.stringify(prevPartsRef.current)
+    
+    if (currentPartsStr !== prevPartsStr) {
+      console.log('🔄 Parts changed, forcing re-render')
+      console.log('Previous parts:', prevPartsRef.current)
+      console.log('Current parts:', parts)
+      setRenderKey(prev => prev + 1)
+      prevPartsRef.current = parts
+    }
+  }, [parts])
   
   // Find parts by type
   const nosePart = parts.find(part => part.type === 'nose')
@@ -337,7 +355,11 @@ function RocketModel({
   
   // Adjust the entire rocket to sit properly on the grid
   return (
-    <group ref={rocketRef} position={[0, 0.8, 0]}>
+    <group 
+      ref={rocketRef} 
+      key={`rocket-${renderKey}`}
+      position={[0, 0.8, 0]}
+    >
       {/* Upper body */}
       <mesh position={[0, upperBodyCenterY, 0]} name="upper-airframe">
         <cylinderGeometry 

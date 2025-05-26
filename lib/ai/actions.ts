@@ -1,11 +1,14 @@
 import { useRocket } from '../store';
 import { Part, Nose, Body, Fin } from '@/types/rocket';
+import type { Rocket, SimulationResult } from '@/types/rocket';
 
-// Extend window interface for custom properties
+// Extend Window interface for global properties
 declare global {
   interface Window {
     environmentConditions?: any;
     launchParameters?: any;
+    monteCarloResults?: any;
+    flightReport?: any;
   }
 }
 
@@ -296,7 +299,7 @@ export function dispatchActions(actions: any[]) {
           r.parts.push({ 
             id: crypto.randomUUID(), 
             type: a.type, 
-            color: a.color || "white",
+            color: a.props?.color || "white",
             ...a.props 
           });
           return r;
@@ -312,32 +315,78 @@ export function dispatchActions(actions: any[]) {
       case "update_part":
         console.log('🔧 Updating part:', a.id, a.props);
         updateRocket((r) => {
-          // First try to find by exact ID
-          let p = r.parts.find((p) => p.id === a.id);
-          
-          // If not found by ID, try to find by type (for agent compatibility)
-          if (!p) {
-            // Map common agent IDs to part types
-            const typeMap: { [key: string]: string } = {
-              'body1': 'body',
-              'nose1': 'nose', 
-              'finset1': 'fin',
-              'engine1': 'engine'
-            };
+          if (a.id === "all") {
+            // Update all parts
+            r.parts.forEach(part => {
+              Object.assign(part, a.props);
+            });
+          } else {
+            // First try to find by exact ID
+            let p = r.parts.find((p) => p.id === a.id);
             
-            const targetType = typeMap[a.id] || a.id;
-            p = r.parts.find((part) => part.type === targetType);
+            // If not found by ID, try to find by type (for agent compatibility)
+            if (!p) {
+              const typeMap: { [key: string]: string } = {
+                'body1': 'body',
+                'nose1': 'nose', 
+                'finset1': 'fin',
+                'engine1': 'engine'
+              };
+              
+              const targetType = typeMap[a.id] || a.id;
+              p = r.parts.find((part) => part.type === targetType);
+              
+              if (p) {
+                console.log(`🔄 Found part by type: ${a.id} -> ${targetType}`);
+              } else {
+                // If part doesn't exist and we know the type, create it
+                if (typeMap[a.id]) {
+                  const newPartType = typeMap[a.id];
+                  console.log(`➕ Creating missing ${newPartType} part for ${a.id}`);
+                  
+                  // Create default part based on type
+                  const defaultParts: { [key: string]: any } = {
+                    'nose': { shape: 'ogive', length: 10, baseØ: 5, color: '#A0A7B8' },
+                    'body': { Ø: 5, length: 20, color: '#8C8D91' },
+                    'fin': { root: 8, span: 6, sweep: 4, color: '#A0A7B8' },
+                    'engine': { thrust: 32, Isp: 200, color: '#0066FF' }
+                  };
+                  
+                  const newPart = {
+                    id: crypto.randomUUID(),
+                    type: newPartType,
+                    ...defaultParts[newPartType]
+                  };
+                  
+                  r.parts.push(newPart);
+                  p = newPart; // Assign to p for later processing
+                  console.log(`✅ Created new ${newPartType} part`);
+                }
+              }
+            }
             
             if (p) {
-              console.log(`🔄 Found part by type: ${a.id} -> ${targetType} (actual ID: ${p.id})`);
+              // Handle property name mappings for agent compatibility
+              const props = { ...a.props };
+              
+              // Map unicode diameter symbols to property names
+              if (props['Ø']) {
+                if (p.type === 'body') {
+                  props['Ø'] = props['Ø']; // Keep as is for body
+                } else if (p.type === 'nose') {
+                  props['baseØ'] = props['Ø']; // Map to baseØ for nose
+                  delete props['Ø'];
+                }
+              }
+              if (props['baseØ']) {
+                props['baseØ'] = props['baseØ']; // Keep as is
+              }
+              
+              Object.assign(p, props);
+              console.log(`✅ Updated part ${p.type} with:`, props);
+            } else {
+              console.warn(`❌ Part not found for update: ${a.id}`);
             }
-          }
-          
-          if (p) {
-            Object.assign(p, a.props);
-            console.log(`✅ Updated part:`, p);
-          } else {
-            console.warn(`❌ Part not found: ${a.id}`);
           }
           return r;
         });
@@ -399,23 +448,43 @@ export function dispatchActions(actions: any[]) {
           : runHighFiSim();        // POST /api/hifi (unchanged)
         break;
       case "run_simulation":
-        console.log('🚀 Running advanced simulation:', a.fidelity, a.environment, a.launch_parameters);
-        runAdvancedSimulation(a.fidelity, a.environment, a.launch_parameters);
+      case "run_professional_simulation":
+        handleProfessionalSimulation(a);
+        break;
+      case "analyze_comprehensive_stability":
+        handleStabilityAnalysis(a);
+        break;
+      case "analyze_comprehensive_performance":
+        handlePerformanceAnalysis(a);
+        break;
+      case "optimize_rocket_design":
+        handleDesignOptimization(a);
+        break;
+      case "run_advanced_monte_carlo":
+        handleMonteCarloAnalysis(a);
+        break;
+      case "set_professional_environment":
+        handleEnvironmentSetup(a);
+        break;
+      case "analyze_motor_performance_detailed":
+        handleMotorAnalysis(a);
+        break;
+      case "generate_flight_report":
+        handleFlightReport(a);
+        break;
+      case "validate_design_requirements":
+        handleRequirementsValidation(a);
         break;
       case "analyze_trajectory":
-        console.log('📈 Analyzing trajectory:', a);
         analyzeTrajectory(a);
         break;
       case "run_monte_carlo":
-        console.log('🎲 Running Monte Carlo analysis:', a.iterations, 'iterations');
         runMonteCarloAnalysis(a);
         break;
       case "optimize_design":
-        console.log('⚡ Optimizing design for:', a.target);
         optimizeDesign(a);
         break;
       case "analyze_stability":
-        console.log('⚖️ Analyzing stability:', a.flight_phase);
         analyzeStability(a);
         break;
       case "set_environment":
@@ -439,7 +508,7 @@ export function dispatchActions(actions: any[]) {
         predictRecovery(a);
         break;
       default:
-        console.log('❓ Unknown action:', a.action);
+        console.warn(`Unknown action: ${a.action}`);
     }
   });
 }
@@ -567,52 +636,16 @@ export async function runMonteCarloAnalysis(params: any) {
   console.log('🎲 Starting Monte Carlo analysis with', params.iterations, 'iterations');
   
   try {
-    const requestData = {
-      rocket: {
-        id: rocket.id,
-        name: rocket.name,
-        parts: rocket.parts,
-        motorId: rocket.motorId,
-        Cd: rocket.Cd || 0.5,
-        units: rocket.units || "metric"
-      },
-      environment: {
-        latitude: 0.0,
-        longitude: 0.0,
-        elevation: 0.0,
-        windSpeed: 5.0,  // Default wind for Monte Carlo
-        windDirection: 0.0,
-        atmosphericModel: "standard"
-      },
-      launchParameters: {
-        railLength: 5.0,
-        inclination: 85.0,
-        heading: 0.0
-      },
-      variations: params.variations || [
-        {
-          parameter: "environment.windSpeed",
-          distribution: "uniform",
-          parameters: [0, 10]
-        },
-        {
-          parameter: "rocket.Cd",
-          distribution: "normal",
-          parameters: [rocket.Cd || 0.5, 0.05]
-        },
-        {
-          parameter: "launch.inclination",
-          distribution: "normal",
-          parameters: [85, 2]
-        }
-      ],
-      iterations: params.iterations
-    };
-    
     const response = await fetch("/api/simulate/monte-carlo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestData),
+      body: JSON.stringify({
+        rocket,
+        environment: params.environment || {},
+        launchParameters: params.launch_parameters || {},
+        variations: params.variations || [],
+        iterations: params.iterations || 100
+      })
     });
     
     if (!response.ok) {
@@ -914,9 +947,20 @@ export function predictRecovery(params: any) {
     return;
   }
   
-  // Simple recovery prediction calculations
   const apogeeAltitude = sim.maxAltitude;
   const deploymentAltitude = params.deployment_altitude;
+  
+  if (!apogeeAltitude) {
+    return {
+      deploymentAltitude: 0,
+      terminalVelocity: 0,
+      descentTime: 0,
+      driftDistance: 0,
+      landingVelocity: 0,
+      recommendations: ["No simulation data available for recovery prediction"]
+    };
+  }
+  
   const descentDistance = apogeeAltitude - deploymentAltitude;
   
   // Estimate descent time and drift
@@ -996,4 +1040,455 @@ function convertToKML(data: any): string {
     </Placemark>
   </Document>
 </kml>`;
+}
+
+// Professional simulation handler
+async function handleProfessionalSimulation(action: any) {
+  try {
+    const { rocket } = useRocket.getState();
+    
+    // Use the correct API endpoint
+    const endpoint = "/api/simulate";
+    
+    // Prepare payload
+    const payload: {
+      rocket: Rocket;
+      environment?: any;
+      launchParameters?: any;
+      fidelity: string;
+      [key: string]: any;
+    } = {
+      rocket,
+      fidelity: action.fidelity || "professional",
+      environment: action.environment || {
+        latitude: 0,
+        longitude: 0,
+        elevation: 0,
+        windSpeed: 0,
+        windDirection: 0,
+        atmosphericModel: "standard"
+      },
+      launchParameters: action.launch_parameters || {
+        railLength: 5.0,
+        inclination: 85.0,
+        heading: 0.0
+      }
+    };
+    
+    // Add analysis options for professional simulations
+    if (action.analysis_options) {
+      payload.analysisOptions = action.analysis_options;
+    }
+    
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Simulation failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Update simulation state
+    useRocket.getState().setSim(result);
+    
+    showNotification(
+      `Professional ${action.fidelity} simulation completed. Max altitude: ${result.maxAltitude?.toFixed(1)}m`,
+      "success"
+    );
+    
+  } catch (error) {
+    console.error("Professional simulation failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Simulation failed: ${errorMessage}`, "error");
+    
+    // Fallback to quick simulation
+    runQuickSim();
+  }
+}
+
+// Stability analysis handler
+async function handleStabilityAnalysis(action: any) {
+  try {
+    const { rocket, sim: currentSim } = useRocket.getState();
+    
+    const response = await fetch("/api/analyze/stability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rocket,
+        environment: action.wind_conditions || {},
+        analysisType: "comprehensive"
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Analysis failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Update stability analysis state
+    useRocket.getState().setStabilityAnalysis(result);
+    
+    // Also update simulation state with stability data
+    const updatedSim: SimulationResult = {
+      ...currentSim,
+      stabilityAnalysis: result,
+      stabilityMargin: result.static_margin || currentSim?.stabilityMargin || 1.0
+    };
+    
+    useRocket.getState().setSim(updatedSim);
+    
+    showNotification(`Stability analysis completed. Margin: ${result.static_margin?.toFixed(2)}`, "success");
+    
+  } catch (error) {
+    console.error("Stability analysis failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Stability analysis failed: ${errorMessage}`, "error");
+  }
+}
+
+// Performance analysis handler
+async function handlePerformanceAnalysis(action: any) {
+  try {
+    const { rocket, sim: currentSim } = useRocket.getState();
+    
+    const response = await fetch("/api/analyze/performance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rocket,
+        environment: action.environment || {},
+        analysisType: "comprehensive"
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Analysis failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Update simulation state with proper typing
+    const updatedSim: SimulationResult = {
+      ...currentSim,
+      performanceAnalysis: result,
+      performanceRating: result.performance_rating
+    };
+    
+    useRocket.getState().setSim(updatedSim);
+    
+    showNotification(`Performance analysis completed. Rating: ${result.performance_rating}`, "success");
+    
+  } catch (error) {
+    console.error("Performance analysis failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Performance analysis failed: ${errorMessage}`, "error");
+  }
+}
+
+// Design optimization handler
+async function handleDesignOptimization(action: any) {
+  try {
+    const { rocket } = useRocket.getState();
+    
+    const response = await fetch("/api/optimize/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rocket,
+        target: action.target || "max_altitude",
+        constraints: action.constraints || {},
+        method: action.method || "professional"
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Optimization failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Apply optimized design if available
+    if (result.optimized_rocket) {
+      useRocket.getState().updateRocket(() => result.optimized_rocket);
+    }
+    
+    // Update simulation with optimization results
+    if (result.optimized_performance) {
+      useRocket.getState().setSim(result.optimized_performance);
+    }
+    
+    showNotification(
+      `Design optimized for ${action.target}. Improvement: ${result.improvements?.altitude_gain?.toFixed(1)}m`,
+      "success"
+    );
+    
+  } catch (error) {
+    console.error("Design optimization failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Optimization failed: ${errorMessage}`, "error");
+  }
+}
+
+// Monte Carlo analysis handler
+async function handleMonteCarloAnalysis(action: any) {
+  try {
+    const { rocket } = useRocket.getState();
+    
+    const response = await fetch("/api/simulate/monte-carlo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rocket,
+        environment: action.environment || {},
+        launchParameters: action.launch_parameters || {},
+        variations: action.variations || [],
+        iterations: action.iterations || 100
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Monte Carlo analysis failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Update Monte Carlo results in store
+    useRocket.getState().setMonteCarloResult(result);
+    
+    // Update simulation state with nominal results
+    if (result.nominal) {
+      useRocket.getState().setSim(result.nominal);
+    }
+    
+    showNotification(
+      `Monte Carlo analysis completed with ${action.iterations} iterations. Mean altitude: ${result.statistics?.maxAltitude?.mean?.toFixed(1)}m`,
+      "success"
+    );
+    
+  } catch (error) {
+    console.error("Monte Carlo analysis failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Monte Carlo analysis failed: ${errorMessage}`, "error");
+  }
+}
+
+// Environment setup handler
+function handleEnvironmentSetup(action: any) {
+  // Store environment conditions globally for use in simulations
+  window.environmentConditions = {
+    latitude: action.latitude || 0,
+    longitude: action.longitude || 0,
+    elevation: action.elevation || 0,
+    windSpeed: action.wind_speed || 0,
+    windDirection: action.wind_direction || 0,
+    atmosphericModel: action.atmospheric_model || "standard",
+    date: action.date,
+    // Additional real weather data if available
+    temperature: action.temperature,
+    pressure: action.pressure,
+    humidity: action.humidity,
+    visibility: action.visibility,
+    cloudCover: action.cloudCover
+  };
+
+  // If using forecast model, ensure we have real weather data
+  if (action.atmospheric_model === "forecast") {
+    // Check if we have real weather data loaded
+    const hasRealWeather = window.environmentConditions.temperature !== undefined;
+    
+    if (hasRealWeather) {
+      showNotification(
+        `Real weather data active: ${action.wind_speed?.toFixed(1) || 0}m/s wind, ${action.temperature?.toFixed(1) || 'N/A'}°C`,
+        "success"
+      );
+    } else {
+      showNotification(
+        "Forecast model selected but no real weather data available. Enable location access for accurate conditions.",
+        "warning"
+      );
+    }
+  } else {
+    showNotification(
+      `Environment set: ${action.wind_speed || 0}m/s wind, ${action.atmospheric_model || "standard"} atmosphere`,
+      "info"
+    );
+  }
+
+  // Dispatch event for UI updates
+  window.dispatchEvent(new CustomEvent('environmentUpdate', {
+    detail: window.environmentConditions
+  }));
+}
+
+// Motor analysis handler
+async function handleMotorAnalysis(action: any) {
+  try {
+    const response = await fetch("/api/motors/detailed", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Motor analysis failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    const motorData = result.motors[action.motor_id];
+    
+    if (!motorData) {
+      throw new Error(`Motor ${action.motor_id} not found`);
+    }
+    
+    // Calculate rocket mass for thrust-to-weight ratio
+    const { rocket } = useRocket.getState();
+    const rocketMass = estimateRocketMass(rocket);
+    
+    // Update motor analysis state with proper typing
+    const motorAnalysis = {
+      motor: motorData,
+      thrustToWeight: (motorData.averageThrust || motorData.thrust || 0) / (rocketMass * 9.81),
+      totalImpulse: motorData.totalImpulse || 0,
+      specificImpulse: motorData.specificImpulse || motorData.isp || 0,
+      burnTime: motorData.burnTime || 0,
+      averageThrust: motorData.averageThrust || motorData.thrust || 0,
+      impulseClass: motorData.impulseClass || 'Unknown',
+      recommendations: motorData.applications || motorData.recommendations || []
+    };
+    
+    useRocket.getState().setMotorAnalysis(motorAnalysis);
+    
+    // Update simulation state with motor analysis
+    const { sim: currentSim } = useRocket.getState();
+    const updatedSim: SimulationResult = {
+      ...currentSim,
+      motorAnalysis: motorAnalysis
+    };
+    
+    useRocket.getState().setSim(updatedSim);
+    
+    showNotification(`Motor analysis completed for ${motorData.name || action.motor_id}`, "success");
+    
+  } catch (error) {
+    console.error("Motor analysis failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Motor analysis failed: ${errorMessage}`, "error");
+  }
+}
+
+// Flight report handler
+function handleFlightReport(action: any) {
+  const { rocket, sim } = useRocket.getState();
+  
+  if (!sim) {
+    showNotification("No simulation data available for report generation", "warning");
+    return;
+  }
+  
+  const report = generateFlightReport(sim, action);
+  
+  // Store report for download or display
+  window.flightReport = report;
+  
+  showNotification(`Flight report generated in ${action.report_format || "professional"} format`, "success");
+}
+
+// Requirements validation handler
+function handleRequirementsValidation(action: any) {
+  const { rocket, sim } = useRocket.getState();
+  
+  if (!sim) {
+    showNotification("No simulation data available for validation", "warning");
+    return;
+  }
+  
+  const validation = validateRequirements(rocket, sim, action);
+  
+  // Update simulation state with validation results
+  const updatedSim: SimulationResult = {
+    ...sim,
+    requirementsValidation: validation
+  };
+  
+  useRocket.getState().setSim(updatedSim);
+  
+  const passedCount = validation.results.filter((r: any) => r.passed).length;
+  const totalCount = validation.results.length;
+  
+  showNotification(
+    `Requirements validation: ${passedCount}/${totalCount} requirements met`,
+    passedCount === totalCount ? "success" : "warning"
+  );
+}
+
+// Utility functions
+function showNotification(message: string, type: "success" | "error" | "info" | "warning") {
+  // Dispatch custom event for notification system
+  window.dispatchEvent(new CustomEvent('notification', {
+    detail: { message, type }
+  }));
+}
+
+function generateFlightReport(sim: any, options: any) {
+  // Generate comprehensive flight report
+  return {
+    summary: `Flight reached ${sim.maxAltitude?.toFixed(1)}m altitude`,
+    performance: sim,
+    recommendations: generateRecommendations(sim),
+    format: options.report_format || "professional"
+  };
+}
+
+function validateRequirements(rocket: any, sim: any, requirements: any) {
+  const results = [];
+  
+  // Safety requirements
+  if (requirements.safety_requirements) {
+    const safety = requirements.safety_requirements;
+    if (safety.min_stability_margin) {
+      results.push({
+        requirement: "Minimum Stability Margin",
+        target: safety.min_stability_margin,
+        actual: sim.stabilityMargin,
+        passed: sim.stabilityMargin >= safety.min_stability_margin
+      });
+    }
+  }
+  
+  // Performance requirements
+  if (requirements.performance_requirements) {
+    const performance = requirements.performance_requirements;
+    if (performance.min_altitude) {
+      results.push({
+        requirement: "Minimum Altitude",
+        target: performance.min_altitude,
+        actual: sim.maxAltitude,
+        passed: sim.maxAltitude >= performance.min_altitude
+      });
+    }
+  }
+  
+  return {
+    results,
+    overallPassed: results.every((r: any) => r.passed)
+  };
+}
+
+function generateRecommendations(sim: any) {
+  const recommendations = [];
+  
+  if (sim.stabilityMargin < 1.0) {
+    recommendations.push("Increase fin area or move fins aft for better stability");
+  }
+  
+  if (sim.maxAltitude < 100) {
+    recommendations.push("Consider a more powerful motor or reduce rocket mass");
+  }
+  
+  return recommendations;
 } 

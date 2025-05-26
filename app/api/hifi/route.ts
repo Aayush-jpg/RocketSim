@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
     
     try {
       // Call the RocketPy service with timeout - use /simulate_full for high-fidelity
-      const response = await fetch(process.env.ROCKETPY_URL?.replace('/simulate', '/simulate_full') ?? "http://rocketpy:8000/simulate_full", {
+      const rocketpyUrl = process.env.ROCKETPY_URL || "http://rocketpy:8000";
+      const response = await fetch(`${rocketpyUrl}/simulate_full`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
+import NotificationSystem from '@/components/ui/NotificationSystem'
 
 // Dynamically import panels to reduce initial load time
 const LeftPanel = dynamic(() => import('@/components/panels/LeftPanel'))
@@ -271,6 +272,9 @@ export default function RocketSim() {
           <span>Exit Fullscreen</span>
         </motion.button>
       )}
+      
+      {/* Notification System */}
+      <NotificationSystem />
     </main>
   )
 } 

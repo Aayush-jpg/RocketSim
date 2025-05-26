@@ -211,7 +211,8 @@ async def reason(req: ChatRequest):
         router_result = await router_runner.run(
             router_agent,
             input=messages,
-            context={"current_rocket_json_str": rocket_json_str}
+            context={"current_rocket_json_str": rocket_json_str},
+            max_turns=20  # Increased for complex routing decisions
         )
         
         # Get the routed agent name
@@ -246,7 +247,8 @@ async def reason(req: ChatRequest):
             primary_result = await runner.run(
                 specialized_agent,
                 input=messages,
-                context={"current_rocket_json_str": rocket_json_str}
+                context={"current_rocket_json_str": rocket_json_str},
+                max_turns=20  # Increased for complex design operations
             )
             
             # Extract actions from the primary agent
@@ -300,7 +302,8 @@ async def reason(req: ChatRequest):
                 sim_result = await sim_runner.run(
                     sim_agent,
                     input=messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}],
-                    context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)}
+                    context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)},
+                    max_turns=20  # Increased for complex simulations
                 )
                 secondary_results["sim"] = sim_result
                 
@@ -316,7 +319,8 @@ async def reason(req: ChatRequest):
                 metrics_result = await metrics_runner.run(
                     metrics_agent,
                     input=messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}],
-                    context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)}
+                    context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)},
+                    max_turns=20  # Increased for complex analysis
                 )
                 secondary_results["metrics"] = metrics_result
         else:
@@ -326,7 +330,8 @@ async def reason(req: ChatRequest):
             primary_result = await runner.run(
                 master_agent,
                 input=messages,
-                context={"current_rocket_json_str": rocket_json_str}
+                context={"current_rocket_json_str": rocket_json_str},
+                max_turns=20  # Increased for complex master agent operations
             )
             
             # Extract actions using the helper function

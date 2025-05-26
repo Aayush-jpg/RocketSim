@@ -131,16 +131,44 @@ export default function ChatPanel() {
       // Apply actions returned by the agent
       if (json.actions) {
         try {
+          console.log('🔍 Raw actions from agent:', json.actions);
           const actions = JSON.parse(json.actions || '[]');
+          console.log('🔍 Parsed actions:', actions);
+          
           if (actions.length > 0) {
-            console.log(`Dispatching ${actions.length} actions from agent response`);
+            console.log(`🎯 About to dispatch ${actions.length} actions...`);
+            console.log('🎯 Actions to dispatch:', actions);
+            
+            // Get current rocket state before dispatching
+            const rocketBefore = useRocket.getState().rocket;
+            console.log('🚀 Rocket state BEFORE dispatching actions:', JSON.stringify(rocketBefore.parts, null, 2));
+            
             dispatchActions(actions);
+            
+            // Check rocket state after dispatching
+            setTimeout(() => {
+              const rocketAfter = useRocket.getState().rocket;
+              console.log('🚀 Rocket state AFTER dispatching actions:', JSON.stringify(rocketAfter.parts, null, 2));
+              
+              // Compare before and after
+              const changed = JSON.stringify(rocketBefore.parts) !== JSON.stringify(rocketAfter.parts);
+              console.log('🔄 Rocket parts changed:', changed);
+              
+              if (!changed) {
+                console.error('❌ PROBLEM: Actions were dispatched but rocket state did not change!');
+              } else {
+                console.log('✅ SUCCESS: Rocket state updated successfully!');
+              }
+            }, 100);
           } else {
-            console.log('No actions to dispatch from agent response');
+            console.log('⚠️ No actions to dispatch from agent response');
           }
         } catch (actionError) {
-          console.error('Error parsing or dispatching actions:', actionError);
+          console.error('❌ Error parsing or dispatching actions:', actionError);
+          console.error('❌ Original actions string:', json.actions);
         }
+      } else {
+        console.log('⚠️ No actions field in agent response');
       }
       
       // Add assistant response to chat

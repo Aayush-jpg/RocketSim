@@ -27,17 +27,24 @@ export interface FlightEvent {
 }
 
 export interface SimulationResult {
-  maxAltitude: number;
-  maxVelocity: number;
-  maxAcceleration: number;
-  apogeeTime: number;
-  stabilityMargin: number;
+  maxAltitude?: number;
+  maxVelocity?: number;
+  maxAcceleration?: number;
+  apogeeTime?: number;
+  stabilityMargin?: number;
   thrustCurve?: [number, number][]; // [time, thrust] pairs
   simulationFidelity?: string;
   trajectory?: TrajectoryData;
   flightEvents?: FlightEvent[];
   impactVelocity?: number;
   driftDistance?: number;
+  timestamp?: string;
+  // Optional analysis results
+  stabilityAnalysis?: any;
+  performanceAnalysis?: any;
+  performanceRating?: string;
+  motorAnalysis?: any;
+  requirementsValidation?: any;
 }
 
 export interface MonteCarloStatistics {
@@ -101,11 +108,19 @@ export interface MotorAnalysis {
 
 export interface StabilityAnalysis {
   staticMargin: number;
-  flight_phase: "powered" | "coast" | "all";
-  includeStatic: boolean;
-  includeDynamic: boolean;
+  static_margin?: number; // Backend might return this format
+  center_of_pressure?: number;
+  center_of_mass?: number;
+  stability_rating?: string;
+  rating?: string;
+  flight_phase?: "powered" | "coast" | "all";
+  includeStatic?: boolean;
+  includeDynamic?: boolean;
   windConditions?: {[key: string]: number};
-  recommendations: string[];
+  recommendations?: string[];
+  recommendation?: string; // Single recommendation
+  analysisType?: string;
+  timestamp?: string;
 }
 
 export interface RecoveryPrediction {

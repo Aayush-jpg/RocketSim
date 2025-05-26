@@ -7,6 +7,14 @@ import { estimateRocketMass, calculateStability } from '@/lib/ai/actions'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Line } from '@react-three/drei'
+import IntegratedChatPanel from './IntegratedChatPanel'
+import SimulationTab from './pro-mode/SimulationTab'
+import StabilityTab from './pro-mode/StabilityTab'
+import MonteCarloTab from './pro-mode/MonteCarloTab'
+import MotorTab from './pro-mode/MotorTab'
+import TrajectoryTab from './pro-mode/TrajectoryTab'
+import RecoveryTab from './pro-mode/RecoveryTab'
+import WeatherStatus from '@/components/WeatherStatus'
 
 // Enhanced motor database with more detailed properties
 const MOTORS = {
@@ -245,29 +253,6 @@ function PerformanceBar({ title, value, max, color }: {
   );
 }
 
-// Enhanced chat panel wrapper with metrics integration
-function IntegratedChatPanel({ metrics, metricsExpanded, onToggleMetrics }: {
-  metrics: any;
-  metricsExpanded: boolean;
-  onToggleMetrics: () => void;
-}) {
-  return (
-    <div className="h-full flex flex-col">
-      {/* Metrics summary that sits above chat */}
-      <InlineMetricsSummary 
-        metrics={metrics}
-        isExpanded={metricsExpanded}
-        onToggle={onToggleMetrics}
-      />
-      
-      {/* Chat panel takes remaining space */}
-      <div className="flex-1 min-h-0">
-        <ChatPanel />
-      </div>
-    </div>
-  );
-}
-
 export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps) {
   const [metricsExpanded, setMetricsExpanded] = useState(false);
   const [showProMode, setShowProMode] = useState(false);
@@ -492,702 +477,120 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
   );
 }
 
-// Simulation Results Tab
-function SimulationTab() {
-  const { sim } = useRocket();
-
-  if (!sim) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">🚀</div>
-        <p>No simulation data available</p>
-        <p className="text-sm mt-2">Run a simulation to see results</p>
-      </div>
-    );
-  }
-
+// Placeholder components for tabs that haven't been created yet
+function PerformanceTab() {
   return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold mb-3">Flight Performance</h3>
-      
-      {/* Key Metrics */}
-      <div className="grid grid-cols-2 gap-3">
-        <SimulationMetricCard 
-          label="Max Altitude" 
-          value={`${sim.maxAltitude.toFixed(1)} m`}
-          icon="🎯"
-          color="text-green-400"
-        />
-        <SimulationMetricCard 
-          label="Max Velocity" 
-          value={`${sim.maxVelocity.toFixed(1)} m/s`}
-          icon="⚡"
-          color="text-blue-400"
-        />
-        <SimulationMetricCard 
-          label="Max Acceleration" 
-          value={`${sim.maxAcceleration?.toFixed(1) || 'N/A'} m/s²`}
-          icon="🚀"
-          color="text-red-400"
-        />
-        <SimulationMetricCard 
-          label="Apogee Time" 
-          value={`${sim.apogeeTime.toFixed(1)} s`}
-          icon="⏱️"
-          color="text-yellow-400"
-        />
-      </div>
-
-      {/* Stability Indicator */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-300">Stability Margin</span>
-          <span className={`text-sm font-semibold ${
-            sim.stabilityMargin < 1 ? 'text-red-400' :
-            sim.stabilityMargin > 3 ? 'text-yellow-400' : 'text-green-400'
-          }`}>
-            {sim.stabilityMargin.toFixed(2)} cal
-          </span>
-        </div>
-        <div className="w-full bg-slate-700 rounded-full h-2">
-          <div 
-            className={`h-2 rounded-full ${
-              sim.stabilityMargin < 1 ? 'bg-red-500' :
-              sim.stabilityMargin > 3 ? 'bg-yellow-500' : 'bg-green-500'
-            }`}
-            style={{ width: `${Math.min(sim.stabilityMargin * 20, 100)}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Advanced Metrics */}
-      {sim.simulationFidelity && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Simulation Details</div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span>Fidelity:</span>
-              <span className="text-blue-400 capitalize">{sim.simulationFidelity}</span>
-            </div>
-            {sim.impactVelocity && (
-              <div className="flex justify-between">
-                <span>Impact Velocity:</span>
-                <span className="text-yellow-400">{sim.impactVelocity.toFixed(1)} m/s</span>
-              </div>
-            )}
-            {sim.driftDistance && (
-              <div className="flex justify-between">
-                <span>Drift Distance:</span>
-                <span className="text-purple-400">{sim.driftDistance.toFixed(1)} m</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Flight Events */}
-      {sim.flightEvents && sim.flightEvents.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Flight Events</div>
-          <div className="space-y-1">
-            {sim.flightEvents.map((event, index) => (
-              <div key={index} className="flex justify-between text-xs">
-                <span className="text-slate-400">{event.name}</span>
-                <span className="text-slate-300">
-                  {event.time.toFixed(1)}s @ {event.altitude.toFixed(0)}m
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+    <div className="text-center text-slate-400 py-8">
+      <div className="text-4xl mb-2">📊</div>
+      <p>Performance analysis coming soon</p>
     </div>
   );
 }
 
-// Trajectory Analysis Tab
-function TrajectoryTab() {
-  const { sim } = useRocket();
-  const [viewMode, setViewMode] = useState('3d');
-
-  if (!sim?.trajectory) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">📈</div>
-        <p>No trajectory data available</p>
-        <p className="text-sm mt-2">Run a high-fidelity simulation</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-white font-semibold">Trajectory Analysis</h3>
-        <select 
-          value={viewMode} 
-          onChange={(e) => setViewMode(e.target.value)}
-          className="bg-slate-700 text-white text-sm rounded px-2 py-1"
-        >
-          <option value="3d">3D View</option>
-          <option value="altitude">Altitude vs Time</option>
-          <option value="velocity">Velocity vs Time</option>
-          <option value="acceleration">Acceleration vs Time</option>
-        </select>
-      </div>
-
-      {viewMode === '3d' && (
-        <div className="h-64 bg-slate-800 rounded-lg">
-          <Canvas camera={{ position: [10, 10, 10] }}>
-            <ambientLight intensity={0.5} />
-            <pointLight position={[10, 10, 10]} />
-            <OrbitControls />
-            <TrajectoryPath trajectory={sim.trajectory} />
-          </Canvas>
-        </div>
-      )}
-
-      {viewMode !== '3d' && (
-        <div className="h-64 bg-slate-800 rounded-lg p-3">
-          <TrajectoryChart trajectory={sim.trajectory} mode={viewMode} />
-        </div>
-      )}
-
-      {/* Trajectory Statistics */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Trajectory Statistics</div>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="flex justify-between">
-            <span>Flight Time:</span>
-            <span className="text-blue-400">
-              {sim.trajectory.time[sim.trajectory.time.length - 1]?.toFixed(1)}s
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Data Points:</span>
-            <span className="text-green-400">{sim.trajectory.time.length}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Max Range:</span>
-            <span className="text-purple-400">
-              {Math.max(...sim.trajectory.position.map(p => Math.sqrt(p[0]**2 + p[1]**2))).toFixed(1)}m
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Resolution:</span>
-            <span className="text-yellow-400">
-              {(sim.trajectory.time[1] - sim.trajectory.time[0]).toFixed(3)}s
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Monte Carlo Analysis Tab
-function MonteCarloTab() {
-  const { monteCarloResult } = useRocket();
-
-  if (!monteCarloResult) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">🎲</div>
-        <p>No Monte Carlo data available</p>
-        <p className="text-sm mt-2">Run a Monte Carlo analysis</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold">Monte Carlo Analysis</h3>
-      
-      {/* Statistics */}
-      {Object.entries(monteCarloResult.statistics).map(([metric, stats]) => (
-        <div key={metric} className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2 capitalize">
-            {metric.replace(/([A-Z])/g, ' $1').trim()}
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex justify-between">
-              <span>Mean:</span>
-              <span className="text-blue-400">{stats.mean.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Std Dev:</span>
-              <span className="text-green-400">±{stats.std.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Min/Max:</span>
-              <span className="text-red-400">
-                {stats.min.toFixed(1)}/{stats.max.toFixed(1)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>95% Range:</span>
-              <span className="text-purple-400">
-                {stats.percentiles["5"].toFixed(1)}-{stats.percentiles["95"].toFixed(1)}
-              </span>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {/* Landing Dispersion */}
-      {monteCarloResult.landingDispersion && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Landing Dispersion</div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span>CEP (50%):</span>
-              <span className="text-blue-400">
-                {monteCarloResult.landingDispersion.cep.toFixed(1)}m
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Mean Drift:</span>
-              <span className="text-green-400">
-                {monteCarloResult.landingDispersion.meanDrift.toFixed(1)}m
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Max Drift:</span>
-              <span className="text-red-400">
-                {monteCarloResult.landingDispersion.maxDrift.toFixed(1)}m
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Stability Analysis Tab
-function StabilityTab() {
-  const { stabilityAnalysis } = useRocket();
-
-  if (!stabilityAnalysis) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">⚖️</div>
-        <p>No stability analysis available</p>
-        <p className="text-sm mt-2">Request stability analysis</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold">Stability Analysis</h3>
-      
-      {/* Static Margin */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-300">Static Margin</span>
-          <span className={`text-lg font-bold ${
-            stabilityAnalysis.staticMargin < 1 ? 'text-red-400' :
-            stabilityAnalysis.staticMargin > 3 ? 'text-yellow-400' : 'text-green-400'
-          }`}>
-            {stabilityAnalysis.staticMargin.toFixed(2)} cal
-          </span>
-        </div>
-        
-        {/* Stability Bar */}
-        <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-          <div 
-            className={`h-3 rounded-full ${
-              stabilityAnalysis.staticMargin < 1 ? 'bg-red-500' :
-              stabilityAnalysis.staticMargin > 3 ? 'bg-yellow-500' : 'bg-green-500'
-            }`}
-            style={{ width: `${Math.min(stabilityAnalysis.staticMargin * 20, 100)}%` }}
-          />
-        </div>
-        
-        {/* Reference lines */}
-        <div className="flex justify-between text-xs text-slate-400">
-          <span>0</span>
-          <span>1.0 (min)</span>
-          <span>3.0 (max)</span>
-          <span>5.0+</span>
-        </div>
-      </div>
-
-      {/* Recommendations */}
-      {stabilityAnalysis.recommendations.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Recommendations</div>
-          <div className="space-y-1">
-            {stabilityAnalysis.recommendations.map((rec, index) => (
-              <div key={index} className="text-xs text-slate-400 flex items-start">
-                <span className="mr-2">•</span>
-                <span>{rec}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Motor Analysis Tab
-function MotorTab() {
-  const { motorAnalysis } = useRocket();
-
-  if (!motorAnalysis) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">🔥</div>
-        <p>No motor analysis available</p>
-        <p className="text-sm mt-2">Request motor analysis</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold">Motor Performance</h3>
-      
-      {/* Motor Info */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">{motorAnalysis.motor.name}</div>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span>Impulse Class:</span>
-            <span className="text-blue-400">{motorAnalysis.impulseClass}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Average Thrust:</span>
-            <span className="text-green-400">{motorAnalysis.averageThrust.toFixed(1)}N</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Burn Time:</span>
-            <span className="text-yellow-400">{motorAnalysis.burnTime.toFixed(1)}s</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Total Impulse:</span>
-            <span className="text-purple-400">{motorAnalysis.totalImpulse.toFixed(0)}Ns</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Performance Metrics */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Performance Metrics</div>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span>Thrust-to-Weight:</span>
-            <span className={`${
-              motorAnalysis.thrustToWeight < 5 ? 'text-red-400' :
-              motorAnalysis.thrustToWeight > 15 ? 'text-yellow-400' : 'text-green-400'
-            }`}>
-              {motorAnalysis.thrustToWeight.toFixed(1)}:1
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Specific Impulse:</span>
-            <span className="text-blue-400">{motorAnalysis.specificImpulse.toFixed(0)}s</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Recommendations */}
-      {motorAnalysis.recommendations.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Recommendations</div>
-          <div className="space-y-1">
-            {motorAnalysis.recommendations.map((rec, index) => (
-              <div key={index} className="text-xs text-slate-400 flex items-start">
-                <span className="mr-2">•</span>
-                <span>{rec}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Recovery Prediction Tab
-function RecoveryTab() {
-  const { recoveryPrediction } = useRocket();
-
-  if (!recoveryPrediction) {
-    return (
-      <div className="text-center text-slate-400 py-8">
-        <div className="text-4xl mb-2">🪂</div>
-        <p>No recovery prediction available</p>
-        <p className="text-sm mt-2">Request recovery analysis</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold">Recovery Prediction</h3>
-      
-      {/* Recovery Metrics */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Descent Profile</div>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span>Deployment Alt:</span>
-            <span className="text-blue-400">{recoveryPrediction.deploymentAltitude}m</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Terminal Velocity:</span>
-            <span className="text-green-400">{recoveryPrediction.terminalVelocity.toFixed(1)}m/s</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Descent Time:</span>
-            <span className="text-yellow-400">{recoveryPrediction.descentTime.toFixed(1)}s</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Drift Distance:</span>
-            <span className="text-purple-400">{recoveryPrediction.driftDistance.toFixed(1)}m</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Landing Velocity:</span>
-            <span className={`${
-              recoveryPrediction.landingVelocity > 6 ? 'text-red-400' :
-              recoveryPrediction.landingVelocity < 3 ? 'text-blue-400' : 'text-green-400'
-            }`}>
-              {recoveryPrediction.landingVelocity.toFixed(1)}m/s
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Recommendations */}
-      {recoveryPrediction.recommendations.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm text-slate-300 mb-2">Recommendations</div>
-          <div className="space-y-1">
-            {recoveryPrediction.recommendations.map((rec, index) => (
-              <div key={index} className="text-xs text-slate-400 flex items-start">
-                <span className="mr-2">•</span>
-                <span>{rec}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Environment Configuration Tab
 function EnvironmentTab() {
-  const { environment, setEnvironment } = useRocket();
-
   return (
-    <div className="space-y-4">
-      <h3 className="text-white font-semibold">Environment Settings</h3>
+    <div className="space-y-6">
+      {/* Weather Status Component */}
+      <WeatherStatus />
       
-      {/* Location */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Launch Location</div>
-        <div className="space-y-2">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Latitude (°)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={environment.latitude}
-              onChange={(e) => setEnvironment({...environment, latitude: parseFloat(e.target.value) || 0})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            />
+      {/* Environment Configuration */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <span>🌍</span>
+          Launch Environment
+        </h3>
+        
+        <div className="space-y-4">
+          {/* Current Environment Display */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Atmospheric Model</p>
+              <p className="font-medium text-gray-900 dark:text-white">
+                {window.environmentConditions?.atmosphericModel || 'Standard'}
+              </p>
+            </div>
+            
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Data Source</p>
+              <p className="font-medium text-gray-900 dark:text-white">
+                {window.environmentConditions?.atmosphericModel === 'forecast' ? 'Real-time' : 'Standard ISA'}
+              </p>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Longitude (°)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={environment.longitude}
-              onChange={(e) => setEnvironment({...environment, longitude: parseFloat(e.target.value) || 0})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            />
+
+          {/* Environment Quality Indicator */}
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+              Simulation Accuracy
+            </h4>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                window.environmentConditions?.atmosphericModel === 'forecast' 
+                  ? 'bg-green-500' 
+                  : 'bg-yellow-500'
+              }`} />
+              <span className="text-sm text-blue-800 dark:text-blue-200">
+                {window.environmentConditions?.atmosphericModel === 'forecast' 
+                  ? 'High accuracy with real atmospheric data'
+                  : 'Standard accuracy with ISA model'
+                }
+              </span>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Elevation (m)</label>
-            <input
-              type="number"
-              step="1"
-              value={environment.elevation}
-              onChange={(e) => setEnvironment({...environment, elevation: parseFloat(e.target.value) || 0})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            />
+
+          {/* Launch Recommendations */}
+          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+            <h4 className="font-medium text-gray-900 dark:text-white mb-2">
+              Launch Recommendations
+            </h4>
+            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+              <li>• Check wind conditions before launch</li>
+              <li>• Verify recovery system deployment altitude</li>
+              <li>• Consider atmospheric density effects on drag</li>
+              <li>• Monitor visibility for tracking</li>
+            </ul>
           </div>
         </div>
       </div>
 
-      {/* Weather */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Weather Conditions</div>
-        <div className="space-y-2">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Wind Speed (m/s)</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={environment.windSpeed}
-              onChange={(e) => setEnvironment({...environment, windSpeed: parseFloat(e.target.value) || 0})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            />
+      {/* Advanced Environment Settings */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <span>⚙️</span>
+          Advanced Settings
+        </h3>
+        
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-300">Use real-time weather data</span>
+            <div className={`w-10 h-6 rounded-full transition-colors ${
+              window.environmentConditions?.atmosphericModel === 'forecast' 
+                ? 'bg-green-500' 
+                : 'bg-gray-300 dark:bg-gray-600'
+            }`}>
+              <div className={`w-4 h-4 bg-white rounded-full mt-1 transition-transform ${
+                window.environmentConditions?.atmosphericModel === 'forecast' 
+                  ? 'translate-x-5' 
+                  : 'translate-x-1'
+              }`} />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Wind Direction (°)</label>
-            <input
-              type="number"
-              step="1"
-              min="0"
-              max="360"
-              value={environment.windDirection}
-              onChange={(e) => setEnvironment({...environment, windDirection: parseFloat(e.target.value) || 0})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            />
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-300">High-resolution atmospheric model</span>
+            <div className="w-10 h-6 bg-gray-300 dark:bg-gray-600 rounded-full">
+              <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Atmospheric Model</label>
-            <select
-              value={environment.atmosphericModel}
-              onChange={(e) => setEnvironment({...environment, atmosphericModel: e.target.value as any})}
-              className="w-full bg-slate-700 text-white text-sm rounded px-2 py-1"
-            >
-              <option value="standard">Standard Atmosphere</option>
-              <option value="forecast">Weather Forecast</option>
-              <option value="custom">Custom Profile</option>
-            </select>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-300">Include turbulence effects</span>
+            <div className="w-10 h-6 bg-gray-300 dark:bg-gray-600 rounded-full">
+              <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-// Helper Components (renamed to avoid conflicts)
-function SimulationMetricCard({ label, value, icon, color }: { 
-  label: string; 
-  value: string; 
-  icon: string; 
-  color: string; 
-}) {
-  return (
-    <div className="bg-slate-800 rounded-lg p-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-slate-400">{label}</span>
-        <span className="text-sm">{icon}</span>
-      </div>
-      <div className={`text-sm font-semibold ${color}`}>{value}</div>
-    </div>
-  );
-}
-
-// 3D Trajectory Component
-function TrajectoryPath({ trajectory }: { trajectory: any }) {
-  const points = trajectory.position.map((pos: number[]) => [pos[0], pos[2], -pos[1]]);
-  
-  return (
-    <Line
-      points={points}
-      color="cyan"
-      lineWidth={2}
-    />
-  );
-}
-
-// Trajectory Chart Component
-function TrajectoryChart({ trajectory, mode }: { trajectory: any; mode: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Set up drawing
-    ctx.strokeStyle = '#60a5fa';
-    ctx.lineWidth = 2;
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px monospace';
-
-    // Get data based on mode
-    let xData = trajectory.time;
-    let yData: number[] = [];
-    let label = '';
-
-    switch (mode) {
-      case 'altitude':
-        yData = trajectory.position.map((pos: number[]) => pos[2]);
-        label = 'Altitude (m)';
-        break;
-      case 'velocity':
-        yData = trajectory.velocity.map((vel: number[]) => Math.sqrt(vel[0]**2 + vel[1]**2 + vel[2]**2));
-        label = 'Velocity (m/s)';
-        break;
-      case 'acceleration':
-        yData = trajectory.acceleration.map((acc: number[]) => Math.sqrt(acc[0]**2 + acc[1]**2 + acc[2]**2));
-        label = 'Acceleration (m/s²)';
-        break;
-    }
-
-    if (yData.length === 0) return;
-
-    // Calculate bounds
-    const xMin = Math.min(...xData);
-    const xMax = Math.max(...xData);
-    const yMin = Math.min(...yData);
-    const yMax = Math.max(...yData);
-
-    const margin = 40;
-    const width = canvas.width - 2 * margin;
-    const height = canvas.height - 2 * margin;
-
-    // Draw axes
-    ctx.beginPath();
-    ctx.moveTo(margin, margin);
-    ctx.lineTo(margin, margin + height);
-    ctx.lineTo(margin + width, margin + height);
-    ctx.stroke();
-
-    // Draw data
-    ctx.beginPath();
-    for (let i = 0; i < xData.length; i++) {
-      const x = margin + (xData[i] - xMin) / (xMax - xMin) * width;
-      const y = margin + height - (yData[i] - yMin) / (yMax - yMin) * height;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
-
-    // Draw labels
-    ctx.fillText(`Time (s)`, margin + width/2, margin + height + 30);
-    ctx.save();
-    ctx.translate(15, margin + height/2);
-    ctx.rotate(-Math.PI/2);
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-
-    // Draw values
-    ctx.fillText(xMin.toFixed(1), margin, margin + height + 15);
-    ctx.fillText(xMax.toFixed(1), margin + width - 20, margin + height + 15);
-    ctx.fillText(yMax.toFixed(1), 5, margin + 5);
-    ctx.fillText(yMin.toFixed(1), 5, margin + height - 5);
-
-  }, [trajectory, mode]);
-
-  return <canvas ref={canvasRef} width={320} height={200} className="w-full h-full" />;
 } 

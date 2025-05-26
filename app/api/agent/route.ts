@@ -6,8 +6,9 @@ export async function POST(req: NextRequest) {
   try {
     const { history, rocket } = await req.json();
     
-    // Call the Python agent service
-    const r = await fetch(process.env.AGENT_URL ?? "http://agentpy:8002/reason", {
+    // Call the Python agent service - append /reason to base URL
+    const agentUrl = process.env.AGENT_URL || "http://agentpy:8002";
+    const r = await fetch(`${agentUrl}/reason`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: history, rocket }),
