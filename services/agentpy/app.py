@@ -10,9 +10,11 @@ import uvicorn
 from agents import Agent, Runner, function_tool
 
 # Import our modules
-from utils.models import ChatRequest, AgentRequest
+from utils.models import ChatRequest, AgentRequest, EnvironmentData, SimulationHistory, AnalysisHistory
 from utils.format import format_response
 from utils.fallbacks import extract_intent_from_text, design_rocket_for_altitude
+# Import comprehensive context builder
+from utils.context_builder import build_comprehensive_context
 
 # Import all the specialized agents
 from rocket_agents import (
@@ -21,6 +23,7 @@ from rocket_agents import (
     metrics_agent,
     qa_agent,
     router_agent,
+    weather_agent,
     #get_rocket_details,
     PREDICTION_AGENT_INSTRUCTIONS
 )
@@ -48,6 +51,148 @@ def clean_messages(messages):
             "content": msg.get("content", "")
         })
     return cleaned
+
+def build_agent_context(agent_name: str, req: ChatRequest, user_message: str = "") -> str:
+    """
+    Build comprehensive context appropriate for each agent type.
+    
+    Args:
+        agent_name: Name of the agent that will receive the context
+        req: ChatRequest containing all available context data
+        user_message: Current user message for context
+    
+    Returns:
+        Formatted context string optimized for the specific agent
+    """
+    
+    # Define which agents need which types of context
+    AGENT_CONTEXT_NEEDS = {
+        "master": {
+            "environment": True,
+            "simulation_history": True, 
+            "analysis_history": True,
+            "user_preferences": True,
+            "session_info": True
+        },
+        "design": {
+            "environment": True,  # For flight conditions during design
+            "simulation_history": True,  # For performance trends
+            "analysis_history": True,  # For stability patterns
+            "user_preferences": True,  # For experience-appropriate designs
+            "session_info": False
+        },
+        "sim": {
+            "environment": True,  # Critical for simulation accuracy
+            "simulation_history": True,  # For comparison with previous runs
+            "analysis_history": False,
+            "user_preferences": True,  # For simulation fidelity preferences
+            "session_info": False
+        },
+        "metrics": {
+            "environment": False,  # Less critical for analysis
+            "simulation_history": True,  # Essential for trend analysis
+            "analysis_history": True,  # Core requirement
+            "user_preferences": True,  # For appropriate complexity level
+            "session_info": False
+        },
+        "qa": {
+            "environment": False,
+            "simulation_history": True,  # For answering performance questions
+            "analysis_history": True,  # For technical questions
+            "user_preferences": True,  # For appropriate detail level
+            "session_info": True  # For context-aware responses
+        },
+        "weather": {
+            "environment": True,  # Critical for weather analysis
+            "simulation_history": False,  # Not needed for weather assessment
+            "analysis_history": False,  # Not needed for weather data
+            "user_preferences": True,  # For safety level preferences
+            "session_info": True  # For location and timing context
+        },
+        "router": {
+            # Router needs minimal context, just for classification
+            "environment": False,
+            "simulation_history": False,
+            "analysis_history": False,
+            "user_preferences": True,  # For understanding user's skill level
+            "session_info": True  # For routing based on session patterns
+        },
+        "prediction": {
+            "environment": True,  # For realistic "what-if" scenarios
+            "simulation_history": True,  # For baseline comparisons
+            "analysis_history": True,  # For understanding current state
+            "user_preferences": True,  # For appropriate complexity
+            "session_info": False
+        }
+    }
+    
+    # Get context requirements for this agent
+    context_needs = AGENT_CONTEXT_NEEDS.get(agent_name, AGENT_CONTEXT_NEEDS["master"])
+    
+    # Build context based on needs - properly typed
+    environment_data: Optional[EnvironmentData] = req.environment if context_needs["environment"] else None
+    simulation_history: Optional[List[SimulationHistory]] = req.simulationHistory if context_needs["simulation_history"] else None
+    analysis_history: Optional[List[AnalysisHistory]] = req.analysisHistory if context_needs["analysis_history"] else None
+    user_preferences: Optional[Dict[str, Any]] = req.userPreferences if context_needs["user_preferences"] else None
+    session_info: Optional[Dict[str, Any]] = req.sessionInfo if context_needs["session_info"] else None
+    
+    # Generate the comprehensive context
+    comprehensive_context = build_comprehensive_context(
+        rocket_data=req.rocket,
+        environment=environment_data,
+        simulation_history=simulation_history,
+        analysis_history=analysis_history,
+        user_preferences=user_preferences,
+        session_info=session_info,
+        user_message=user_message
+    )
+    
+    # Add agent-specific instructions based on available context
+    agent_specific_additions = []
+    
+    if agent_name == "design":
+        if environment_data and environment_data.windSpeed is not None:
+            if environment_data.windSpeed > 10:
+                agent_specific_additions.append("⚠️ HIGH WINDS: Consider designing for stability in windy conditions")
+            elif environment_data.windSpeed > 5:
+                agent_specific_additions.append("💨 MODERATE WINDS: Design should account for wind effects")
+        
+        if simulation_history and len(simulation_history) > 0:
+            latest_sim = simulation_history[-1]
+            if latest_sim.stabilityMargin is not None and latest_sim.stabilityMargin < 1.0:
+                agent_specific_additions.append("🚨 STABILITY ISSUE: Previous simulation showed unstable flight")
+            if latest_sim.maxAltitude is not None and latest_sim.maxAltitude < 100:
+                agent_specific_additions.append("📉 LOW PERFORMANCE: Previous simulation showed low altitude")
+    
+    elif agent_name == "sim":
+        if environment_data:
+            agent_specific_additions.append("🌤️ SIMULATION NOTE: Use current environmental conditions for accurate results")
+    
+    elif agent_name == "metrics":
+        if simulation_history and len(simulation_history) > 1:
+            agent_specific_additions.append(f"📊 TREND ANALYSIS: {len(simulation_history)} simulations available for comparison")
+    
+    # Add agent-specific notes if any
+    if agent_specific_additions:
+        comprehensive_context += "\n=== AGENT-SPECIFIC NOTES ===\n"
+        comprehensive_context += "\n".join(agent_specific_additions)
+        comprehensive_context += "\n"
+    
+    return comprehensive_context
+
+def create_enhanced_system_message(agent_name: str, req: ChatRequest, user_message: str = "") -> dict:
+    """Create an enhanced system message with comprehensive context for the specified agent."""
+    
+    # Build comprehensive context for this agent
+    context_content = build_agent_context(agent_name, req, user_message)
+    
+    # Create the enhanced system message
+    system_message = {
+        "role": "system",
+        "content": context_content
+    }
+    
+    return system_message
 
 # Helper function to extract actions from result
 async def extract_actions_from_result(result, message_text, rocket_data):
@@ -184,6 +329,7 @@ AGENTS = {
     "metrics": metrics_agent,
     "qa": qa_agent,
     "router": router_agent,
+    "weather": weather_agent,
     "prediction": prediction_agent,
 }
 
@@ -198,7 +344,7 @@ async def reason(req: ChatRequest):
         latest_message = cleaned_messages[-1]["content"] if cleaned_messages else ""
         
         # Prepare the context with the current rocket state
-        system_message = {"role": "system", "content": f"CURRENT_ROCKET_JSON\n{json.dumps(req.rocket)}"}
+        system_message = create_enhanced_system_message("master", req, latest_message)
         messages = [system_message] + cleaned_messages
         rocket_json_str = json.dumps(req.rocket)
         
@@ -208,11 +354,15 @@ async def reason(req: ChatRequest):
         
         # First, use the router agent to determine which specialized agent to use
         router_runner = Runner()
+        # Use enhanced context for router
+        router_system_message = create_enhanced_system_message("router", req, latest_message)
+        router_messages = [router_system_message] + cleaned_messages
+        
         router_result = await router_runner.run(
             router_agent,
-            input=messages,
+            input=router_messages,
             context={"current_rocket_json_str": rocket_json_str},
-            max_turns=20  # Increased for complex routing decisions
+            max_turns=30  # Much higher for complex routing decisions
         )
         
         # Get the routed agent name
@@ -243,12 +393,16 @@ async def reason(req: ChatRequest):
             primary_agent_name = routed_agent_name
             agent_flow.append({"agent": primary_agent_name, "role": "primary", "timestamp": str(datetime.now())})
             
+            # Create enhanced context for the specialized agent
+            specialized_system_message = create_enhanced_system_message(primary_agent_name, req, latest_message)
+            specialized_messages = [specialized_system_message] + cleaned_messages
+            
             runner = Runner()
             primary_result = await runner.run(
                 specialized_agent,
-                input=messages,
+                input=specialized_messages,
                 context={"current_rocket_json_str": rocket_json_str},
-                max_turns=20  # Increased for complex design operations
+                max_turns=30  # Much higher for complex design operations
             )
             
             # Extract actions from the primary agent
@@ -297,11 +451,15 @@ async def reason(req: ChatRequest):
                 secondary_agents.append("sim")
                 agent_flow.append({"agent": "sim", "role": "secondary", "timestamp": str(datetime.now())})
                 
+                # Create enhanced context for sim agent
+                sim_system_message = create_enhanced_system_message("sim", req, f"Design changes applied: {json.dumps(primary_actions)}")
+                sim_messages = [sim_system_message] + cleaned_messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}]
+                
                 # Run sim agent after design changes are applied
                 sim_runner = Runner()
                 sim_result = await sim_runner.run(
                     sim_agent,
-                    input=messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}],
+                    input=sim_messages,
                     context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)},
                     max_turns=20  # Increased for complex simulations
                 )
@@ -315,23 +473,33 @@ async def reason(req: ChatRequest):
                 # Add metrics agent as secondary
                 agent_flow.append({"agent": "metrics", "role": "secondary", "timestamp": str(datetime.now())})
                 secondary_agents.append("metrics")
+                
+                # Create enhanced context for metrics agent  
+                metrics_system_message = create_enhanced_system_message("metrics", req, f"Design changes applied: {json.dumps(primary_actions)}")
+                metrics_messages = [metrics_system_message] + cleaned_messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}]
+                
                 metrics_runner = Runner()
                 metrics_result = await metrics_runner.run(
                     metrics_agent,
-                    input=messages + [{"role": "assistant", "content": f"Design changes have been applied: {json.dumps(primary_actions)}"}],
+                    input=metrics_messages,
                     context={"current_rocket_json_str": rocket_json_str, "design_actions": json.dumps(primary_actions)},
-                    max_turns=20  # Increased for complex analysis
+                    max_turns=30  # Increased for complex analysis
                 )
                 secondary_results["metrics"] = metrics_result
         else:
             # Fall back to master agent if router couldn't identify a specialized agent
             agent_flow.append({"agent": "master", "role": "primary", "timestamp": str(datetime.now())})
+            
+            # Create enhanced context for master agent
+            master_system_message = create_enhanced_system_message("master", req, latest_message)
+            master_messages = [master_system_message] + cleaned_messages
+            
             runner = Runner()
             primary_result = await runner.run(
                 master_agent,
-                input=messages,
+                input=master_messages,
                 context={"current_rocket_json_str": rocket_json_str},
-                max_turns=20  # Increased for complex master agent operations
+                max_turns=30  # Much higher for complex master agent operations
             )
             
             # Extract actions using the helper function
@@ -467,7 +635,7 @@ async def reason_with_agent(req: AgentRequest):
         cleaned_messages = clean_messages(req.messages)
         
         # Prepare the context with the current rocket state
-        system_message = {"role": "system", "content": f"CURRENT_ROCKET_JSON\n{json.dumps(req.rocket)}"}
+        system_message = create_enhanced_system_message(agent_name, req)
         messages = [system_message] + cleaned_messages
         rocket_json_str = json.dumps(req.rocket)
         
@@ -488,12 +656,15 @@ async def reason_with_agent(req: AgentRequest):
             routed_agent_name = result.completion.strip().lower() if hasattr(result, 'completion') else result.final_output.strip().lower() if hasattr(result, 'final_output') else ""
             
             if routed_agent_name in AGENTS and routed_agent_name != "router":
-                # Re-run the request with the routed agent
+                # Re-run the request with the routed agent using enhanced context
                 routed_agent = AGENTS[routed_agent_name]
+                routed_system_message = create_enhanced_system_message(routed_agent_name, req)
+                routed_messages = [routed_system_message] + cleaned_messages
+                
                 runner = Runner()
                 routed_result = await runner.run(
                     routed_agent,
-                    input=messages,
+                    input=routed_messages,
                     context={"current_rocket_json_str": rocket_json_str}
                 )
                 
@@ -572,7 +743,7 @@ async def route_query(req: ChatRequest):
         cleaned_messages = clean_messages(req.messages)
         
         # Prepare the context with the current rocket state
-        system_message = {"role": "system", "content": f"CURRENT_ROCKET_JSON\n{json.dumps(req.rocket)}"}
+        system_message = create_enhanced_system_message("router", req)
         messages = [system_message] + cleaned_messages
         rocket_json_str = json.dumps(req.rocket)
         

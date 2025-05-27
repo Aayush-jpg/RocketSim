@@ -2,6 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+// Helper function to validate and fix atmospheric model values
+function validateAtmosphericModel(atmosphericModel: any): string {
+  // Ensure atmospheric model is one of the valid values
+  const validModels = ["standard", "custom", "forecast"];
+  
+  if (typeof atmosphericModel === "string") {
+    const cleanModel = atmosphericModel.toLowerCase().trim();
+    
+    // Fix common corruptions
+    if (cleanModel.includes("standard")) {
+      return "standard";
+    }
+    if (cleanModel.includes("forecast")) {
+      return "forecast";
+    }
+    if (cleanModel.includes("custom")) {
+      return "custom";
+    }
+    
+    // Check if it's a valid model
+    if (validModels.includes(cleanModel)) {
+      return cleanModel;
+    }
+  }
+  
+  // Default fallback
+  return "standard";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -15,6 +44,19 @@ export async function POST(req: NextRequest) {
       rocketpyEndpoint = "/simulate/professional";
     }
 
+    // Clean and validate environment data
+    const cleanEnvironment = environment ? {
+      ...environment,
+      atmosphericModel: validateAtmosphericModel(environment.atmosphericModel)
+    } : {
+      latitude: 0,
+      longitude: 0,
+      elevation: 0,
+      windSpeed: 0,
+      windDirection: 0,
+      atmosphericModel: "standard"
+    };
+
     // Forward request to RocketPy service
     const rocketpyUrl = process.env.ROCKETPY_URL || "http://localhost:8000";
     const response = await fetch(`${rocketpyUrl}${rocketpyEndpoint}`, {
@@ -24,14 +66,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         rocket,
-        environment: environment || {
-          latitude: 0,
-          longitude: 0,
-          elevation: 0,
-          windSpeed: 0,
-          windDirection: 0,
-          atmosphericModel: "standard"
-        },
+        environment: cleanEnvironment,
         launchParameters: launchParameters || {
           railLength: 5.0,
           inclination: 85.0,

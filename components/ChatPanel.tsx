@@ -99,17 +99,90 @@ export default function ChatPanel() {
       const rocket = useRocket.getState().rocket;
       console.log('Sending request to agent with rocket data:', JSON.stringify(rocket, null, 2));
       
+      // Gather environment data from global state
+      let environment = null;
+      if (typeof window !== 'undefined' && window.environmentConditions) {
+        const envConditions = window.environmentConditions;
+        environment = {
+          temperature: envConditions.temperature,
+          pressure: envConditions.pressure,
+          humidity: envConditions.humidity,
+          windSpeed: envConditions.windSpeed,
+          windDirection: envConditions.windDirection,
+          visibility: envConditions.visibility,
+          cloudCover: envConditions.cloudCover,
+          dewPoint: envConditions.dewPoint,
+          location: {
+            lat: envConditions.latitude,
+            lon: envConditions.longitude,
+            elevation: envConditions.elevation,
+            city: envConditions.locationName || null,
+            country: null // Could be added if available
+          },
+          weatherSource: envConditions.weatherSource,
+          timestamp: envConditions.timestamp
+        };
+        console.log('Including environment data:', environment);
+      }
+      
+      // Prepare comprehensive request payload
+      const requestPayload: any = {
+        history,
+        rocket,
+        preferredAgent: lastUsedAgent
+      };
+      
+      // Add environment data if available
+      if (environment) {
+        requestPayload.environment = environment;
+      }
+      
+      // Add other context data if available from global state
+      if (typeof window !== 'undefined') {
+        // Simulation history could be stored in global state or Zustand
+        const simulationState = useRocket.getState().sim;
+        if (simulationState) {
+          requestPayload.simulationHistory = [{
+            maxAltitude: simulationState.maxAltitude,
+            maxVelocity: simulationState.maxVelocity,
+            maxAcceleration: simulationState.maxAcceleration,
+            apogeeTime: simulationState.apogeeTime,
+            stabilityMargin: simulationState.stabilityMargin,
+            thrustCurve: simulationState.thrustCurve,
+            trajectory: simulationState.trajectory,
+            flightEvents: simulationState.flightEvents,
+            fidelity: simulationState.simulationFidelity || 'quick',
+            timestamp: new Date().toISOString()
+          }];
+        }
+        
+        // User preferences from localStorage or other global state
+        const storedPreferences = localStorage.getItem('userPreferences');
+        if (storedPreferences) {
+          try {
+            requestPayload.userPreferences = JSON.parse(storedPreferences);
+          } catch (e) {
+            console.warn('Failed to parse user preferences:', e);
+          }
+        }
+        
+        // Session info
+        requestPayload.sessionInfo = {
+          sessionId: sessionStorage.getItem('sessionId') || 'unknown',
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+          messageCount: history.length,
+          lastAgent: lastUsedAgent
+        };
+      }
+      
       // Call agent API
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          history, 
-          rocket,
-          preferredAgent: lastUsedAgent // Send previous agent for context continuity
-        })
+        body: JSON.stringify(requestPayload)
       });
       
       if (!res.ok) {

@@ -245,13 +245,13 @@ class SimulationEnvironment:
         
         # Set atmospheric model
         if config.atmosphericModel == "standard":
-            self.env.set_atmospheric_model(type='StandardAtmosphere')
+            self.env.set_atmospheric_model(type='standard_atmosphere')
         elif config.atmosphericModel == "forecast":
             try:
                 self.env.set_atmospheric_model(type='Forecast', file='GFS')
             except:
                 logger.warning("Failed to load GFS forecast, using standard atmosphere")
-                self.env.set_atmospheric_model(type='StandardAtmosphere')
+                self.env.set_atmospheric_model(type='standard_atmosphere')
         
         # Add wind if specified
         if config.windSpeed and config.windSpeed > 0:
@@ -320,6 +320,9 @@ class SimulationMotor:
             grain_outer_radius=self.spec["dimensions"]["diameter"] / 2000 - 0.002,
             grain_initial_inner_radius=0.005,
             grain_initial_height=self.spec["dimensions"]["length"] / 1000 * 0.8,
+            grain_separation=0.005,  # 5mm separation between grains
+            grains_center_of_mass_position=0.5,  # Center of motor
+            center_of_dry_mass_position=0.5,  # Center of dry mass
             nozzle_position=0,
             burn_time=self.spec["burnTime"]
         )
@@ -1214,11 +1217,11 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
                 logger.info("Using custom atmospheric model")
             else:
                 # Use standard atmosphere with enhancements
-                self.env.set_atmospheric_model(type='StandardAtmosphere')
+                self.env.set_atmospheric_model(type='standard_atmosphere')
                 logger.info("Using enhanced standard atmospheric model")
         except Exception as e:
             logger.warning(f"Failed to set enhanced atmosphere: {e}, using standard")
-            self.env.set_atmospheric_model(type='StandardAtmosphere')
+            self.env.set_atmospheric_model(type='standard_atmosphere')
     
     def _setup_wind_profile(self, config: EnvironmentModel):
         """Setup realistic wind profile with altitude variation"""
@@ -1346,6 +1349,9 @@ class EnhancedSimulationMotor(SimulationMotor):
                 grain_outer_radius=self.spec["dimensions"]["diameter"] / 2000 - 0.002,
                 grain_initial_inner_radius=self._calculate_initial_bore(),
                 grain_initial_height=self._calculate_grain_height(),
+                grain_separation=0.005,  # 5mm separation between grains
+                grains_center_of_mass_position=0.5,  # Center of motor
+                center_of_dry_mass_position=0.5,  # Center of dry mass
                 nozzle_position=0,
                 burn_time=self.spec["burnTime"],
                 throat_radius=self._calculate_throat_radius(),

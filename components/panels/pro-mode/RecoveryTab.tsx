@@ -15,7 +15,7 @@ function RecoveryMetric({ label, value, unit, color, warning }: RecoveryMetricPr
     <div className={`flex justify-between items-center py-1 px-2 rounded ${warning ? 'bg-yellow-600/10 border border-yellow-600/30' : ''}`}>
       <span className="text-slate-400 text-xs">{label}:</span>
       <span className={`text-sm font-mono ${color}`}>
-        {value.toFixed(1)}{unit}
+        {(value ?? 0).toFixed(1)}{unit}
         {warning && <span className="ml-1 text-yellow-400">⚠</span>}
       </span>
     </div>
@@ -348,7 +348,7 @@ export default function RecoveryTab() {
             <div className="flex justify-between items-center py-1">
               <span className="text-slate-400 text-xs">Loading:</span>
               <span className="text-sm font-mono text-indigo-400">
-                {(recoveryMetrics.rocketMass / recoveryMetrics.parachuteArea).toFixed(1)}kg/m²
+                {((recoveryMetrics.rocketMass ?? 0) / (recoveryMetrics.parachuteArea ?? 1)).toFixed(1)}kg/m²
               </span>
             </div>
           </div>
@@ -370,13 +370,13 @@ export default function RecoveryTab() {
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Apogee to Deployment:</span>
                 <span className="text-red-400">
-                  {recoveryMetrics.freefallTime.toFixed(1)}s @ {recoveryMetrics.freefallVelocity.toFixed(1)}m/s
+                  {(recoveryMetrics.freefallTime ?? 0).toFixed(1)}s @ {(recoveryMetrics.freefallVelocity ?? 0).toFixed(1)}m/s
                 </span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Parachute Descent:</span>
                 <span className="text-green-400">
-                  {recoveryMetrics.parachuteDescentTime.toFixed(1)}s @ {recoveryMetrics.terminalVelocity.toFixed(1)}m/s
+                  {(recoveryMetrics.parachuteDescentTime ?? 0).toFixed(1)}s @ {(recoveryMetrics.terminalVelocity ?? 0).toFixed(1)}m/s
                 </span>
               </div>
               <div className="flex justify-between text-xs">

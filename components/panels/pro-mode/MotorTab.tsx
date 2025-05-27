@@ -223,7 +223,7 @@ export default function MotorTab() {
                   motorAnalysis.thrustToWeight < 5 ? 'text-red-400' :
                   motorAnalysis.thrustToWeight > 15 ? 'text-yellow-400' : 'text-green-400'
                 }`}>
-                  {motorAnalysis.thrustToWeight.toFixed(1)}:1
+                  {(motorAnalysis.thrustToWeight ?? 0).toFixed(1)}:1
                 </span>
               </div>
               <div className="w-full bg-slate-700 rounded-full h-2">

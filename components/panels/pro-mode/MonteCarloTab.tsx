@@ -22,6 +22,49 @@ interface StatisticDisplayProps {
 }
 
 function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayProps) {
+  // Add null/undefined checks for all numeric values
+  const safeMean = statistic?.mean ?? 0;
+  const safeMin = statistic?.min ?? 0;
+  const safeMax = statistic?.max ?? 0;
+  const safeStd = statistic?.std ?? 0;
+  const safePercentiles = {
+    "5": statistic?.percentiles?.["5"] ?? 0,
+    "25": statistic?.percentiles?.["25"] ?? 0,
+    "50": statistic?.percentiles?.["50"] ?? 0,
+    "75": statistic?.percentiles?.["75"] ?? 0,
+    "95": statistic?.percentiles?.["95"] ?? 0,
+  };
+
+  // Check if we have valid data to display
+  const hasValidData = statistic && 
+    typeof statistic.mean === 'number' && 
+    !isNaN(statistic.mean) &&
+    typeof statistic.max === 'number' && 
+    !isNaN(statistic.max) &&
+    typeof statistic.min === 'number' && 
+    !isNaN(statistic.min);
+
+  if (!hasValidData) {
+    return (
+      <motion.div 
+        className="bg-slate-800 rounded-lg p-3"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-slate-300">{label}</span>
+          <span className="text-lg font-bold text-red-400">
+            N/A{unit}
+          </span>
+        </div>
+        <div className="text-xs text-slate-400">
+          Insufficient data for statistics
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div 
       className="bg-slate-800 rounded-lg p-3"
@@ -32,7 +75,7 @@ function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayPro
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm text-slate-300">{label}</span>
         <span className={`text-lg font-bold ${color}`}>
-          {statistic.mean.toFixed(1)}{unit}
+          {safeMean.toFixed(1)}{unit}
         </span>
       </div>
       
@@ -40,19 +83,19 @@ function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayPro
       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
         <div className="flex justify-between">
           <span className="text-slate-400">Min:</span>
-          <span className="text-white">{statistic.min.toFixed(1)}{unit}</span>
+          <span className="text-white">{safeMin.toFixed(1)}{unit}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-400">Max:</span>
-          <span className="text-white">{statistic.max.toFixed(1)}{unit}</span>
+          <span className="text-white">{safeMax.toFixed(1)}{unit}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-400">Std Dev:</span>
-          <span className="text-white">±{statistic.std.toFixed(1)}{unit}</span>
+          <span className="text-white">±{safeStd.toFixed(1)}{unit}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-400">Median:</span>
-          <span className="text-white">{statistic.percentiles["50"].toFixed(1)}{unit}</span>
+          <span className="text-white">{safePercentiles["50"].toFixed(1)}{unit}</span>
         </div>
       </div>
 
@@ -66,27 +109,31 @@ function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayPro
           <span>95%</span>
         </div>
         <div className="relative h-2 bg-slate-700 rounded-full">
-          {/* Box plot visualization */}
-          <div 
-            className="absolute h-2 bg-blue-500 rounded-full opacity-60"
-            style={{
-              left: `${((statistic.percentiles["25"] - statistic.min) / (statistic.max - statistic.min)) * 100}%`,
-              width: `${((statistic.percentiles["75"] - statistic.percentiles["25"]) / (statistic.max - statistic.min)) * 100}%`
-            }}
-          />
-          <div 
-            className="absolute w-0.5 h-2 bg-white"
-            style={{
-              left: `${((statistic.percentiles["50"] - statistic.min) / (statistic.max - statistic.min)) * 100}%`
-            }}
-          />
+          {/* Box plot visualization - only render if we have valid range */}
+          {safeMax > safeMin && (
+            <>
+              <div 
+                className="absolute h-2 bg-blue-500 rounded-full opacity-60"
+                style={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["25"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                  width: `${Math.max(0, Math.min(100, ((safePercentiles["75"] - safePercentiles["25"]) / (safeMax - safeMin)) * 100))}%`
+                }}
+              />
+              <div 
+                className="absolute w-0.5 h-2 bg-white"
+                style={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["50"] - safeMin) / (safeMax - safeMin)) * 100))}%`
+                }}
+              />
+            </>
+          )}
         </div>
         <div className="flex justify-between text-xs">
-          <span>{statistic.percentiles["5"].toFixed(0)}</span>
-          <span>{statistic.percentiles["25"].toFixed(0)}</span>
-          <span>{statistic.percentiles["50"].toFixed(0)}</span>
-          <span>{statistic.percentiles["75"].toFixed(0)}</span>
-          <span>{statistic.percentiles["95"].toFixed(0)}</span>
+          <span>{safePercentiles["5"].toFixed(0)}</span>
+          <span>{safePercentiles["25"].toFixed(0)}</span>
+          <span>{safePercentiles["50"].toFixed(0)}</span>
+          <span>{safePercentiles["75"].toFixed(0)}</span>
+          <span>{safePercentiles["95"].toFixed(0)}</span>
         </div>
       </div>
     </motion.div>
@@ -322,19 +369,23 @@ export default function MonteCarloTab() {
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="flex justify-between">
               <span className="text-slate-400">CEP (50%):</span>
-              <span className="text-orange-400">{monteCarloResult.landingDispersion.cep.toFixed(1)}m</span>
+              <span className="text-orange-400">{(monteCarloResult.landingDispersion.cep ?? 0).toFixed(1)}m</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Max Drift:</span>
-              <span className="text-red-400">{monteCarloResult.landingDispersion.maxDrift.toFixed(1)}m</span>
+              <span className="text-red-400">{(monteCarloResult.landingDispersion.maxDrift ?? 0).toFixed(1)}m</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Mean Drift:</span>
-              <span className="text-blue-400">{monteCarloResult.landingDispersion.meanDrift.toFixed(1)}m</span>
+              <span className="text-blue-400">{(monteCarloResult.landingDispersion.meanDrift ?? 0).toFixed(1)}m</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Ellipse Ratio:</span>
-              <span className="text-green-400">{(monteCarloResult.landingDispersion.majorAxis / monteCarloResult.landingDispersion.minorAxis).toFixed(1)}:1</span>
+              <span className="text-green-400">{
+                (monteCarloResult.landingDispersion.majorAxis && monteCarloResult.landingDispersion.minorAxis && monteCarloResult.landingDispersion.minorAxis !== 0) 
+                  ? (monteCarloResult.landingDispersion.majorAxis / monteCarloResult.landingDispersion.minorAxis).toFixed(1) 
+                  : '1.0'
+              }:1</span>
             </div>
           </div>
         </motion.div>
@@ -350,7 +401,7 @@ export default function MonteCarloTab() {
           </div>
           <div className="flex justify-between">
             <span>Nominal Altitude:</span>
-            <span className="text-green-400">{monteCarloResult?.nominal?.maxAltitude?.toFixed(1)}m</span>
+            <span className="text-green-400">{(monteCarloResult?.nominal?.maxAltitude ?? 0).toFixed(1)}m</span>
           </div>
           <div className="flex justify-between">
             <span>Success Rate:</span>
@@ -368,7 +419,9 @@ export default function MonteCarloTab() {
       >
         <div className="text-sm text-slate-300 mb-2">Statistical Insights</div>
         <div className="space-y-2">
-          {monteCarloResult?.statistics?.maxAltitude && (
+          {monteCarloResult?.statistics?.maxAltitude && 
+           typeof monteCarloResult.statistics.maxAltitude.std === 'number' && 
+           typeof monteCarloResult.statistics.maxAltitude.mean === 'number' && (
             <div className="text-xs text-slate-400 flex items-start">
               <span className="mr-2 text-green-400">•</span>
               <span>
@@ -377,13 +430,17 @@ export default function MonteCarloTab() {
               </span>
             </div>
           )}
-          {monteCarloResult?.landingDispersion && monteCarloResult.landingDispersion.cep > 50 && (
+          {monteCarloResult?.landingDispersion && 
+           typeof monteCarloResult.landingDispersion.cep === 'number' && 
+           monteCarloResult.landingDispersion.cep > 50 && (
             <div className="text-xs text-slate-400 flex items-start">
               <span className="mr-2 text-yellow-400">•</span>
               <span>Large landing dispersion - consider dual-deploy recovery system</span>
             </div>
           )}
-          {monteCarloResult?.statistics?.stabilityMargin && monteCarloResult.statistics.stabilityMargin.min < 1.0 && (
+          {monteCarloResult?.statistics?.stabilityMargin && 
+           typeof monteCarloResult.statistics.stabilityMargin.min === 'number' && 
+           monteCarloResult.statistics.stabilityMargin.min < 1.0 && (
             <div className="text-xs text-slate-400 flex items-start">
               <span className="mr-2 text-red-400">•</span>
               <span>Some iterations show marginal stability - increase fin area</span>

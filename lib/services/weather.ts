@@ -150,35 +150,20 @@ class WeatherService {
    */
   private async getElevation(latitude: number, longitude: number): Promise<number> {
     try {
-      // Try USGS Elevation API first (most accurate for US)
-      const usgsResponse = await fetch(
-        `https://nationalmap.gov/epqs/pqs.php?x=${longitude}&y=${latitude}&units=Meters&output=json`
-      );
+      // Use our proxy API to avoid CORS issues
+      const response = await fetch(`/api/elevation?lat=${latitude}&lon=${longitude}`);
       
-      if (usgsResponse.ok) {
-        const data = await usgsResponse.json();
-        if (data.USGS_Elevation_Point_Query_Service?.Elevation_Query?.Elevation) {
-          return parseFloat(data.USGS_Elevation_Point_Query_Service.Elevation_Query.Elevation);
+      if (response.ok) {
+        const data = await response.json();
+        if (typeof data.elevation === 'number' && !isNaN(data.elevation)) {
+          if (data.warning) {
+            console.warn(`Elevation warning: ${data.warning}`);
+          }
+          return data.elevation;
         }
       }
     } catch (error) {
-      console.warn('USGS elevation failed, trying alternative:', error);
-    }
-
-    try {
-      // Fallback to Open-Elevation API (global coverage)
-      const openElevResponse = await fetch(
-        `https://api.open-elevation.com/api/v1/lookup?locations=${latitude},${longitude}`
-      );
-      
-      if (openElevResponse.ok) {
-        const data = await openElevResponse.json();
-        if (data.results?.[0]?.elevation !== undefined) {
-          return data.results[0].elevation;
-        }
-      }
-    } catch (error) {
-      console.warn('Open-Elevation failed:', error);
+      console.warn('Elevation API proxy failed:', error);
     }
 
     // Final fallback: estimate from barometric formula

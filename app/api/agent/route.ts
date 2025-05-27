@@ -4,14 +4,43 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const { history, rocket } = await req.json();
+    const { history, rocket, environment, simulationHistory, analysisHistory, userPreferences, sessionInfo } = await req.json();
     
     // Call the Python agent service - append /reason to base URL
     const agentUrl = process.env.AGENT_URL || "http://agentpy:8002";
+    
+    // Prepare the comprehensive request payload
+    const requestPayload: any = { 
+      messages: history, 
+      rocket 
+    };
+    
+    // Add environment data if available
+    if (environment) {
+      requestPayload.environment = environment;
+    }
+    
+    // Add other context data if available
+    if (simulationHistory) {
+      requestPayload.simulationHistory = simulationHistory;
+    }
+    
+    if (analysisHistory) {
+      requestPayload.analysisHistory = analysisHistory;
+    }
+    
+    if (userPreferences) {
+      requestPayload.userPreferences = userPreferences;
+    }
+    
+    if (sessionInfo) {
+      requestPayload.sessionInfo = sessionInfo;
+    }
+    
     const r = await fetch(`${agentUrl}/reason`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: history, rocket }),
+      body: JSON.stringify(requestPayload),
     });
     
     if (!r.ok) {
@@ -34,7 +63,9 @@ export async function POST(req: NextRequest) {
       final_output: result.final_output,
       actions: result.actions,
       trace_url: result.trace_url,
-      agent_used: result.agent_used
+      agent_used: result.agent_used || result.primary_agent,
+      agent_flow: result.agent_flow,
+      secondary_agents: result.secondary_agents
     });
   } catch (error) {
     console.error("Error in agent API route:", error);

@@ -15,10 +15,10 @@ function TrajectoryPoint({ time, altitude, velocity, acceleration, isHighlight }
     <div className={`grid grid-cols-4 gap-2 text-xs py-1 px-2 rounded ${
       isHighlight ? 'bg-blue-600/20 border border-blue-600/30' : 'hover:bg-slate-700/50'
     }`}>
-      <span className="text-slate-300">{time.toFixed(1)}s</span>
-      <span className="text-green-400">{altitude.toFixed(0)}m</span>
-      <span className="text-blue-400">{velocity.toFixed(1)}m/s</span>
-      <span className="text-orange-400">{acceleration.toFixed(1)}m/s²</span>
+      <span className="text-slate-300">{(time ?? 0).toFixed(1)}s</span>
+      <span className="text-green-400">{(altitude ?? 0).toFixed(0)}m</span>
+      <span className="text-blue-400">{(velocity ?? 0).toFixed(1)}m/s</span>
+      <span className="text-orange-400">{(acceleration ?? 0).toFixed(1)}m/s²</span>
     </div>
   );
 }
@@ -178,8 +178,8 @@ export default function TrajectoryTab() {
                 <span className="text-slate-300">{event.name}</span>
               </div>
               <div className="flex space-x-3 text-slate-400">
-                <span>{event.time.toFixed(1)}s</span>
-                <span>{event.altitude.toFixed(0)}m</span>
+                <span>{(event.time ?? 0).toFixed(1)}s</span>
+                <span>{(event.altitude ?? 0).toFixed(0)}m</span>
               </div>
             </div>
           ))}
@@ -253,7 +253,7 @@ export default function TrajectoryTab() {
         <div className="flex justify-between text-xs text-slate-400 mt-1">
           <span>0s</span>
           <span>Time vs Altitude</span>
-          <span>{trajectoryData?.[trajectoryData.length - 1]?.time.toFixed(1)}s</span>
+          <span>{trajectoryData?.[trajectoryData.length - 1]?.time?.toFixed(1) || '0.0'}s</span>
         </div>
       </motion.div>
 
@@ -268,7 +268,7 @@ export default function TrajectoryTab() {
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="flex justify-between">
             <span className="text-slate-400">Max Altitude:</span>
-            <span className="text-green-400">{sim.maxAltitude.toFixed(1)}m</span>
+            <span className="text-green-400">{(sim.maxAltitude ?? 0).toFixed(1)}m</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Max Velocity:</span>
@@ -280,7 +280,7 @@ export default function TrajectoryTab() {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Flight Time:</span>
-            <span className="text-purple-400">{trajectoryData?.[trajectoryData.length - 1]?.time.toFixed(1) || 'N/A'}s</span>
+            <span className="text-purple-400">{trajectoryData?.[trajectoryData.length - 1]?.time?.toFixed(1) || 'N/A'}s</span>
           </div>
         </div>
       </motion.div>

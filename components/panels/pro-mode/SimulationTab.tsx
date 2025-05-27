@@ -211,16 +211,16 @@ export default function SimulationTab() {
               <span>Fidelity:</span>
               <span className="text-blue-400 capitalize">{sim.simulationFidelity}</span>
             </div>
-            {sim.impactVelocity && (
+            {sim?.impactVelocity && (
               <div className="flex justify-between">
                 <span>Impact Velocity:</span>
-                <span className="text-yellow-400">{sim.impactVelocity.toFixed(1)} m/s</span>
+                <span className="text-yellow-400">{(sim.impactVelocity ?? 0).toFixed(1)} m/s</span>
               </div>
             )}
-            {sim.driftDistance && (
+            {sim?.driftDistance && (
               <div className="flex justify-between">
                 <span>Drift Distance:</span>
-                <span className="text-purple-400">{sim.driftDistance.toFixed(1)} m</span>
+                <span className="text-purple-400">{(sim.driftDistance ?? 0).toFixed(1)} m</span>
               </div>
             )}
             {sim?.timestamp && (
@@ -242,7 +242,7 @@ export default function SimulationTab() {
               <div key={index} className="flex justify-between text-xs">
                 <span className="text-slate-400">{event.name}</span>
                 <span className="text-white">
-                  {event.time.toFixed(1)}s @ {event.altitude.toFixed(1)}m
+                  {(event.time ?? 0).toFixed(1)}s @ {(event.altitude ?? 0).toFixed(1)}m
                 </span>
               </div>
             ))}
@@ -284,7 +284,7 @@ export default function SimulationTab() {
           <div className="flex justify-between text-xs text-slate-400 mt-1">
             <span>0s</span>
             <span>Thrust vs Time</span>
-            <span>{sim?.thrustCurve?.[sim.thrustCurve.length - 1]?.[0]?.toFixed(1)}s</span>
+            <span>{sim?.thrustCurve?.[sim.thrustCurve.length - 1]?.[0]?.toFixed(1) || '0.0'}s</span>
           </div>
         </div>
       )}

@@ -9,7 +9,59 @@ declare global {
     launchParameters?: any;
     monteCarloResults?: any;
     flightReport?: any;
+    launchAssessment?: any;
+    weatherForecast?: any;
+    atmosphericAnalysis?: any;
+    launchWindows?: any;
   }
+}
+
+// Helper function to validate and fix atmospheric model values
+function validateAtmosphericModel(atmosphericModel: any): string {
+  // Ensure atmospheric model is one of the valid values
+  const validModels = ["standard", "custom", "forecast"];
+  
+  if (typeof atmosphericModel === "string") {
+    const cleanModel = atmosphericModel.toLowerCase().trim();
+    
+    // Fix common corruptions
+    if (cleanModel.includes("standard")) {
+      return "standard";
+    }
+    if (cleanModel.includes("forecast")) {
+      return "forecast";
+    }
+    if (cleanModel.includes("custom")) {
+      return "custom";
+    }
+    
+    // Check if it's a valid model
+    if (validModels.includes(cleanModel)) {
+      return cleanModel;
+    }
+  }
+  
+  // Default fallback
+  return "standard";
+}
+
+// Helper function to clean environment data
+function cleanEnvironmentData(environment: any): any {
+  if (!environment) {
+    return {
+      latitude: 0,
+      longitude: 0,
+      elevation: 0,
+      windSpeed: 0,
+      windDirection: 0,
+      atmosphericModel: "standard"
+    };
+  }
+  
+  return {
+    ...environment,
+    atmosphericModel: validateAtmosphericModel(environment.atmosphericModel)
+  };
 }
 
 // Function to run a quick simulation (client-side)
@@ -507,8 +559,28 @@ export function dispatchActions(actions: any[]) {
         console.log('🪂 Predicting recovery:', a);
         predictRecovery(a);
         break;
+      // Weather-related actions
+      case "get_weather":
+        handleGetWeather(a);
+        break;
+      case "assess_launch_conditions":
+        handleAssessLaunchConditions(a);
+        break;
+      case "get_forecast":
+        handleGetForecast(a);
+        break;
+      case "analyze_atmosphere":
+        handleAnalyzeAtmosphere(a);
+        break;
+      case "recommend_launch_window":
+        handleRecommendLaunchWindow(a);
+        break;
+      case "set_location":
+        handleSetLocation(a);
+        break;
       default:
-        console.warn(`Unknown action: ${a.action}`);
+        console.warn('❓ Unknown action:', a.action);
+        break;
     }
   });
 }
@@ -630,45 +702,54 @@ export async function analyzeTrajectory(params: any) {
 }
 
 // Monte Carlo analysis function
-export async function runMonteCarloAnalysis(params: any) {
-  const { rocket } = useRocket.getState();
-  
-  console.log('🎲 Starting Monte Carlo analysis with', params.iterations, 'iterations');
-  
+async function handleMonteCarloAnalysis(action: any) {
   try {
+    const { rocket } = useRocket.getState();
+    
+    // Clean and validate environment data
+    const cleanEnvironment = cleanEnvironmentData(action.environment);
+    
     const response = await fetch("/api/simulate/monte-carlo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         rocket,
-        environment: params.environment || {},
-        launchParameters: params.launch_parameters || {},
-        variations: params.variations || [],
-        iterations: params.iterations || 100
+        environment: cleanEnvironment,
+        launchParameters: action.launch_parameters || {},
+        variations: action.variations || [],
+        iterations: action.iterations || 100
       })
     });
     
     if (!response.ok) {
-      throw new Error(`Monte Carlo simulation failed: ${response.statusText}`);
+      throw new Error(`Monte Carlo analysis failed: ${response.statusText}`);
     }
     
     const result = await response.json();
     
-    // Dispatch Monte Carlo results event
-    window.dispatchEvent(new CustomEvent('monteCarloComplete', {
-      detail: {
-        result,
-        statistics: result.statistics,
-        landingDispersion: result.landingDispersion,
-        iterations: result.iterations
-      }
-    }));
+    // Update Monte Carlo results in store
+    useRocket.getState().setMonteCarloResult(result);
     
-    console.log('✅ Monte Carlo analysis complete:', result);
+    // Update simulation state with nominal results
+    if (result.nominal) {
+      useRocket.getState().setSim(result.nominal);
+    }
+    
+    showNotification(
+      `Monte Carlo analysis completed with ${action.iterations} iterations. Mean altitude: ${(result.statistics?.maxAltitude?.mean ?? 0).toFixed(1)}m`,
+      "success"
+    );
     
   } catch (error) {
-    console.error('❌ Monte Carlo analysis failed:', error);
+    console.error("Monte Carlo analysis failed:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    showNotification(`Monte Carlo analysis failed: ${errorMessage}`, "error");
   }
+}
+
+// Monte Carlo analysis function (export for external use)
+export async function runMonteCarloAnalysis(params: any) {
+  return handleMonteCarloAnalysis(params);
 }
 
 // Design optimization function
@@ -1050,6 +1131,16 @@ async function handleProfessionalSimulation(action: any) {
     // Use the correct API endpoint
     const endpoint = "/api/simulate";
     
+    // Clean and validate environment data
+    const cleanEnvironment = cleanEnvironmentData(action.environment || {
+      latitude: 0,
+      longitude: 0,
+      elevation: 0,
+      windSpeed: 0,
+      windDirection: 0,
+      atmosphericModel: "standard"
+    });
+    
     // Prepare payload
     const payload: {
       rocket: Rocket;
@@ -1060,14 +1151,7 @@ async function handleProfessionalSimulation(action: any) {
     } = {
       rocket,
       fidelity: action.fidelity || "professional",
-      environment: action.environment || {
-        latitude: 0,
-        longitude: 0,
-        elevation: 0,
-        windSpeed: 0,
-        windDirection: 0,
-        atmosphericModel: "standard"
-      },
+      environment: cleanEnvironment,
       launchParameters: action.launch_parameters || {
         railLength: 5.0,
         inclination: 85.0,
@@ -1235,49 +1319,6 @@ async function handleDesignOptimization(action: any) {
   }
 }
 
-// Monte Carlo analysis handler
-async function handleMonteCarloAnalysis(action: any) {
-  try {
-    const { rocket } = useRocket.getState();
-    
-    const response = await fetch("/api/simulate/monte-carlo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rocket,
-        environment: action.environment || {},
-        launchParameters: action.launch_parameters || {},
-        variations: action.variations || [],
-        iterations: action.iterations || 100
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Monte Carlo analysis failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Update Monte Carlo results in store
-    useRocket.getState().setMonteCarloResult(result);
-    
-    // Update simulation state with nominal results
-    if (result.nominal) {
-      useRocket.getState().setSim(result.nominal);
-    }
-    
-    showNotification(
-      `Monte Carlo analysis completed with ${action.iterations} iterations. Mean altitude: ${result.statistics?.maxAltitude?.mean?.toFixed(1)}m`,
-      "success"
-    );
-    
-  } catch (error) {
-    console.error("Monte Carlo analysis failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Monte Carlo analysis failed: ${errorMessage}`, "error");
-  }
-}
-
 // Environment setup handler
 function handleEnvironmentSetup(action: any) {
   // Store environment conditions globally for use in simulations
@@ -1287,7 +1328,7 @@ function handleEnvironmentSetup(action: any) {
     elevation: action.elevation || 0,
     windSpeed: action.wind_speed || 0,
     windDirection: action.wind_direction || 0,
-    atmosphericModel: action.atmospheric_model || "standard",
+    atmosphericModel: validateAtmosphericModel(action.atmospheric_model || "standard"),
     date: action.date,
     // Additional real weather data if available
     temperature: action.temperature,
@@ -1298,7 +1339,7 @@ function handleEnvironmentSetup(action: any) {
   };
 
   // If using forecast model, ensure we have real weather data
-  if (action.atmospheric_model === "forecast") {
+  if (window.environmentConditions.atmosphericModel === "forecast") {
     // Check if we have real weather data loaded
     const hasRealWeather = window.environmentConditions.temperature !== undefined;
     
@@ -1315,7 +1356,7 @@ function handleEnvironmentSetup(action: any) {
     }
   } else {
     showNotification(
-      `Environment set: ${action.wind_speed || 0}m/s wind, ${action.atmospheric_model || "standard"} atmosphere`,
+      `Environment set: ${action.wind_speed || 0}m/s wind, ${window.environmentConditions.atmosphericModel} atmosphere`,
       "info"
     );
   }
@@ -1491,4 +1532,373 @@ function generateRecommendations(sim: any) {
   }
   
   return recommendations;
+}
+
+// Weather-related handlers
+async function handleGetWeather(action: any) {
+  console.log('🌤️ Getting weather data...');
+  
+  try {
+    const { latitude, longitude, use_user_location } = action;
+    
+    // Import weather service if not already available
+    const { getCurrentWeather, requestLocationPermission } = await import('../services/weather');
+    
+    let location = null;
+    if (use_user_location) {
+      // Request user location
+      location = await requestLocationPermission();
+      showNotification('Location permission granted. Fetching weather...', 'info');
+    } else if (latitude && longitude) {
+      location = { latitude, longitude, elevation: 0 };
+    }
+    
+    if (location) {
+      const weather = await getCurrentWeather(location);
+      
+      // Store weather data globally for access by agents and UI
+      window.environmentConditions = {
+        ...window.environmentConditions,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        elevation: location.elevation,
+        temperature: weather.current.temperature,
+        pressure: weather.current.pressure,
+        humidity: weather.current.humidity,
+        windSpeed: weather.current.windSpeed,
+        windDirection: weather.current.windDirection,
+        visibility: weather.current.visibility,
+        cloudCover: weather.current.cloudCover,
+        dewPoint: weather.current.dewPoint,
+        atmosphericModel: "forecast",
+        weatherSource: weather.current.source,
+        timestamp: weather.current.timestamp
+      };
+      
+      // Dispatch weather update event
+      window.dispatchEvent(new CustomEvent('weatherUpdate', {
+        detail: { weather, location }
+      }));
+      
+      showNotification(
+        `Weather loaded: ${weather.current.temperature}°C, ${weather.current.windSpeed}m/s wind`,
+        'success'
+      );
+    } else {
+      showNotification('Unable to get location for weather data', 'warning');
+    }
+  } catch (error) {
+    console.error('Weather fetch failed:', error);
+    showNotification('Failed to get weather data', 'error');
+  }
+}
+
+async function handleAssessLaunchConditions(action: any) {
+  console.log('🚀 Assessing launch conditions...');
+  
+  const { include_weather, safety_level, mission_type } = action;
+  
+  // Get current environment conditions
+  const envConditions = window.environmentConditions;
+  
+  if (!envConditions || !include_weather) {
+    showNotification('No weather data available. Enable location for accurate assessment.', 'warning');
+    return;
+  }
+  
+  // Assess conditions based on safety level
+  const conditions = {
+    windSpeed: envConditions.windSpeed || 0,
+    visibility: envConditions.visibility || 10,
+    temperature: envConditions.temperature || 20,
+    humidity: envConditions.humidity || 50,
+    cloudCover: envConditions.cloudCover || 0,
+    precipitation: 0 // This would come from weather API
+  };
+  
+  // Define safety thresholds based on safety level
+  const thresholds = {
+    basic: { maxWind: 15, minVisibility: 3, tempRange: [-20, 50] },
+    standard: { maxWind: 10, minVisibility: 5, tempRange: [-10, 40] },
+    strict: { maxWind: 5, minVisibility: 10, tempRange: [0, 30] }
+  };
+  
+  const threshold = thresholds[safety_level as keyof typeof thresholds] || thresholds.standard;
+  
+  // Assess each condition
+  const assessments = {
+    wind: conditions.windSpeed <= threshold.maxWind,
+    visibility: conditions.visibility >= threshold.minVisibility,
+    temperature: conditions.temperature >= threshold.tempRange[0] && conditions.temperature <= threshold.tempRange[1],
+    safe: true
+  };
+  
+  assessments.safe = assessments.wind && assessments.visibility && assessments.temperature;
+  
+  // Generate recommendation
+  let recommendation = '';
+  let status = '';
+  
+  if (assessments.safe) {
+    status = 'SAFE';
+    recommendation = `🟢 CONDITIONS ARE SAFE FOR LAUNCH\n${conditions.windSpeed}m/s wind, ${conditions.visibility}km visibility, ${conditions.temperature}°C`;
+  } else {
+    status = 'UNSAFE';
+    const issues = [];
+    if (!assessments.wind) issues.push(`High wind: ${conditions.windSpeed}m/s (max ${threshold.maxWind}m/s)`);
+    if (!assessments.visibility) issues.push(`Poor visibility: ${conditions.visibility}km (min ${threshold.minVisibility}km)`);
+    if (!assessments.temperature) issues.push(`Temperature out of range: ${conditions.temperature}°C`);
+    
+    recommendation = `🔴 UNSAFE LAUNCH CONDITIONS\n${issues.join('\n')}`;
+  }
+  
+  // Store assessment
+  window.launchAssessment = { assessments, conditions, recommendation, status, timestamp: new Date().toISOString() };
+  
+  // Dispatch assessment event
+  window.dispatchEvent(new CustomEvent('launchAssessment', {
+    detail: { assessments, conditions, recommendation, status }
+  }));
+  
+  showNotification(recommendation, assessments.safe ? 'success' : 'warning');
+}
+
+async function handleGetForecast(action: any) {
+  console.log('📊 Getting weather forecast...');
+  
+  try {
+    const { hours_ahead, include_wind_profile, location_override } = action;
+    
+    // Import weather service
+    const { getWeatherForDate } = await import('../services/weather');
+    
+    const targetDate = new Date();
+    targetDate.setHours(targetDate.getHours() + (hours_ahead || 24));
+    
+    let location = location_override || null;
+    if (!location && window.environmentConditions) {
+      location = {
+        latitude: window.environmentConditions.latitude,
+        longitude: window.environmentConditions.longitude,
+        elevation: window.environmentConditions.elevation || 0
+      };
+    }
+    
+    if (location) {
+      const forecast = await getWeatherForDate(targetDate, location);
+      
+      // Store forecast data
+      window.weatherForecast = forecast;
+      
+      // Dispatch forecast event
+      window.dispatchEvent(new CustomEvent('weatherForecast', {
+        detail: { forecast, hours_ahead }
+      }));
+      
+      showNotification(`Forecast loaded for next ${hours_ahead || 24} hours`, 'success');
+    } else {
+      showNotification('Location required for weather forecast', 'warning');
+    }
+  } catch (error) {
+    console.error('Forecast fetch failed:', error);
+    showNotification('Failed to get weather forecast', 'error');
+  }
+}
+
+function handleAnalyzeAtmosphere(action: any) {
+  console.log('🌍 Analyzing atmospheric conditions...');
+  
+  const { max_altitude, include_wind_shear, density_altitude } = action;
+  const rocket = useRocket.getState().rocket;
+  const envConditions = window.environmentConditions;
+  
+  if (!envConditions) {
+    showNotification('Weather data required for atmospheric analysis', 'warning');
+    return;
+  }
+  
+  // Basic atmospheric analysis
+  const analysis: any = {
+    surfacePressure: envConditions.pressure || 1013.25,
+    surfaceTemperature: envConditions.temperature || 15,
+    surfaceDensity: calculateAirDensity(envConditions.pressure || 1013.25, envConditions.temperature || 15),
+    windSpeed: envConditions.windSpeed || 0,
+    windDirection: envConditions.windDirection || 0,
+    visibility: envConditions.visibility || 10
+  };
+  
+  if (density_altitude) {
+    // Calculate density altitude effect on performance
+    const densityAltitude = calculateDensityAltitude(analysis.surfacePressure, analysis.surfaceTemperature);
+    analysis.densityAltitude = densityAltitude;
+    analysis.performanceEffect = densityAltitude > 1000 ? 'reduced' : 'normal';
+  }
+  
+  // Store analysis
+  window.atmosphericAnalysis = analysis;
+  
+  // Dispatch analysis event
+  window.dispatchEvent(new CustomEvent('atmosphericAnalysis', {
+    detail: analysis
+  }));
+  
+  showNotification(`Atmospheric analysis complete. Density altitude: ${analysis.densityAltitude?.toFixed(0) || 'N/A'}m`, 'info');
+}
+
+async function handleRecommendLaunchWindow(action: any) {
+  console.log('⏰ Recommending launch window...');
+  
+  const { duration_hours, min_conditions, preferred_conditions } = action;
+  
+  try {
+    // Import weather service
+    const { getWeatherForDate } = await import('../services/weather');
+    
+    const now = new Date();
+    const windows = [];
+    
+    // Check conditions for each hour in the duration
+    for (let hour = 0; hour < (duration_hours || 6); hour++) {
+      const checkTime = new Date(now.getTime() + hour * 60 * 60 * 1000);
+      
+      try {
+        let location = null;
+        if (window.environmentConditions) {
+          location = {
+            latitude: window.environmentConditions.latitude,
+            longitude: window.environmentConditions.longitude,
+            elevation: window.environmentConditions.elevation || 0
+          };
+        }
+        
+        if (location) {
+          const weather = await getWeatherForDate(checkTime, location);
+          
+          // Check against minimum conditions
+          const meetsMin = weather.current.windSpeed <= (min_conditions?.max_wind_speed || 10) &&
+                          weather.current.visibility >= (min_conditions?.min_visibility || 5);
+          
+          // Check against preferred conditions
+          const meetsPreferred = weather.current.windSpeed <= (preferred_conditions?.max_wind_speed || 5) &&
+                                weather.current.visibility >= (preferred_conditions?.min_visibility || 10) &&
+                                weather.current.cloudCover <= (preferred_conditions?.max_cloud_cover || 25);
+          
+          windows.push({
+            time: checkTime,
+            weather: weather.current,
+            meetsMin,
+            meetsPreferred,
+            score: calculateLaunchScore(weather.current, preferred_conditions)
+          });
+        }
+      } catch (error) {
+        console.warn(`Weather check failed for hour ${hour}:`, error);
+      }
+    }
+    
+    // Find best windows
+    const goodWindows = windows.filter(w => w.meetsMin).sort((a, b) => b.score - a.score);
+    
+    // Store recommendations
+    window.launchWindows = { windows, recommendations: goodWindows.slice(0, 3) };
+    
+    // Dispatch recommendations event
+    window.dispatchEvent(new CustomEvent('launchWindows', {
+      detail: { windows, recommendations: goodWindows.slice(0, 3) }
+    }));
+    
+    if (goodWindows.length > 0) {
+      const bestWindow = goodWindows[0];
+      const timeStr = bestWindow.time.toLocaleTimeString();
+      showNotification(`Best launch window: ${timeStr} (${bestWindow.weather.windSpeed}m/s wind)`, 'success');
+    } else {
+      showNotification('No suitable launch windows found in the next few hours', 'warning');
+    }
+  } catch (error) {
+    console.error('Launch window analysis failed:', error);
+    showNotification('Failed to analyze launch windows', 'error');
+  }
+}
+
+function handleSetLocation(action: any) {
+  console.log('📍 Setting launch location...');
+  
+  const { latitude, longitude, elevation, name } = action;
+  
+  // Validate coordinates
+  if (!latitude || !longitude || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+    showNotification('Invalid coordinates provided', 'error');
+    return;
+  }
+  
+  // Update environment conditions
+  window.environmentConditions = {
+    ...window.environmentConditions,
+    latitude,
+    longitude,
+    elevation: elevation || 0,
+    locationName: name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+  };
+  
+  // Dispatch location update event
+  window.dispatchEvent(new CustomEvent('locationUpdate', {
+    detail: { latitude, longitude, elevation, name }
+  }));
+  
+  showNotification(`Location set: ${name || 'Custom location'}`, 'success');
+}
+
+// Helper functions for atmospheric calculations
+function calculateAirDensity(pressure: number, temperature: number): number {
+  // Using ideal gas law: ρ = P / (R * T)
+  const R = 287.05; // Specific gas constant for dry air (J/kg·K)
+  const tempK = temperature + 273.15; // Convert to Kelvin
+  const pressurePa = pressure * 100; // Convert hPa to Pa
+  return pressurePa / (R * tempK);
+}
+
+function calculateDensityAltitude(pressure: number, temperature: number): number {
+  // Standard atmosphere at sea level
+  const stdPressure = 1013.25; // hPa
+  const stdTemp = 15; // °C
+  
+  // Calculate pressure altitude
+  const pressureAltitude = (1 - Math.pow(pressure / stdPressure, 0.190284)) * 145366.45;
+  
+  // Calculate density altitude
+  const tempK = temperature + 273.15;
+  const stdTempK = stdTemp + 273.15;
+  const densityAltitude = pressureAltitude + (120 * (tempK - stdTempK));
+  
+  return densityAltitude * 0.3048; // Convert feet to meters
+}
+
+function calculateLaunchScore(weather: any, preferences: any): number {
+  let score = 100;
+  
+  // Wind penalty
+  const maxWind = preferences?.max_wind_speed || 5;
+  if (weather.windSpeed > maxWind) {
+    score -= (weather.windSpeed - maxWind) * 10;
+  }
+  
+  // Visibility bonus
+  const minVisibility = preferences?.min_visibility || 10;
+  if (weather.visibility >= minVisibility) {
+    score += 10;
+  }
+  
+  // Cloud cover penalty
+  const maxClouds = preferences?.max_cloud_cover || 25;
+  if (weather.cloudCover > maxClouds) {
+    score -= (weather.cloudCover - maxClouds) * 0.5;
+  }
+  
+  // Temperature range
+  const tempRange = preferences?.temperature_range || [5, 30];
+  if (weather.temperature < tempRange[0] || weather.temperature > tempRange[1]) {
+    score -= 20;
+  }
+  
+  return Math.max(0, score);
 } 

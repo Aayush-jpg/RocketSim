@@ -1118,12 +1118,12 @@ function LaunchData({
     }
   }, []);
   
-  // COMPLETELY NEW APPROACH: Generate synthetic display values
-  // This runs independently of the physics engine
+  // Launch animation effect with performance optimizations
   useEffect(() => {
-    // Start the animation when launched
     if (isLaunched && !launchTimeRef.current) {
       launchTimeRef.current = Date.now() / 1000;
+      let lastUpdateTime = 0;
+      const UPDATE_INTERVAL = 50; // Only update every 50ms (20fps instead of 60fps)
       
       // Start an animation frame loop to update values
       const updateDisplayValues = () => {
@@ -1134,8 +1134,16 @@ function LaunchData({
           return;
         }
         
-        const now = Date.now() / 1000;
-        const elapsed = now - (launchTimeRef.current || now);
+        const now = Date.now();
+        
+        // Throttle updates to reduce performance impact
+        if (now - lastUpdateTime < UPDATE_INTERVAL) {
+          requestAnimationFrame(updateDisplayValues);
+          return;
+        }
+        
+        lastUpdateTime = now;
+        const elapsed = (now / 1000) - (launchTimeRef.current || (now / 1000));
         
         // Guaranteed increasing values based on elapsed time
         // Speed stays at exactly 0.0 during pre-launch, then starts increasing
@@ -1152,8 +1160,9 @@ function LaunchData({
         newSpeed = Math.min(newSpeed, 1000);
         newAltitude = Math.min(newAltitude, 5000);
         
-        setForcedSpeed(newSpeed);
-        setForcedAltitude(newAltitude);
+        // Only update if values have changed significantly to reduce re-renders
+        setForcedSpeed(prev => Math.abs(prev - newSpeed) > 0.5 ? newSpeed : prev);
+        setForcedAltitude(prev => Math.abs(prev - newAltitude) > 0.5 ? newAltitude : prev);
         
         // Continue animation
         requestAnimationFrame(updateDisplayValues);
@@ -1317,8 +1326,10 @@ function PartLabel({ partName, visible, customStyle = { left: '20px', bottom: '5
   const [windowSize, setWindowSize] = useState({ width: 0, height: 0 })
   const labelRef = useRef<HTMLDivElement>(null)
   
-  // Initialize window size on mount and update on resize
+  // Initialize window size on mount and update on resize with debouncing
   useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
     const updateWindowSize = () => {
       setWindowSize({
         width: window.innerWidth,
@@ -1326,12 +1337,20 @@ function PartLabel({ partName, visible, customStyle = { left: '20px', bottom: '5
       })
     }
     
+    const debouncedResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(updateWindowSize, 150); // Debounce resize events
+    }
+    
     // Set initial size
     updateWindowSize()
     
-    // Update on resize
-    window.addEventListener('resize', updateWindowSize)
-    return () => window.removeEventListener('resize', updateWindowSize)
+    // Update on resize with debouncing
+    window.addEventListener('resize', debouncedResize)
+    return () => {
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', debouncedResize);
+    }
   }, [])
   
   // Nice display names for parts

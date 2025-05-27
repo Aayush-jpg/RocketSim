@@ -75,14 +75,14 @@ export default function LocationPermissionDialog({
   };
 
   const updateEnvironmentWithRealData = (locationData: LocationData, weatherData: WeatherForecast) => {
-    // Update global environment conditions for simulations
+    // Update global environment conditions with real data
     window.environmentConditions = {
       latitude: locationData.latitude,
       longitude: locationData.longitude,
       elevation: locationData.elevation,
       windSpeed: weatherData.current.windSpeed,
       windDirection: weatherData.current.windDirection,
-      atmosphericModel: "forecast",
+      atmosphericModel: "standard",
       date: new Date().toISOString(),
       temperature: weatherData.current.temperature,
       pressure: weatherData.current.pressure,

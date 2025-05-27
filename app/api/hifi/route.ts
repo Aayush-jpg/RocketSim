@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Rocket } from "@/types/rocket";
+import type { Rocket } from "@/types/rocket";
 
 export const runtime = "nodejs";
 
@@ -9,21 +9,41 @@ export const runtime = "nodejs";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { rocket } = await req.json();
+    const { rocket, environment, launchParameters } = await req.json();
     
     // Create an AbortController for timeout handling
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
     
     try {
-      // Call the RocketPy service with timeout - use /simulate_full for high-fidelity
+      // Call the RocketPy service with timeout - use /simulate/hifi for high-fidelity
       const rocketpyUrl = process.env.ROCKETPY_URL || "http://rocketpy:8000";
-      const response = await fetch(`${rocketpyUrl}/simulate_full`, {
+      
+      // Format request according to SimulationRequestModel
+      const requestPayload = {
+        rocket,
+        environment: environment || {
+          latitude: 0.0,
+          longitude: 0.0,
+          elevation: 0.0,
+          windSpeed: 0.0,
+          windDirection: 0.0,
+          atmosphericModel: "standard"
+        },
+        launchParameters: launchParameters || {
+          railLength: 5.0,
+          inclination: 85.0,
+          heading: 0.0
+        },
+        simulationType: "hifi"
+      };
+      
+      const response = await fetch(`${rocketpyUrl}/simulate/hifi`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(rocket),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
 
@@ -68,7 +88,8 @@ export async function POST(req: NextRequest) {
     
     // Fall back to local simulation on error
     try {
-      const { rocket } = await req.json();
+      const body = await req.json();
+      const { rocket } = body;
       return NextResponse.json(
         fallbackSimulation(rocket),
         { status: 200 }
