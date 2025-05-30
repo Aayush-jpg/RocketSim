@@ -89,6 +89,7 @@ export interface RocketState {
   isSimulating: boolean;
   simulationProgress: number;
   lastSimulationType: string;
+  simulationMessage: string;
   
   // Actions
   updateRocket: (fn: (rocket: Rocket) => Rocket) => void;
@@ -102,6 +103,7 @@ export interface RocketState {
   setSimulating: (isSimulating: boolean) => void;
   setSimulationProgress: (progress: number) => void;
   setLastSimulationType: (type: string) => void;
+  setSimulationMessage: (message: string) => void;
 }
 
 // Create the enhanced store
@@ -124,6 +126,7 @@ export const useRocket = create<RocketState>()((set) => ({
   isSimulating: false,
   simulationProgress: 0,
   lastSimulationType: "standard",
+  simulationMessage: "",
   
   // Core actions
   updateRocket: (fn) => set((s) => ({ rocket: fn(structuredClone(s.rocket)) })),
@@ -143,4 +146,5 @@ export const useRocket = create<RocketState>()((set) => ({
   setSimulating: (isSimulating) => set({ isSimulating }),
   setSimulationProgress: (simulationProgress) => set({ simulationProgress }),
   setLastSimulationType: (lastSimulationType) => set({ lastSimulationType }),
+  setSimulationMessage: (message) => set({ simulationMessage: message }),
 })); 

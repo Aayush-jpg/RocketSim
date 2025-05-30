@@ -31,25 +31,44 @@ export async function POST(req: NextRequest) {
     
     console.log(`🚀 Proxying high-fidelity simulation request to ${rocketpyUrl}/simulate/hifi`);
     
-    const response = await fetch(`${rocketpyUrl}/simulate/hifi`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestData),
-    });
+    // Create AbortController with 10 minute timeout for hi-fi simulations
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ High-fidelity simulation failed: ${response.status} ${errorText}`);
-      throw new Error(`High-fidelity simulation failed: ${response.statusText}`);
+    try {
+      const response = await fetch(`${rocketpyUrl}/simulate/hifi`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ High-fidelity simulation failed: ${response.status} ${errorText}`);
+        throw new Error(`High-fidelity simulation failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log(`✅ High-fidelity simulation completed successfully`);
+      
+      return NextResponse.json(result);
+      
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      // Handle timeout specifically
+      if (fetchError.name === 'AbortError') {
+        console.log("High-fidelity simulation timed out, falling back to local simulation");
+        throw new Error("High-fidelity simulation timed out after 10 minutes");
+      }
+      
+      throw fetchError; // Re-throw other errors
     }
-    
-    const result = await response.json();
-    console.log(`✅ High-fidelity simulation completed successfully`);
-    
-    return NextResponse.json(result);
-    
   } catch (error) {
     console.error("❌ High-fidelity simulation API error:", error);
     

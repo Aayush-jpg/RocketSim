@@ -169,10 +169,6 @@ function RocketModel({
   const bodyRadius = bodyPart?.Ø ? bodyPart.Ø / 20 : 0.5; // Diameter to Radius, then scale
   console.log("RocketModel: calculated bodyRadius for scene:", bodyRadius);
   
-  // Force Three.js to recognize the dimension change with a unique string
-  const dimensionKey = `dims-radius${bodyRadius.toFixed(4)}`;
-  console.log("RocketModel: dimensionKey for recreating geometries:", dimensionKey);
-  
   const bodyLengthScaled = bodyPart?.length ? bodyPart.length / 10 : 4;
   const noseLengthScaled = nosePart?.length ? nosePart.length / 10 : 1.5;
   const noseShape = nosePart?.shape || 'ogive'; // Currently, 'ogive' is handled by cone, 'conical' would be the same.
@@ -182,6 +178,21 @@ function RocketModel({
   const finSpanScaled = finParts[0]?.span ? finParts[0].span / 10 : 0.8;
   // const finSweepScaled = finParts[0]?.sweep ? finParts[0].sweep / 100 : 0; // Sweep is not used by current boxGeometry
 
+  // DEBUG: Log fin dimensions every render
+  console.log("🔧 RocketModel: finParts from store:", finParts);
+  console.log("🔧 RocketModel: finRootScaled:", finRootScaled, "finSpanScaled:", finSpanScaled);
+  console.log("🔧 RocketModel: fin raw values - root:", finParts[0]?.root, "span:", finParts[0]?.span);
+
+  // Force Three.js to recognize the dimension change with a unique string
+  const dimensionKey = `dims-radius${bodyRadius.toFixed(4)}-finRoot${finRootScaled.toFixed(4)}-finSpan${finSpanScaled.toFixed(4)}`;
+  const finDimensionKey = `fin-root${finRootScaled.toFixed(4)}-span${finSpanScaled.toFixed(4)}`;
+  console.log("RocketModel: dimensionKey for recreating geometries:", dimensionKey);
+  console.log("RocketModel: finDimensionKey for fin geometries:", finDimensionKey);
+  
+  // Additional render key that includes fin dimensions for aggressive re-rendering
+  const finDimensionRenderKey = `${renderKey}-fin-${finRootScaled.toFixed(3)}-${finSpanScaled.toFixed(3)}`
+  console.log("🔧 RocketModel: finDimensionRenderKey:", finDimensionRenderKey);
+  
   // Proportional lengths for body segments based on original hardcoded ratio (1.6 upper, 2.4 lower => 40% upper, 60% lower)
   const upperBodyActualLength = bodyLengthScaled * 0.4;
   const lowerBodyActualLength = bodyLengthScaled * 0.6;
@@ -250,6 +261,29 @@ function RocketModel({
       }
     }
   }, [bodyRadius]);
+  
+  // Trigger re-render when fin dimensions change
+  const [prevFinDimensions, setPrevFinDimensions] = useState({ root: finRootScaled, span: finSpanScaled });
+  useEffect(() => {
+    if (finRootScaled !== prevFinDimensions.root || finSpanScaled !== prevFinDimensions.span) {
+      console.log("🚀 FIN DIMENSIONS CHANGED from", prevFinDimensions, "to", { root: finRootScaled, span: finSpanScaled });
+      console.log("This should trigger a complete re-render of the fin geometries");
+      setPrevFinDimensions({ root: finRootScaled, span: finSpanScaled });
+      
+      // Force a subtle movement of the rocket to trigger Three.js updates
+      if (rocketRef.current) {
+        const originalPosition = rocketRef.current.position.clone();
+        // Move slightly
+        rocketRef.current.position.y += 0.0001;
+        // Schedule move back on next frame to ensure refresh
+        requestAnimationFrame(() => {
+          if (rocketRef.current) {
+            rocketRef.current.position.copy(originalPosition);
+          }
+        });
+      }
+    }
+  }, [finRootScaled, finSpanScaled, prevFinDimensions.root, prevFinDimensions.span]);
   
   // Raycasting (largely unchanged, mouse interaction logic)
   const raycaster = useRef(new THREE.Raycaster())
@@ -357,7 +391,7 @@ function RocketModel({
   return (
     <group 
       ref={rocketRef} 
-      key={`rocket-${renderKey}`}
+      key={`rocket-${finDimensionRenderKey}`}
       position={[0, 0.8, 0]}
     >
       {/* Upper body */}
@@ -471,7 +505,7 @@ function RocketModel({
           name="fins"
         >
           <boxGeometry 
-            key={`${dimensionKey}-fin-${i}`} 
+            key={`${finDimensionKey}-fin-${i}`} 
             args={[0.1, finRootScaled, finSpanScaled]} 
           /> {/* Use finRootScaled, finSpanScaled */}
           <meshStandardMaterial 
@@ -1407,6 +1441,22 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   const [throttle, setThrottle] = useState(0.8);
   const [resetTrigger, setResetTrigger] = useState(false);
   
+  // Get rocket from store for key generation
+  const rocket = useRocket(state => state.rocket);
+  
+  // Create a simple hash of parts for key generation
+  const partsHash = rocket.parts.map(p => {
+    const baseKey = `${p.type}-${p.id}`;
+    if (p.type === 'fin') {
+      return `${baseKey}-${(p as any).root || 0}-${(p as any).span || 0}`;
+    } else if (p.type === 'body') {
+      return `${baseKey}-${(p as any).Ø || 0}-${(p as any).length || 0}`;
+    } else if (p.type === 'nose') {
+      return `${baseKey}-${(p as any).length || 0}-${(p as any).baseØ || 0}`;
+    }
+    return baseKey;
+  }).join('|');
+  
   // Fixed ground position that places rocket on top of grid
   const GROUND_Y = -2.8; // Updated to match the grid position
   const GROUND_POSITION: [number, number, number] = [0, GROUND_Y, 0];
@@ -1655,7 +1705,7 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
           <Suspense fallback={null}>
             {/* Force re-creation of RocketSimulation when launch state changes */}
             <RocketSimulation 
-              key={`rocket-${isLaunched ? 'launched' : 'idle'}-${resetTrigger ? 'reset' : 'normal'}`}
+              key={`rocket-${isLaunched ? 'launched' : 'idle'}-${resetTrigger ? 'reset' : 'normal'}-${partsHash}`}
               selected={selectedPart !== null} 
               isLaunched={isLaunched} 
               throttle={throttle}

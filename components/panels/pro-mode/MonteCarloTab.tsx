@@ -1,8 +1,12 @@
+"use client"
+
 import React, { useState, useEffect } from 'react';
 import { useRocket } from '@/lib/store';
 import { motion } from 'framer-motion';
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-interface StatisticDisplayProps {
+interface StatisticCardProps {
   label: string;
   statistic: {
     mean: number;
@@ -19,9 +23,16 @@ interface StatisticDisplayProps {
   };
   unit: string;
   color: string;
+  delay?: number;
 }
 
-function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayProps) {
+function StatisticCard({
+  label,
+  statistic,
+  unit,
+  color,
+  delay = 0,
+}: StatisticCardProps) {
   // Add null/undefined checks for all numeric values
   const safeMean = statistic?.mean ?? 0;
   const safeMin = statistic?.min ?? 0;
@@ -46,19 +57,19 @@ function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayPro
 
   if (!hasValidData) {
     return (
-      <motion.div 
-        className="bg-slate-800 rounded-lg p-3"
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.4, delay }}
+        className="glass-strong rounded-xl p-4 hover:bg-white/10 transition-all duration-300"
       >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-300">{label}</span>
-          <span className="text-lg font-bold text-red-400">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-gray-400 uppercase tracking-wider">{label}</span>
+          <span className="text-lg font-bold text-mono text-red-400">
             N/A{unit}
           </span>
         </div>
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-gray-500">
           Insufficient data for statistics
         </div>
       </motion.div>
@@ -66,69 +77,105 @@ function StatisticDisplay({ label, statistic, unit, color }: StatisticDisplayPro
   }
 
   return (
-    <motion.div 
-      className="bg-slate-800 rounded-lg p-3"
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.4, delay }}
+      className="glass-strong rounded-xl p-4 hover:bg-white/10 transition-all duration-300"
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-slate-300">{label}</span>
-        <span className={`text-lg font-bold ${color}`}>
-          {safeMean.toFixed(1)}{unit}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-gray-400 uppercase tracking-wider">{label}</span>
+        <span className={cn("text-lg font-bold text-mono", color)}>
+          {safeMean.toFixed(1)}
+          {unit}
         </span>
       </div>
-      
+
       {/* Statistics Grid */}
       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
         <div className="flex justify-between">
-          <span className="text-slate-400">Min:</span>
-          <span className="text-white">{safeMin.toFixed(1)}{unit}</span>
+          <span className="text-gray-500">Min</span>
+          <span className="text-white font-mono">{safeMin.toFixed(1)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Max:</span>
-          <span className="text-white">{safeMax.toFixed(1)}{unit}</span>
+          <span className="text-gray-500">Max</span>
+          <span className="text-white font-mono">{safeMax.toFixed(1)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Std Dev:</span>
-          <span className="text-white">±{safeStd.toFixed(1)}{unit}</span>
+          <span className="text-gray-500">Std Dev</span>
+          <span className="text-white font-mono">±{safeStd.toFixed(1)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Median:</span>
-          <span className="text-white">{safePercentiles["50"].toFixed(1)}{unit}</span>
+          <span className="text-gray-500">Median</span>
+          <span className="text-white font-mono">{safePercentiles["50"].toFixed(1)}</span>
         </div>
       </div>
 
-      {/* Percentile Distribution */}
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs text-slate-400">
+      {/* Percentile Distribution - Box Plot Style */}
+      <div className="space-y-2">
+        <div className="flex justify-between text-xs text-gray-500">
           <span>5%</span>
           <span>25%</span>
           <span>50%</span>
           <span>75%</span>
           <span>95%</span>
         </div>
-        <div className="relative h-2 bg-slate-700 rounded-full">
-          {/* Box plot visualization - only render if we have valid range */}
+        <div className="relative h-3 bg-black/30 rounded-sm overflow-hidden">
           {safeMax > safeMin && (
             <>
-              <div 
-                className="absolute h-2 bg-blue-500 rounded-full opacity-60"
-                style={{
-                  left: `${Math.max(0, Math.min(100, ((safePercentiles["25"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
-                  width: `${Math.max(0, Math.min(100, ((safePercentiles["75"] - safePercentiles["25"]) / (safeMax - safeMin)) * 100))}%`
+              {/* Full range line (5th to 95th percentile) */}
+              <motion.div
+                className="absolute top-1/2 h-0.5 bg-gray-400 transform -translate-y-1/2"
+                initial={{ width: 0 }}
+                animate={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["5"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                  width: `${Math.max(0, Math.min(100, ((safePercentiles["95"] - safePercentiles["5"]) / (safeMax - safeMin)) * 100))}%`,
                 }}
+                transition={{ duration: 1, delay: delay + 0.2 }}
               />
-              <div 
-                className="absolute w-0.5 h-2 bg-white"
-                style={{
-                  left: `${Math.max(0, Math.min(100, ((safePercentiles["50"] - safeMin) / (safeMax - safeMin)) * 100))}%`
+              
+              {/* Interquartile range box (Q1 to Q3) */}
+              <motion.div
+                className="absolute h-3 bg-white/30 border border-white/40 rounded-sm"
+                initial={{ width: 0 }}
+                animate={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["25"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                  width: `${Math.max(0, Math.min(100, ((safePercentiles["75"] - safePercentiles["25"]) / (safeMax - safeMin)) * 100))}%`,
                 }}
+                transition={{ duration: 1, delay: delay + 0.4 }}
+              />
+              
+              {/* Median line (Q2) */}
+              <motion.div
+                className="absolute w-0.5 h-3 bg-white shadow-sm"
+                initial={{ left: 0 }}
+                animate={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["50"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                }}
+                transition={{ duration: 1, delay: delay + 0.6 }}
+              />
+              
+              {/* Whisker caps at 5th and 95th percentiles */}
+              <motion.div
+                className="absolute w-0.5 h-2 bg-gray-400 top-0.5"
+                initial={{ left: 0 }}
+                animate={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["5"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                }}
+                transition={{ duration: 1, delay: delay + 0.3 }}
+              />
+              <motion.div
+                className="absolute w-0.5 h-2 bg-gray-400 top-0.5"
+                initial={{ left: 0 }}
+                animate={{
+                  left: `${Math.max(0, Math.min(100, ((safePercentiles["95"] - safeMin) / (safeMax - safeMin)) * 100))}%`,
+                }}
+                transition={{ duration: 1, delay: delay + 0.3 }}
               />
             </>
           )}
         </div>
-        <div className="flex justify-between text-xs">
+        <div className="flex justify-between text-xs text-gray-600">
           <span>{safePercentiles["5"].toFixed(0)}</span>
           <span>{safePercentiles["25"].toFixed(0)}</span>
           <span>{safePercentiles["50"].toFixed(0)}</span>
@@ -223,69 +270,255 @@ export default function MonteCarloTab() {
     }
   };
 
+  // Calculate reliability and success rate from our data
+  const getReliabilityScore = () => {
+    if (!monteCarloResult?.iterations || !monteCarloResult?.statistics) return 0;
+    
+    // Calculate reliability based on coefficient of variation (lower CV = higher reliability)
+    // A good rocket should have low variability in key performance metrics
+    const altitudeStats = monteCarloResult.statistics.maxAltitude;
+    const velocityStats = monteCarloResult.statistics.maxVelocity;
+    
+    if (!altitudeStats || !velocityStats) return 0;
+    
+    // Calculate coefficient of variation for altitude and velocity
+    const altitudeCv = altitudeStats.std / altitudeStats.mean;
+    const velocityCv = velocityStats.std / velocityStats.mean;
+    
+    // Average CV (lower is better)
+    const avgCv = (altitudeCv + velocityCv) / 2;
+    
+    // More reasonable reliability scale for rockets:
+    // CV < 0.05 (5%) = Excellent (95-100%)
+    // CV < 0.10 (10%) = Very Good (85-95%) 
+    // CV < 0.15 (15%) = Good (70-85%)
+    // CV < 0.25 (25%) = Fair (50-70%)
+    // CV < 0.35 (35%) = Poor (30-50%)
+    // CV >= 0.35 = Very Poor (0-30%)
+    
+    let reliability;
+    if (avgCv < 0.05) {
+      reliability = 95 + (0.05 - avgCv) * 100; // 95-100%
+    } else if (avgCv < 0.10) {
+      reliability = 85 + (0.10 - avgCv) * 200; // 85-95%
+    } else if (avgCv < 0.15) {
+      reliability = 70 + (0.15 - avgCv) * 300; // 70-85%
+    } else if (avgCv < 0.25) {
+      reliability = 50 + (0.25 - avgCv) * 200; // 50-70%
+    } else if (avgCv < 0.35) {
+      reliability = 30 + (0.35 - avgCv) * 200; // 30-50%
+    } else {
+      reliability = Math.max(0, 30 - (avgCv - 0.35) * 100); // 0-30%
+    }
+    
+    return Math.round(Math.min(100, Math.max(0, reliability)) * 10) / 10;
+  };
+
+  const getSuccessRate = () => {
+    if (!monteCarloResult?.iterations) return 0;
+    
+    const totalIterations = monteCarloResult.iterations.length;
+    if (totalIterations === 0) return 0;
+    
+    // Count successful iterations based on criteria:
+    // 1. Altitude > 100m (minimum for model rocket)
+    // 2. Stability margin > 1.0 caliber (if available)
+    // 3. No simulation failures
+    
+    let successfulIterations = 0;
+    
+    monteCarloResult.iterations.forEach((iteration: any) => {
+      let isSuccessful = true;
+      
+      // Check minimum altitude
+      if (iteration.maxAltitude && iteration.maxAltitude < 100) {
+        isSuccessful = false;
+      }
+      
+      // Check stability if available
+      if (iteration.stabilityMargin && iteration.stabilityMargin < 1.0) {
+        isSuccessful = false;
+      }
+      
+      // Check for simulation errors/failures
+      if (iteration.error || iteration.failed) {
+        isSuccessful = false;
+      }
+      
+      if (isSuccessful) {
+        successfulIterations++;
+      }
+    });
+    
+    const successRate = (successfulIterations / totalIterations) * 100;
+    return Math.round(successRate * 10) / 10;
+  };
+
   if (!monteCarloResult && !isRunning) {
     return (
-      <div className="space-y-4">
-        <div className="text-center text-slate-400 py-8">
-          <div className="text-4xl mb-2">🎲</div>
-          <p>No Monte Carlo analysis available</p>
-          <p className="text-sm mt-2">Run statistical analysis to see results</p>
-        </div>
-        
-        {/* Analysis Configuration */}
-        <div className="space-y-3">
-          <h4 className="text-white font-medium">Monte Carlo Configuration</h4>
-          
-          {/* Iterations */}
-          <div className="space-y-2">
-            <label className="block text-xs text-slate-400">Number of Iterations</label>
-            <select
-              value={iterations}
-              onChange={(e) => setIterations(Number(e.target.value))}
-              className="w-full bg-slate-700 text-white text-sm rounded px-3 py-2"
-            >
-              <option value={50}>50 iterations (Fast)</option>
-              <option value={100}>100 iterations (Standard)</option>
-              <option value={250}>250 iterations (Detailed)</option>
-              <option value={500}>500 iterations (Comprehensive)</option>
-            </select>
-          </div>
-
-          {/* Parameter Variations */}
-          <div className="space-y-2">
-            <label className="block text-xs text-slate-400">Parameter Variations</label>
-            <div className="space-y-1">
-              {[
-                { id: 'environment.windSpeed', label: 'Wind Speed (0-10 m/s)' },
-                { id: 'rocket.Cd', label: 'Drag Coefficient (±10%)' },
-                { id: 'launch.inclination', label: 'Launch Angle (85° ±2°)' }
-              ].map((param) => (
-                <label key={param.id} className="flex items-center space-x-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={selectedVariations.includes(param.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedVariations([...selectedVariations, param.id]);
-                      } else {
-                        setSelectedVariations(selectedVariations.filter(v => v !== param.id));
-                      }
-                    }}
-                    className="rounded"
-                  />
-                  <span className="text-slate-300">{param.label}</span>
-                </label>
-              ))}
+      <div className="h-full flex flex-col bg-black">
+        {/* Header */}
+        <div className="p-6 border-b border-white/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white">Monte Carlo Analysis</h3>
+              <p className="text-sm text-gray-400">Statistical performance evaluation</p>
             </div>
           </div>
+        </div>
 
-          <button
-            onClick={runMonteCarloAnalysis}
-            disabled={selectedVariations.length === 0}
-            className="w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        {/* Simulation Controls */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* No Data State */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="glass-strong rounded-xl p-8 bg-slate-800/50 border border-white/5 text-center"
           >
-            🎲 Run Monte Carlo Analysis
-          </button>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring" }}
+              className="w-16 h-16 bg-slate-500/20 border border-slate-400/30 rounded-full flex items-center justify-center mx-auto mb-4"
+            >
+              <span className="text-2xl">🎲</span>
+            </motion.div>
+            
+            <h3 className="text-lg font-medium text-white mb-2">
+              No Monte Carlo Data Available
+            </h3>
+            <p className="text-gray-400 text-sm">
+              Run statistical analysis to evaluate rocket performance under varying conditions
+            </p>
+          </motion.div>
+
+          {/* Analysis Configuration */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="glass-strong rounded-xl p-6 bg-slate-800/50 border border-white/5"
+          >
+            <div className="flex items-center gap-2 mb-6">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <h4 className="text-white font-medium">Statistical Analysis Configuration</h4>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Iterations Selection */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                className="space-y-3"
+              >
+                <label className="block text-sm font-medium text-slate-300">
+                  Number of Iterations
+                </label>
+                <select
+                  value={iterations}
+                  onChange={(e) => setIterations(Number(e.target.value))}
+                  className="w-full bg-slate-700/70 border border-white/10 text-white text-sm rounded-lg px-4 py-3 hover:bg-slate-700 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                >
+                  <option value={50}>50 iterations • Fast analysis (~30s)</option>
+                  <option value={100}>100 iterations • Standard analysis (~1m)</option>
+                  <option value={250}>250 iterations • Detailed analysis (~2.5m)</option>
+                  <option value={500}>500 iterations • Comprehensive analysis (~5m)</option>
+                </select>
+              </motion.div>
+
+              {/* Parameter Variations */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+                className="space-y-4"
+              >
+                <label className="block text-sm font-medium text-slate-300">
+                  Parameter Variations
+                </label>
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    { 
+                      id: 'environment.windSpeed', 
+                      label: 'Wind Speed Variation', 
+                      description: 'Random wind speeds (0-10 m/s)',
+                      icon: '💨',
+                      color: 'text-blue-400'
+                    },
+                    { 
+                      id: 'rocket.Cd', 
+                      label: 'Drag Coefficient Uncertainty', 
+                      description: 'Manufacturing tolerance (±10%)',
+                      icon: '⚡',
+                      color: 'text-orange-400'
+                    },
+                    { 
+                      id: 'launch.inclination', 
+                      label: 'Launch Angle Variation', 
+                      description: 'Launch setup precision (85° ±2°)',
+                      icon: '🎯',
+                      color: 'text-green-400'
+                    }
+                  ].map((param, index) => (
+                    <motion.label 
+                      key={param.id} 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.4 + index * 0.1 }}
+                      className="flex items-start space-x-4 p-4 rounded-lg bg-slate-700/30 border border-white/5 hover:bg-slate-700/50 transition-all cursor-pointer group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedVariations.includes(param.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedVariations([...selectedVariations, param.id]);
+                          } else {
+                            setSelectedVariations(selectedVariations.filter(v => v !== param.id));
+                          }
+                        }}
+                        className="mt-1 w-4 h-4 text-blue-600 bg-slate-700 border-slate-500 rounded focus:ring-blue-500 focus:ring-2"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-lg group-hover:scale-110 transition-transform">{param.icon}</span>
+                          <span className={cn("text-sm font-medium", param.color)}>{param.label}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">{param.description}</p>
+                      </div>
+                    </motion.label>
+                  ))}
+                </div>
+              </motion.div>
+
+              {/* Run Button */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.7 }}
+                className="pt-4"
+              >
+                <button
+                  onClick={runMonteCarloAnalysis}
+                  disabled={selectedVariations.length === 0}
+                  className={cn(
+                    "w-full py-4 text-base font-semibold transition-all duration-300 rounded-lg",
+                    selectedVariations.length === 0 
+                      ? "bg-slate-700 text-slate-400 cursor-not-allowed" 
+                      : "bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-teal-500/25"
+                  )}
+                >
+                  <span className="mr-3 text-xl">🎲</span>
+                  Run Monte Carlo Analysis
+                  <span className="ml-2 text-sm opacity-80">({iterations} iterations)</span>
+                </button>
+              </motion.div>
+            </div>
+          </motion.div>
         </div>
       </div>
     );
@@ -293,13 +526,23 @@ export default function MonteCarloTab() {
 
   if (isRunning) {
     return (
-      <div className="space-y-4">
-        <div className="text-center text-slate-400 py-8">
-          <div className="text-4xl mb-2">⏳</div>
-          <p>Running Monte Carlo analysis...</p>
-          <p className="text-sm mt-2">{iterations} iterations</p>
-          <div className="w-full bg-slate-700 rounded-full h-2 mt-4">
-            <div className="bg-purple-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
+      <div className="h-full flex flex-col bg-black">
+        <div className="p-6 border-b border-white/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white">Monte Carlo Analysis</h3>
+              <p className="text-sm text-gray-400">Running statistical analysis...</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-slate-400 py-8">
+            <div className="text-4xl mb-2">⏳</div>
+            <p>Running Monte Carlo analysis...</p>
+            <p className="text-sm mt-2">{iterations} iterations</p>
+            <div className="w-full max-w-xs bg-slate-700 rounded-full h-2 mt-4">
+              <div className="bg-purple-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
+            </div>
           </div>
         </div>
       </div>
@@ -307,147 +550,235 @@ export default function MonteCarloTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-white font-semibold">Monte Carlo Results</h3>
-        <button
-          onClick={runMonteCarloAnalysis}
-          className="px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 transition-colors"
-        >
-          🔄 Re-run
-        </button>
+    <div className="h-full flex flex-col bg-black">
+      {/* Header */}
+      <div className="p-6 border-b border-white/5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-white">Monte Carlo Analysis</h3>
+            <p className="text-sm text-gray-400">Statistical performance evaluation</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Button variant="secondary" size="sm" onClick={runMonteCarloAnalysis}>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Re-run
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Summary Statistics */}
-      <div className="grid grid-cols-1 gap-3">
-        {monteCarloResult?.statistics?.maxAltitude && (
-          <StatisticDisplay
-            label="Maximum Altitude"
-            statistic={monteCarloResult.statistics.maxAltitude}
-            unit="m"
-            color="text-green-400"
-          />
-        )}
-        
-        {monteCarloResult?.statistics?.maxVelocity && (
-          <StatisticDisplay
-            label="Maximum Velocity"
-            statistic={monteCarloResult.statistics.maxVelocity}
-            unit="m/s"
-            color="text-blue-400"
-          />
-        )}
-        
-        {monteCarloResult?.statistics?.apogeeTime && (
-          <StatisticDisplay
-            label="Apogee Time"
-            statistic={monteCarloResult.statistics.apogeeTime}
-            unit="s"
-            color="text-yellow-400"
-          />
-        )}
-        
-        {monteCarloResult?.statistics?.stabilityMargin && (
-          <StatisticDisplay
-            label="Stability Margin"
-            statistic={monteCarloResult.statistics.stabilityMargin}
-            unit=" cal"
-            color="text-purple-400"
-          />
-        )}
-      </div>
-
-      {/* Landing Dispersion */}
-      {monteCarloResult?.landingDispersion && (
-        <motion.div 
-          className="bg-slate-800 rounded-lg p-3"
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Analysis Overview */}
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
+          transition={{ duration: 0.4 }}
+          className="glass-strong rounded-xl p-6"
         >
-          <div className="text-sm text-slate-300 mb-2">Landing Dispersion</div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-400">CEP (50%):</span>
-              <span className="text-orange-400">{(monteCarloResult.landingDispersion.cep ?? 0).toFixed(1)}m</span>
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-white">Analysis Overview</h4>
+            <span className="text-xs text-gray-400">{monteCarloResult?.iterations?.length || 0} iterations</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Reliability Score</span>
+                <span className="text-green-400 font-bold">{getReliabilityScore()}%</span>
+              </div>
+              <div className="w-full bg-black/30 rounded-full h-2">
+                <motion.div
+                  className="bg-green-400 h-2 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${getReliabilityScore()}%` }}
+                  transition={{ duration: 1, delay: 0.3 }}
+                />
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Max Drift:</span>
-              <span className="text-red-400">{(monteCarloResult.landingDispersion.maxDrift ?? 0).toFixed(1)}m</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Mean Drift:</span>
-              <span className="text-blue-400">{(monteCarloResult.landingDispersion.meanDrift ?? 0).toFixed(1)}m</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Ellipse Ratio:</span>
-              <span className="text-green-400">{
-                (monteCarloResult.landingDispersion.majorAxis && monteCarloResult.landingDispersion.minorAxis && monteCarloResult.landingDispersion.minorAxis !== 0) 
-                  ? (monteCarloResult.landingDispersion.majorAxis / monteCarloResult.landingDispersion.minorAxis).toFixed(1) 
-                  : '1.0'
-              }:1</span>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Success Rate</span>
+                <span className="text-blue-400 font-bold">{getSuccessRate()}%</span>
+              </div>
+              <div className="w-full bg-black/30 rounded-full h-2">
+                <motion.div
+                  className="bg-blue-400 h-2 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${getSuccessRate()}%` }}
+                  transition={{ duration: 1, delay: 0.5 }}
+                />
+              </div>
             </div>
           </div>
         </motion.div>
-      )}
 
-      {/* Analysis Details */}
-      <div className="bg-slate-800 rounded-lg p-3">
-        <div className="text-sm text-slate-300 mb-2">Analysis Details</div>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span>Iterations:</span>
-            <span className="text-blue-400">{monteCarloResult?.iterations?.length || 0}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Nominal Altitude:</span>
-            <span className="text-green-400">{(monteCarloResult?.nominal?.maxAltitude ?? 0).toFixed(1)}m</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Success Rate:</span>
-            <span className="text-purple-400">100%</span>
-          </div>
+        {/* Statistical Results */}
+        <div className="space-y-4">
+          {monteCarloResult?.statistics?.maxAltitude && (
+            <StatisticCard
+              label="Maximum Altitude"
+              statistic={monteCarloResult.statistics.maxAltitude}
+              unit="m"
+              color="text-green-400"
+              delay={0.1}
+            />
+          )}
+          {monteCarloResult?.statistics?.maxVelocity && (
+            <StatisticCard
+              label="Maximum Velocity"
+              statistic={monteCarloResult.statistics.maxVelocity}
+              unit="m/s"
+              color="text-blue-400"
+              delay={0.2}
+            />
+          )}
+          {monteCarloResult?.statistics?.apogeeTime && (
+            <StatisticCard
+              label="Apogee Time"
+              statistic={monteCarloResult.statistics.apogeeTime}
+              unit="s"
+              color="text-purple-400"
+              delay={0.3}
+            />
+          )}
+          {monteCarloResult?.statistics?.stabilityMargin && (
+            <StatisticCard
+              label="Stability Margin"
+              statistic={monteCarloResult.statistics.stabilityMargin}
+              unit=" cal"
+              color="text-yellow-400"
+              delay={0.4}
+            />
+          )}
         </div>
+
+        {/* Confidence Intervals */}
+        {monteCarloResult?.statistics && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.4 }}
+            className="glass-strong rounded-xl p-6"
+          >
+            <h4 className="text-sm font-medium text-white mb-4">Confidence Intervals</h4>
+            <div className="space-y-3 text-xs">
+              {monteCarloResult.statistics.maxAltitude && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">90% Confidence (Altitude)</span>
+                  <span className="text-green-400 font-mono">
+                    {(monteCarloResult.statistics.maxAltitude.percentiles?.["5"] ?? 0).toFixed(0)}m -{" "}
+                    {(monteCarloResult.statistics.maxAltitude.percentiles?.["95"] ?? 0).toFixed(0)}m
+                  </span>
+                </div>
+              )}
+              {monteCarloResult.statistics.maxVelocity && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">90% Confidence (Velocity)</span>
+                  <span className="text-blue-400 font-mono">
+                    {(monteCarloResult.statistics.maxVelocity.percentiles?.["5"] ?? 0).toFixed(1)}m/s -{" "}
+                    {(monteCarloResult.statistics.maxVelocity.percentiles?.["95"] ?? 0).toFixed(1)}m/s
+                  </span>
+                </div>
+              )}
+              {monteCarloResult.statistics.apogeeTime && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">90% Confidence (Time)</span>
+                  <span className="text-purple-400 font-mono">
+                    {(monteCarloResult.statistics.apogeeTime.percentiles?.["5"] ?? 0).toFixed(1)}s -{" "}
+                    {(monteCarloResult.statistics.apogeeTime.percentiles?.["95"] ?? 0).toFixed(1)}s
+                  </span>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Risk Assessment */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.5 }}
+          className="glass-strong rounded-xl p-6"
+        >
+          <h4 className="text-sm font-medium text-white mb-4">Risk Assessment</h4>
+          <div className="space-y-3">
+            {monteCarloResult?.statistics?.maxAltitude && 
+             typeof monteCarloResult.statistics.maxAltitude.std === 'number' && 
+             typeof monteCarloResult.statistics.maxAltitude.mean === 'number' && (
+              <div className="flex items-start space-x-3">
+                <div className="w-1.5 h-1.5 bg-green-400 rounded-full mt-2 flex-shrink-0" />
+                <span className="text-xs text-gray-300">
+                  Altitude varies by ±{monteCarloResult.statistics.maxAltitude.std.toFixed(0)}m 
+                  ({((monteCarloResult.statistics.maxAltitude.std / monteCarloResult.statistics.maxAltitude.mean) * 100).toFixed(1)}% coefficient of variation)
+                </span>
+              </div>
+            )}
+            {monteCarloResult?.landingDispersion && 
+             typeof monteCarloResult.landingDispersion.cep === 'number' && 
+             monteCarloResult.landingDispersion.cep > 50 && (
+              <div className="flex items-start space-x-3">
+                <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full mt-2 flex-shrink-0" />
+                <span className="text-xs text-gray-300">Large landing dispersion - consider dual-deploy recovery system</span>
+              </div>
+            )}
+            {monteCarloResult?.statistics?.stabilityMargin && 
+             typeof monteCarloResult.statistics.stabilityMargin.min === 'number' && 
+             monteCarloResult.statistics.stabilityMargin.min < 1.0 && (
+              <div className="flex items-start space-x-3">
+                <div className="w-1.5 h-1.5 bg-red-400 rounded-full mt-2 flex-shrink-0" />
+                <span className="text-xs text-gray-300">Some iterations show marginal stability - increase fin area</span>
+              </div>
+            )}
+            <div className="flex items-start space-x-3">
+              <div className="w-1.5 h-1.5 bg-purple-400 rounded-full mt-2 flex-shrink-0" />
+              <span className="text-xs text-gray-300">{getSuccessRate()}% of simulations achieved target performance criteria</span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Landing Dispersion */}
+        {monteCarloResult?.landingDispersion && (
+          <motion.div 
+            className="glass-strong rounded-xl p-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.6 }}
+          >
+            <div className="text-sm text-white font-medium mb-4">Landing Dispersion</div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-400">CEP (50%):</span>
+                <span className="text-orange-400 font-mono">{(monteCarloResult.landingDispersion.cep ?? 0).toFixed(1)}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Max Drift:</span>
+                <span className="text-red-400 font-mono">{(monteCarloResult.landingDispersion.maxDrift ?? 0).toFixed(1)}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Mean Drift:</span>
+                <span className="text-blue-400 font-mono">{(monteCarloResult.landingDispersion.meanDrift ?? 0).toFixed(1)}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Ellipse Ratio:</span>
+                <span className="text-green-400 font-mono">{
+                  (monteCarloResult.landingDispersion.majorAxis && monteCarloResult.landingDispersion.minorAxis && monteCarloResult.landingDispersion.minorAxis !== 0) 
+                    ? (monteCarloResult.landingDispersion.majorAxis / monteCarloResult.landingDispersion.minorAxis).toFixed(1) 
+                    : '1.0'
+                }:1</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
-
-      {/* Recommendations */}
-      <motion.div 
-        className="bg-slate-800 rounded-lg p-3"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.4 }}
-      >
-        <div className="text-sm text-slate-300 mb-2">Statistical Insights</div>
-        <div className="space-y-2">
-          {monteCarloResult?.statistics?.maxAltitude && 
-           typeof monteCarloResult.statistics.maxAltitude.std === 'number' && 
-           typeof monteCarloResult.statistics.maxAltitude.mean === 'number' && (
-            <div className="text-xs text-slate-400 flex items-start">
-              <span className="mr-2 text-green-400">•</span>
-              <span>
-                Altitude varies by ±{monteCarloResult.statistics.maxAltitude.std.toFixed(0)}m 
-                ({((monteCarloResult.statistics.maxAltitude.std / monteCarloResult.statistics.maxAltitude.mean) * 100).toFixed(1)}% coefficient of variation)
-              </span>
-            </div>
-          )}
-          {monteCarloResult?.landingDispersion && 
-           typeof monteCarloResult.landingDispersion.cep === 'number' && 
-           monteCarloResult.landingDispersion.cep > 50 && (
-            <div className="text-xs text-slate-400 flex items-start">
-              <span className="mr-2 text-yellow-400">•</span>
-              <span>Large landing dispersion - consider dual-deploy recovery system</span>
-            </div>
-          )}
-          {monteCarloResult?.statistics?.stabilityMargin && 
-           typeof monteCarloResult.statistics.stabilityMargin.min === 'number' && 
-           monteCarloResult.statistics.stabilityMargin.min < 1.0 && (
-            <div className="text-xs text-slate-400 flex items-start">
-              <span className="mr-2 text-red-400">•</span>
-              <span>Some iterations show marginal stability - increase fin area</span>
-            </div>
-          )}
-        </div>
-      </motion.div>
     </div>
   );
 } 

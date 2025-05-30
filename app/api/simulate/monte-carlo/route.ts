@@ -48,24 +48,44 @@ export async function POST(req: NextRequest) {
     
     console.log(`🎲 Proxying Monte Carlo simulation request to ${rocketpyUrl}/simulate/monte-carlo`);
     
-    const response = await fetch(`${rocketpyUrl}/simulate/monte-carlo`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestData),
-    });
+    // Create AbortController with longer timeout for threaded Monte Carlo
+    const timeoutMs = Math.max(60000, (iterations || 100) * 500); // At least 1 minute, or 500ms per iteration
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ Monte Carlo simulation failed: ${response.status} ${errorText}`);
-      throw new Error(`Monte Carlo simulation failed: ${response.statusText}`);
+    try {
+      const response = await fetch(`${rocketpyUrl}/simulate/monte-carlo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Monte Carlo simulation failed: ${response.status} ${errorText}`);
+        throw new Error(`Monte Carlo simulation failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Monte Carlo simulation completed successfully with ${result.statistics?.maxAltitude?.mean || 'unknown'} mean altitude`);
+      
+      return NextResponse.json(result);
+      
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      if (fetchError.name === 'AbortError') {
+        console.error(`❌ Monte Carlo simulation timed out after ${timeoutMs}ms`);
+        throw new Error(`Monte Carlo simulation timed out after ${Math.round(timeoutMs/1000)} seconds`);
+      }
+      
+      throw fetchError;
     }
-    
-    const result = await response.json();
-    console.log(`✅ Monte Carlo simulation completed successfully`);
-    
-    return NextResponse.json(result);
     
   } catch (error) {
     console.error("❌ Monte Carlo simulation API error:", error);

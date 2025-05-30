@@ -336,6 +336,10 @@ export function dispatchActions(actions: any[]) {
   
   console.log('🎯 Dispatching actions:', actions);
   
+  // Get initial state for comparison
+  const initialState = useRocket.getState().rocket;
+  console.log('🚀 Rocket state BEFORE dispatching actions:', JSON.stringify(initialState.parts, null, 2));
+  
   actions.forEach((a) => {
     console.log('🔄 Processing action:', a);
     
@@ -373,27 +377,51 @@ export function dispatchActions(actions: any[]) {
               Object.assign(part, a.props);
             });
           } else {
-            // First try to find by exact ID
-            let p = r.parts.find((p) => p.id === a.id);
+            let p = null;
             
-            // If not found by ID, try to find by type (for agent compatibility)
+            // First try to find by exact ID
+            p = r.parts.find((part) => part.id === a.id);
+            
+            // If not found by exact ID, try partial ID match (for agent abbreviated IDs)
+            if (!p && (a.id.includes('...') || a.id.length < 36)) {
+              // Handle both "fin1..." and truncated UUIDs like "e25215ba"
+              const partialId = a.id.includes('...') ? a.id.replace('...', '') : a.id;
+              p = r.parts.find((part) => part.id.startsWith(partialId));
+              if (p) {
+                console.log(`🔄 Found part by partial ID: ${a.id} -> ${p.id}`);
+              }
+            }
+            
+            // If still not found, try to find by type (for agent compatibility)
             if (!p) {
               const typeMap: { [key: string]: string } = {
                 'body1': 'body',
                 'nose1': 'nose', 
                 'finset1': 'fin',
+                'fin1': 'fin',
                 'engine1': 'engine'
               };
               
-              const targetType = typeMap[a.id] || a.id;
-              p = r.parts.find((part) => part.type === targetType);
+              // Extract type from ID if it contains type info
+              let targetType = typeMap[a.id] || a.id;
+              
+              // Handle abbreviated IDs like "fin1..."
+              if (a.id.includes('...')) {
+                const baseId = a.id.replace('...', '');
+                targetType = typeMap[baseId] || baseId;
+              }
+              
+              // Try direct type match
+              if (['nose', 'body', 'fin', 'engine'].includes(targetType)) {
+                p = r.parts.find((part) => part.type === targetType);
+              }
               
               if (p) {
-                console.log(`🔄 Found part by type: ${a.id} -> ${targetType}`);
+                console.log(`🔄 Found part by type: ${a.id} -> ${targetType} (${p.id})`);
               } else {
                 // If part doesn't exist and we know the type, create it
-                if (typeMap[a.id]) {
-                  const newPartType = typeMap[a.id];
+                if (typeMap[a.id] || ['nose', 'body', 'fin', 'engine'].includes(targetType)) {
+                  const newPartType = typeMap[a.id] || targetType;
                   console.log(`➕ Creating missing ${newPartType} part for ${a.id}`);
                   
                   // Create default part based on type
@@ -434,10 +462,13 @@ export function dispatchActions(actions: any[]) {
                 props['baseØ'] = props['baseØ']; // Keep as is
               }
               
+              console.log(`🔧 Before update - Part ${p.type}:`, JSON.stringify(p));
               Object.assign(p, props);
-              console.log(`✅ Updated part ${p.type} with:`, props);
+              console.log(`✅ After update - Part ${p.type}:`, JSON.stringify(p));
+              console.log(`🎯 Updated part ${p.type} (${p.id}) with:`, props);
             } else {
               console.warn(`❌ Part not found for update: ${a.id}`);
+              console.warn(`📋 Available parts:`, r.parts.map(p => ({ id: p.id, type: p.type })));
             }
           }
           return r;
@@ -583,6 +614,10 @@ export function dispatchActions(actions: any[]) {
         break;
     }
   });
+  
+  // Get final state for comparison
+  const finalState = useRocket.getState().rocket;
+  console.log('🚀 Rocket state AFTER dispatching actions:', JSON.stringify(finalState.parts, null, 2));
 }
 
 // ================================
