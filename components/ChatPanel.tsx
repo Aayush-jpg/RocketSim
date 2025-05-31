@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRocket } from '@/lib/store'
 import { dispatchActions } from '@/lib/ai/actions'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
+import { motion } from 'framer-motion'
 
 // Chat message type definition
 export type ChatMessage = {
@@ -10,8 +13,12 @@ export type ChatMessage = {
   content: string;
   agent?: string; // Add agent field to store which agent handled the message
 }
+interface ChatPanelProps {
+  activeAnalysis?: string | null;
+  onAnalysisClick?: (analysisId: string) => void;
+}
 
-export default function ChatPanel() {
+export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -19,6 +26,8 @@ export default function ChatPanel() {
       agent: 'master'
     }
   ]);
+
+
   
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,12 +43,12 @@ export default function ChatPanel() {
   }, [messages]);
   
   // Suggested commands
-  const suggestedCommands = [
-    { id: '1', text: 'Optimize fin design' },
-    { id: '2', text: 'Add a nose cone' },
-    { id: '3', text: 'Run a simulation' },
-    { id: '4', text: 'Make body longer' },
-    { id: '5', text: 'Paint it red' },
+  const quickActions = [
+     "Optimize fin design" ,
+     "Add a nose cone" ,
+     "Run a simulation" ,
+     "Make body longer" ,
+     "Paint it red" ,
   ];
   
   // Format content for better display
@@ -270,57 +279,88 @@ export default function ChatPanel() {
       setCurrentlyRunningAgent(null);
     }
   }
-  
+
+  const handleSend = () => {
+    sendMessage(inputValue);
+  };
   return (
-    <div className="h-full flex flex-col w-full">
-      {/* Chat messages */}
+    <div className="h-full flex flex-col">
+      {/* Messages */}
       <div 
-        ref={chatContainerRef} 
-        className="flex-1 overflow-y-auto p-3 space-y-4 w-full"
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-6 space-y-6"
       >
-        {messages.map((msg, index) => (
-          <div 
-            key={index} 
-            className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        {messages.map((message, index) => (
+          <motion.div
+            key={index}
+            className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: index * 0.1 }}
           >
-            <div 
-              className={`rounded-2xl px-4 py-3 ${
-                msg.role === 'user' 
-                  ? 'bg-white bg-opacity-25 rounded-tr-none shadow-lg ml-4 self-end' 
-                  : 'glass-panel rounded-tl-none shadow-md mr-4 self-start'
-              } ${msg.role === 'user' ? 'max-w-[80%]' : 'w-[95%]'}`}
+            <div
+              className={cn(
+                "max-w-[85%] rounded-2xl px-6 py-4 backdrop-blur-xl relative",
+                message.role === "user"
+                  ? "bg-white text-black shadow-lg"
+                  : "bg-white/5 text-white border border-white/10",
+              )}
             >
-              {msg.role === 'user' ? (
-                <p className="text-small text-white">{msg.content}</p>
-              ) : (
-                <div className="relative">
-                  {msg.agent && (
-                    <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] rounded-full px-2 py-0.5 opacity-80">
-                      {msg.agent.replace('_', ' ')}
+              {message.role === 'assistant' && message.agent && (
+                <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] rounded-full px-2 py-0.5 opacity-80">
+                  {message.agent.replace('_', ' ')}
+                </div>
+              )}
+              <div 
+                className="text-sm leading-relaxed formatted-content"
+                style={{
+                  overflowWrap: 'break-word',
+                  wordWrap: 'break-word'
+                }}
+                dangerouslySetInnerHTML={{ __html: formatContent(message.content) }}
+              />
+              {/* Show simulation metrics if this is a simulation message */}
+              {message.content.includes('simulation') && useRocket.getState().sim && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div className="space-y-1">
+                      <span className="text-gray-400">Max Altitude</span>
+                      <div className="font-mono text-white">
+                        {useRocket.getState().sim?.maxAltitude?.toFixed(0) || '0'}m
+                      </div>
                     </div>
-                  )}
-                  <div 
-                    className="text-small text-white formatted-content w-full"
-                    style={{
-                      overflowWrap: 'break-word',
-                      wordWrap: 'break-word'
-                    }}
-                    dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }}
-                  />
+                    <div className="space-y-1">
+                      <span className="text-gray-400">Max Velocity</span>
+                      <div className="font-mono text-white">
+                        {useRocket.getState().sim?.maxVelocity?.toFixed(1) || '0'}m/s
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
         ))}
-        
+
+        {/* Typing Indicator */}
         {isLoading && (
-          <div className="flex justify-start w-full">
-            <div className="glass-panel rounded-2xl rounded-tl-none px-4 py-3 shadow-md mr-4 max-w-[95%]">
+          <motion.div
+            className="flex justify-start"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-4">
               <div className="flex flex-col items-center space-y-2">
                 <div className="flex space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-75" />
-                  <div className="w-2 h-2 rounded-full bg-white animate-pulse delay-150" />
+                  <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce"></div>
+                  <div
+                    className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  ></div>
+                  <div
+                    className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  ></div>
                 </div>
                 {currentlyRunningAgent && (
                   <div className="flex items-center space-x-2 mt-1">
@@ -336,50 +376,51 @@ export default function ChatPanel() {
                 )}
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
-      
-      {/* Suggestions */}
-      <div className="p-2 border-t border-opacity-10 w-full" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
-        <div className="flex flex-wrap gap-2 pb-2 w-full">
-          {suggestedCommands.map(cmd => (
+
+      {/* Input Area */}
+      <div className="p-6 border-t border-white/5 backdrop-blur-xl bg-black/20">
+        <div className="flex space-x-4">
+          <div className="flex-1 relative">
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Describe your rocket design goals..."
+              onKeyPress={(e) => e.key === "Enter" && handleSend()}
+              className="pr-12 bg-white/5 backdrop-blur-xl border-white/10 focus:border-white/20 rounded-full text-white placeholder:text-white/60"
+            />
             <button
-              key={cmd.id}
-              className="glass-panel whitespace-nowrap rounded-full px-3 py-1 text-small"
-              onClick={() => setInputValue(cmd.text)}
+              onClick={handleSend}
+              disabled={!inputValue.trim() || isLoading}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white text-black rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
             >
-              {cmd.text}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex space-x-2 mt-4">
+          {quickActions.map((action) => (
+            <button
+              key={action}
+              onClick={() => setInputValue(action)}
+              className="px-4 py-2 text-xs bg-white/5 backdrop-blur-xl border border-white/10 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+            >
+              {action}
             </button>
           ))}
         </div>
       </div>
-      
-      {/* Input area */}
-      <div className="p-3 border-t border-opacity-20 w-full" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
-        <div className="flex w-full">
-          <input
-            type="text"
-            className="flex-1 glass-panel-surface rounded-l-full px-4 py-2 text-small focus:outline-none text-black placeholder-black"
-            placeholder="Ask the AI assistant..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isLoading) sendMessage(inputValue);
-            }}
-            disabled={isLoading}
-          />
-          <button
-            className={`glass-panel-surface rounded-r-full px-4 py-2 ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white hover:bg-opacity-10'
-            }`}
-            onClick={() => sendMessage(inputValue)}
-            disabled={isLoading}
-          >
-            Send
-          </button>
-        </div>
-      </div>
     </div>
   )
-} 
+}

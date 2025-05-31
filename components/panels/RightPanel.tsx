@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import ChatPanel from '@/components/ChatPanel'
 import { useRocket } from '@/lib/store'
 import { estimateRocketMass, calculateStability } from '@/lib/ai/actions'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Line } from '@react-three/drei'
-import IntegratedChatPanel from './IntegratedChatPanel'
+import { cn } from '@/lib/utils'
+
+// Import analysis components
 import SimulationTab from './pro-mode/SimulationTab'
 import StabilityTab from './pro-mode/StabilityTab'
 import MonteCarloTab from './pro-mode/MonteCarloTab'
@@ -104,6 +104,16 @@ type RightPanelProps = {
   onCollapse: () => void;
   isCollapsed: boolean;
 }
+
+const analysisTypes = [
+  { id: "simulation", label: "Simulation", icon: "🚀", description: "Flight performance" },
+  { id: "trajectory", label: "Trajectory", icon: "📈", description: "Flight path analysis" },
+  { id: "stability", label: "Stability", icon: "⚖️", description: "Center of pressure analysis" },
+  { id: "recovery", label: "Recovery", icon: "🪂", description: "Parachute deployment" },
+  { id: "monte-carlo", label: "Monte Carlo", icon: "🎲", description: "Statistical analysis" },
+  { id: "motor", label: "Motor", icon: "🔥", description: "Engine performance" },
+  { id: "environment", label: "Environment", icon: "🌍", description: "Weather conditions" },
+];
 
 // Intelligent metrics summary that appears inline with chat
 function InlineMetricsSummary({ metrics, isExpanded, onToggle }: {
@@ -235,11 +245,11 @@ function PerformanceBar({ title, value, max, color }: {
   const percentage = Math.min((value / max) * 100, 100);
   
   return (
-        <div>
+    <div>
       <div className="flex justify-between text-xs mb-1">
         <span className="text-white/70">{title}</span>
         <span className="text-white">{formatNumber(value)}</span>
-        </div>
+      </div>
       <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
         <motion.div 
           className="h-full rounded-full"
@@ -255,11 +265,20 @@ function PerformanceBar({ title, value, max, color }: {
 
 export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps) {
   const [metricsExpanded, setMetricsExpanded] = useState(false);
-  const [showProMode, setShowProMode] = useState(false);
+  const [activeAnalysis, setActiveAnalysis] = useState<string | null>(null);
   
   // Get rocket and simulation data from store
   const simData = useRocket(state => state.sim);
   const rocket = useRocket(state => state.rocket);
+  const { 
+    monteCarloResult, 
+    stabilityAnalysis, 
+    motorAnalysis, 
+    recoveryPrediction,
+    isSimulating,
+    simulationProgress,
+    lastSimulationType
+  } = useRocket();
   
   // Calculate mass using our estimation function
   const mass = estimateRocketMass(rocket);
@@ -312,51 +331,36 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
       return () => clearTimeout(timer);
     }
   }, [simData?.maxAltitude]);
-
-  const { 
-    monteCarloResult, 
-    stabilityAnalysis, 
-    motorAnalysis, 
-    recoveryPrediction,
-    isSimulating,
-    simulationProgress,
-    lastSimulationType
-  } = useRocket();
   
-  const [activeTab, setActiveTab] = useState('simulation');
-  const [trajectoryMode, setTrajectoryMode] = useState('3d');
-  const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
-
   // Event listeners for advanced simulation events
   useEffect(() => {
     const handleTrajectoryAnalysis = (event: CustomEvent) => {
       console.log('📈 Trajectory analysis event:', event.detail);
-      setShowProMode(true);
-      setActiveTab('trajectory');
+      setActiveAnalysis('trajectory');
     };
 
     const handleMonteCarloComplete = (event: CustomEvent) => {
       console.log('🎲 Monte Carlo complete:', event.detail);
-      setShowProMode(true);
-      setActiveTab('monte-carlo');
+      setActiveAnalysis('monte-carlo');
     };
 
     const handleStabilityAnalysis = (event: CustomEvent) => {
       console.log('⚖️ Stability analysis:', event.detail);
-      setShowProMode(true);
-      setActiveTab('stability');
+      setActiveAnalysis('stability');
     };
 
     const handleMotorAnalysis = (event: CustomEvent) => {
       console.log('🔥 Motor analysis:', event.detail);
-      setShowProMode(true);
-      setActiveTab('motor');
+      setActiveAnalysis('motor');
     };
 
     const handleRecoveryPrediction = (event: CustomEvent) => {
       console.log('🪂 Recovery prediction:', event.detail);
-      setShowProMode(true);
-      setActiveTab('recovery');
+      setActiveAnalysis('recovery');
+    };
+
+    const handleCloseAnalysis = () => {
+      setActiveAnalysis(null);
     };
 
     window.addEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
@@ -364,6 +368,7 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
     window.addEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
     window.addEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
     window.addEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
+    window.addEventListener('closeAnalysis', handleCloseAnalysis);
 
     return () => {
       window.removeEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
@@ -371,131 +376,166 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
       window.removeEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
       window.removeEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
       window.removeEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
+      window.removeEventListener('closeAnalysis', handleCloseAnalysis);
     };
   }, []);
 
-  const tabs = [
-    { id: 'simulation', label: '🚀 Simulation', icon: '📊' },
-    { id: 'trajectory', label: '📈 Trajectory', icon: '🛤️' },
-    { id: 'monte-carlo', label: '🎲 Monte Carlo', icon: '📈' },
-    { id: 'stability', label: '⚖️ Stability', icon: '🎯' },
-    { id: 'motor', label: '🔥 Motor', icon: '⚡' },
-    { id: 'recovery', label: '🪂 Recovery', icon: '🎯' },
-    { id: 'environment', label: '🌍 Environment', icon: '🌤️' }
-  ];
+  const handleAnalysisClick = (analysisId: string) => {
+    setActiveAnalysis(activeAnalysis === analysisId ? null : analysisId);
+  };
 
-  // Show Pro Mode (Advanced Analysis) or Chat Mode
-  if (showProMode) {
-    return (
-      <div className="h-full bg-slate-900 border-l border-slate-700 flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-slate-700">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-white">Pro Mode - Advanced Analysis</h2>
-            <button
-              onClick={() => setShowProMode(false)}
-              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+  const renderAnalysisComponent = () => {
+    switch (activeAnalysis) {
+      case "simulation":
+        return <SimulationTab />
+      case "trajectory":
+        return <TrajectoryTab />
+      case "stability":
+        return <StabilityTab />
+      case "recovery":
+        return <RecoveryTab />
+      case "monte-carlo":
+        return <MonteCarloTab />
+      case "motor":
+        return <MotorTab />
+      case "environment":
+        return <EnvironmentTab />
+      default:
+        return null
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full relative bg-black">
+      {/* Floating Analysis Tabs */}
+      <div className="absolute top-6 right-6 z-20">
+        <div className="flex flex-col space-y-3">
+          {analysisTypes.map((analysis, index) => (
+            <motion.div
+              key={analysis.id}
+              className={cn(
+                "group relative transition-all duration-300 ease-out",
+                activeAnalysis === analysis.id ? "scale-110" : "hover:scale-105",
+              )}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
             >
-              💬 Back to Chat
-            </button>
-          </div>
-          
-          {/* Tab Navigation */}
-          <div className="flex flex-wrap gap-1 mb-3">
-            {tabs.map((tab) => (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                onClick={() => handleAnalysisClick(analysis.id)}
+                className={cn(
+                  "w-12 h-12 rounded-full transition-all duration-300 flex items-center justify-center text-lg backdrop-blur-xl border shadow-lg relative overflow-hidden",
+                  activeAnalysis === analysis.id
+                    ? "bg-white text-black border-white/20 shadow-white/20"
+                    : "bg-black/40 text-white border-white/10 hover:bg-white/10 hover:border-white/20",
+                )}
               >
-                {tab.icon}
+                <span className="relative z-10">{analysis.icon}</span>
+                {activeAnalysis === analysis.id && (
+                  <motion.div
+                    className="absolute inset-0 bg-white"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
               </button>
-            ))}
-          </div>
 
-          {/* Simulation Status */}
-          {isSimulating && (
-            <div className="mb-3">
-              <div className="flex justify-between text-sm text-slate-300 mb-1">
-                <span>Simulating...</span>
-                <span>{Math.round(simulationProgress)}%</span>
+              {/* Enhanced Tooltip */}
+              <div className="absolute right-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none">
+                <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-lg px-3 py-2 text-sm whitespace-nowrap">
+                  <div className="font-medium text-white">{analysis.label}</div>
+                  <div className="text-gray-400 text-xs">{analysis.description}</div>
+                </div>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${simulationProgress}%` }}
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-white/5 backdrop-blur-xl bg-black/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">AI Assistant</h2>
+              <p className="text-sm text-gray-400">Advanced rocket design intelligence</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-xs text-gray-400">Neural network active</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content - Chat or Analysis */}
+        <div className="flex-1 relative overflow-hidden">
+          {/* Chat View */}
+          <div
+            className={cn(
+              "absolute inset-0 transition-all duration-500 ease-in-out",
+              activeAnalysis ? "opacity-0 translate-x-full" : "opacity-100 translate-x-0",
+            )}
+          >
+            <div className="h-full flex flex-col">
+              {/* Metrics Summary */}
+              <InlineMetricsSummary 
+                metrics={metrics}
+                isExpanded={metricsExpanded}
+                onToggle={() => setMetricsExpanded(!metricsExpanded)}
+              />
+              
+              {/* Chat Panel */}
+              <div className="flex-1 min-h-0">
+                <ChatPanel 
+                  activeAnalysis={activeAnalysis}
+                  onAnalysisClick={handleAnalysisClick}
                 />
               </div>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === 'simulation' && <SimulationTab />}
-          {activeTab === 'trajectory' && <TrajectoryTab />}
-          {activeTab === 'monte-carlo' && <MonteCarloTab />}
-          {activeTab === 'stability' && <StabilityTab />}
-          {activeTab === 'motor' && <MotorTab />}
-          {activeTab === 'recovery' && <RecoveryTab />}
-          {activeTab === 'environment' && <EnvironmentTab />}
-        </div>
-      </div>
-    );
-  }
-
-  // Default: Show Agentic Chat Interface
-  return (
-    <div className="h-full bg-slate-900 border-l border-slate-700 flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-700">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold text-white">🤖 Rocket AI Assistant</h2>
-          <button
-            onClick={() => setShowProMode(true)}
-            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+          {/* Analysis Views */}
+          <div
+            className={cn(
+              "absolute inset-0 transition-all duration-500 ease-in-out",
+              activeAnalysis ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full",
+            )}
           >
-            🔬 Pro Mode
-          </button>
+            {renderAnalysisComponent()}
+          </div>
         </div>
-        <p className="text-sm text-slate-400">Chat with AI to design, simulate, and optimize your rocket</p>
-      </div>
-
-      {/* Integrated Chat Panel with Metrics */}
-      <div className="flex-1 min-h-0">
-        <IntegratedChatPanel 
-          metrics={metrics}
-          metricsExpanded={metricsExpanded}
-          onToggleMetrics={() => setMetricsExpanded(!metricsExpanded)}
-        />
       </div>
     </div>
   );
 }
 
-// Placeholder components for tabs that haven't been created yet
-function PerformanceTab() {
-  return (
-    <div className="text-center text-slate-400 py-8">
-      <div className="text-4xl mb-2">📊</div>
-      <p>Performance analysis coming soon</p>
-    </div>
-  );
-}
-
+// Environment Tab Component
 function EnvironmentTab() {
   return (
-    <div className="space-y-6">
+    <div className="h-full p-6 space-y-6 overflow-y-auto">
+      {/* Close button */}
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-white">Environment Analysis</h3>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('closeAnalysis'))}
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
       {/* Weather Status Component */}
       <WeatherStatus />
       
       {/* Environment Configuration */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">
+        <h3 className="font-medium text-white mb-4 flex items-center gap-2">
           <span>🌍</span>
           Launch Environment
         </h3>
@@ -504,32 +544,32 @@ function EnvironmentTab() {
           {/* Current Environment Display */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-gray-500 dark:text-gray-400">Atmospheric Model</p>
-              <p className="font-medium text-gray-900 dark:text-white">
+              <p className="text-gray-400">Atmospheric Model</p>
+              <p className="font-medium text-white">
                 {window.environmentConditions?.atmosphericModel || 'Standard'}
               </p>
             </div>
             
             <div>
-              <p className="text-gray-500 dark:text-gray-400">Data Source</p>
-              <p className="font-medium text-gray-900 dark:text-white">
+              <p className="text-gray-400">Data Source</p>
+              <p className="font-medium text-white">
                 {window.environmentConditions?.atmosphericModel === 'forecast' ? 'Real-time' : 'Standard ISA'}
               </p>
             </div>
           </div>
 
           {/* Environment Quality Indicator */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+          <div className="bg-blue-500/10 rounded-lg p-3 border border-blue-500/20">
+            <h4 className="font-medium text-blue-100 mb-2">
               Simulation Accuracy
             </h4>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${
                 window.environmentConditions?.atmosphericModel === 'forecast' 
-                  ? 'bg-green-500' 
-                  : 'bg-yellow-500'
+                  ? 'bg-green-400' 
+                  : 'bg-yellow-400'
               }`} />
-              <span className="text-sm text-blue-800 dark:text-blue-200">
+              <span className="text-sm text-blue-200">
                 {window.environmentConditions?.atmosphericModel === 'forecast' 
                   ? 'High accuracy with real atmospheric data'
                   : 'Standard accuracy with ISA model'
@@ -539,11 +579,11 @@ function EnvironmentTab() {
           </div>
 
           {/* Launch Recommendations */}
-          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-            <h4 className="font-medium text-gray-900 dark:text-white mb-2">
+          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+            <h4 className="font-medium text-white mb-2">
               Launch Recommendations
             </h4>
-            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+            <ul className="text-sm text-gray-300 space-y-1">
               <li>• Check wind conditions before launch</li>
               <li>• Verify recovery system deployment altitude</li>
               <li>• Consider atmospheric density effects on drag</li>
@@ -554,19 +594,19 @@ function EnvironmentTab() {
       </div>
 
       {/* Advanced Environment Settings */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">
+        <h3 className="font-medium text-white mb-4 flex items-center gap-2">
           <span>⚙️</span>
           Advanced Settings
         </h3>
         
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Use real-time weather data</span>
+            <span className="text-sm text-gray-300">Use real-time weather data</span>
             <div className={`w-10 h-6 rounded-full transition-colors ${
               window.environmentConditions?.atmosphericModel === 'forecast' 
                 ? 'bg-green-500' 
-                : 'bg-gray-300 dark:bg-gray-600'
+                : 'bg-gray-600'
             }`}>
               <div className={`w-4 h-4 bg-white rounded-full mt-1 transition-transform ${
                 window.environmentConditions?.atmosphericModel === 'forecast' 
@@ -577,15 +617,15 @@ function EnvironmentTab() {
           </div>
           
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-300">High-resolution atmospheric model</span>
-            <div className="w-10 h-6 bg-gray-300 dark:bg-gray-600 rounded-full">
+            <span className="text-sm text-gray-300">High-resolution atmospheric model</span>
+            <div className="w-10 h-6 bg-gray-600 rounded-full">
               <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
             </div>
           </div>
           
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Include turbulence effects</span>
-            <div className="w-10 h-6 bg-gray-300 dark:bg-gray-600 rounded-full">
+            <span className="text-sm text-gray-300">Include turbulence effects</span>
+            <div className="w-10 h-6 bg-gray-600 rounded-full">
               <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
             </div>
           </div>
@@ -593,4 +633,4 @@ function EnvironmentTab() {
       </div>
     </div>
   );
-} 
+}
