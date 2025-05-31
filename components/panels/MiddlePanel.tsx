@@ -1434,6 +1434,28 @@ function PartLabel({ partName, visible, customStyle = { left: '20px', bottom: '5
 }
 
 export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, isFullScreen = false }) {
+  // Add container ref and size state for resize detection
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  
+  // Add resize observer to detect container size changes
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        setContainerSize({ width, height });
+      }
+    });
+    
+    resizeObserver.observe(containerRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   // State management
   const [view, setView] = useState<'top' | 'side' | 'perspective'>('perspective');
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
@@ -1619,10 +1641,17 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
     : "absolute bottom-4 right-4 glass-panel rounded p-3 w-48 z-10 shadow-lg";
   
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      {/* Canvas first - fixed size and position */}
+    <div 
+      ref={containerRef}
+      className="flex-1 min-w-0 h-full overflow-hidden relative"
+    >
+      {/* Canvas first - responsive size */}
       <div className="absolute inset-0 w-full h-full overflow-hidden">
-        <Canvas shadows>
+        <Canvas 
+          shadows
+          key={`canvas-${containerSize.width}-${containerSize.height}`}
+          style={{ width: '100%', height: '100%' }}
+        >
           {/* Add global mouse position handler */}
           <MousePositionHandler />
           

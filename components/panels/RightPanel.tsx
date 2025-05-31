@@ -123,21 +123,21 @@ function InlineMetricsSummary({ metrics, isExpanded, onToggle }: {
 }) {
   return (
     <motion.div 
-      className="mx-3 mb-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl border border-white/10 overflow-hidden"
+      className="mb-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl border border-white/10 overflow-hidden w-full"
       layout
     >
       {/* Always visible compact header */}
       <motion.div 
-        className="p-3 cursor-pointer hover:bg-white/5 transition-colors"
+        className="p-3 cursor-pointer hover:bg-white/5 transition-colors w-full"
         onClick={onToggle}
         layout
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between w-full">
           <div className="flex items-center space-x-3">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
             <span className="text-sm font-medium text-white">Flight Performance</span>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-1 items-center justify-end space-x-4">
             {/* Key metrics always visible */}
             <div className="flex items-center space-x-3 text-xs">
               <span className="text-blue-300">{formatNumber(metrics.apogee)}m</span>
@@ -164,9 +164,9 @@ function InlineMetricsSummary({ metrics, isExpanded, onToggle }: {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="overflow-hidden"
+            className="overflow-hidden w-full"
           >
-            <div className="px-3 pb-3 space-y-3">
+            <div className="px-3 pb-3 space-y-3 w-full">
               {/* Performance grid */}
               <div className="grid grid-cols-3 gap-2">
                 <MetricCard title="Apogee" value={metrics.apogee} unit="m" color="bg-blue-500/20" />
@@ -406,9 +406,9 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full relative bg-black">
+    <div className="w-full h-full flex flex-col relative bg-black min-w-0">
       {/* Floating Analysis Tabs */}
-      <div className="absolute top-6 right-6 z-20">
+      <div className="absolute top-6 right-0 z-20 pr-6">
         <div className="flex flex-col space-y-3">
           {analysisTypes.map((analysis, index) => (
             <motion.div
@@ -454,11 +454,11 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col w-full">
         {/* Header */}
-        <div className="p-6 border-b border-white/5 backdrop-blur-xl bg-black/50">
-          <div className="flex items-center justify-between">
-            <div>
+        <div className="p-6 border-b border-white/5 backdrop-blur-xl bg-black/50 w-full">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex-1">
               <h2 className="text-xl font-semibold text-white">AI Assistant</h2>
               <p className="text-sm text-gray-400">Advanced rocket design intelligence</p>
             </div>
@@ -472,24 +472,26 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
         </div>
 
         {/* Content - Chat or Analysis */}
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden w-full min-w-0 pr-20">
           {/* Chat View */}
           <div
             className={cn(
-              "absolute inset-0 transition-all duration-500 ease-in-out",
+              "absolute inset-0 transition-all duration-500 ease-in-out w-full min-w-0",
               activeAnalysis ? "opacity-0 translate-x-full" : "opacity-100 translate-x-0",
             )}
           >
-            <div className="h-full flex flex-col">
+            <div className="h-full flex flex-col w-full min-w-0">
               {/* Metrics Summary */}
-              <InlineMetricsSummary 
-                metrics={metrics}
-                isExpanded={metricsExpanded}
-                onToggle={() => setMetricsExpanded(!metricsExpanded)}
-              />
+              <div className="pr-4">
+                <InlineMetricsSummary 
+                  metrics={metrics}
+                  isExpanded={metricsExpanded}
+                  onToggle={() => setMetricsExpanded(!metricsExpanded)}
+                />
+              </div>
               
               {/* Chat Panel */}
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 w-full min-w-0">
                 <ChatPanel 
                   activeAnalysis={activeAnalysis}
                   onAnalysisClick={handleAnalysisClick}
@@ -501,11 +503,13 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
           {/* Analysis Views */}
           <div
             className={cn(
-              "absolute inset-0 transition-all duration-500 ease-in-out",
+              "absolute inset-0 transition-all duration-500 ease-in-out w-full min-w-0",
               activeAnalysis ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full",
             )}
           >
-            {renderAnalysisComponent()}
+            <div className="w-full h-full min-w-0">
+              {renderAnalysisComponent()}
+            </div>
           </div>
         </div>
       </div>
@@ -516,7 +520,7 @@ export default function RightPanel({ onCollapse, isCollapsed }: RightPanelProps)
 // Environment Tab Component
 function EnvironmentTab() {
   return (
-    <div className="h-full p-6 space-y-6 overflow-y-auto">
+    <div className="h-full p-6 space-y-6 overflow-y-auto w-full">
       {/* Close button */}
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-white">Environment Analysis</h3>

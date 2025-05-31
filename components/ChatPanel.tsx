@@ -284,26 +284,26 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
     sendMessage(inputValue);
   };
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col w-full min-w-0">
       {/* Messages */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6"
+        className="flex-1 overflow-y-auto p-6 space-y-6 w-full min-w-0"
       >
         {messages.map((message, index) => (
           <motion.div
             key={index}
-            className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
+            className={cn("flex w-full", message.role === "user" ? "justify-end" : "justify-start")}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: index * 0.1 }}
           >
             <div
               className={cn(
-                "max-w-[85%] rounded-2xl px-6 py-4 backdrop-blur-xl relative",
+                "rounded-2xl px-6 py-4 backdrop-blur-xl relative",
                 message.role === "user"
-                  ? "bg-white text-black shadow-lg"
-                  : "bg-white/5 text-white border border-white/10",
+                  ? "bg-white text-black shadow-lg max-w-[85%]"
+                  : "bg-white/5 text-white border border-white/10 w-full",
               )}
             >
               {message.role === 'assistant' && message.agent && (
@@ -311,14 +311,16 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
                   {message.agent.replace('_', ' ')}
                 </div>
               )}
-              <div 
-                className="text-sm leading-relaxed formatted-content"
-                style={{
-                  overflowWrap: 'break-word',
-                  wordWrap: 'break-word'
-                }}
-                dangerouslySetInnerHTML={{ __html: formatContent(message.content) }}
-              />
+              <div className="w-full">
+                {message.role === 'assistant' ? (
+                  <div 
+                    className="whitespace-pre-wrap break-words w-full text-white leading-relaxed text-sm prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-white prose-strong:text-white prose-ul:text-white prose-li:text-white"
+                    dangerouslySetInnerHTML={{ __html: formatContent(message.content) }}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap break-words w-full !text-black leading-relaxed text-sm">{message.content}</p>
+                )}
+              </div>
               {/* Show simulation metrics if this is a simulation message */}
               {message.content.includes('simulation') && useRocket.getState().sim && (
                 <div className="mt-4 pt-4 border-t border-white/10">
@@ -381,15 +383,15 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
       </div>
 
       {/* Input Area */}
-      <div className="p-6 border-t border-white/5 backdrop-blur-xl bg-black/20">
-        <div className="flex space-x-4">
-          <div className="flex-1 relative">
+      <div className="p-6 border-t border-white/5 backdrop-blur-xl bg-black/20 w-full min-w-0">
+        <div className="flex space-x-4 w-full min-w-0">
+          <div className="flex-1 relative min-w-0">
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Describe your rocket design goals..."
               onKeyPress={(e) => e.key === "Enter" && handleSend()}
-              className="pr-12 bg-white/5 backdrop-blur-xl border-white/10 focus:border-white/20 rounded-full text-white placeholder:text-white/60"
+              className="pr-12 bg-white/5 backdrop-blur-xl border-white/10 focus:border-white/20 rounded-full text-white placeholder:text-white/60 w-full min-w-0"
             />
             <button
               onClick={handleSend}
@@ -409,7 +411,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
         </div>
 
         {/* Quick Actions */}
-        <div className="flex space-x-2 mt-4">
+        <div className="flex space-x-2 mt-4 w-full flex-wrap min-w-0">
           {quickActions.map((action) => (
             <button
               key={action}

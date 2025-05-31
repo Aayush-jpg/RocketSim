@@ -234,7 +234,6 @@ export default function RocketSim() {
         }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         style={{ 
-          maxWidth: isRightPanelCollapsed ? '60px' : '500px',
           minWidth: isRightPanelCollapsed ? '60px' : '350px'
         }}
       >
