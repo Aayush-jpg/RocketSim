@@ -360,7 +360,7 @@ export default function ChatPanel() {
         <div className="flex w-full">
           <input
             type="text"
-            className="flex-1 glass-panel-surface rounded-l-full px-4 py-2 text-small focus:outline-none"
+            className="flex-1 glass-panel-surface rounded-l-full px-4 py-2 text-small focus:outline-none text-black placeholder-black"
             placeholder="Ask the AI assistant..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
