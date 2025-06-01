@@ -9,13 +9,28 @@ services:
       - NODE_ENV=production
       - AGENT_URL=http://agentpy:8002
       - ROCKETPY_URL=http://rocketpy:8000
+      # Database configuration
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NEXT_PUBLIC_OPENWEATHER_API_KEY=${NEXT_PUBLIC_OPENWEATHER_API_KEY}
+      - WEATHERAPI_KEY=${WEATHERAPI_KEY}
+      - NEXT_PUBLIC_NOAA_API_KEY=${NEXT_PUBLIC_NOAA_API_KEY}
+      # Cache configuration
+      - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
+      - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
     env_file:
       - .env
     depends_on:
-      - agentpy
-      - rocketpy
+      agentpy:
+        condition: service_healthy
+      rocketpy:
+        condition: service_healthy
     networks:
       - rocket-network
+    restart: unless-stopped
 
   agentpy:
     build: 
@@ -25,15 +40,19 @@ services:
       - "8002:8002"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     env_file:
       - .env
     networks:
       - rocket-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8002/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   rocketpy:
     build: 
@@ -43,13 +62,16 @@ services:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     networks:
       - rocket-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
     volumes:
       - rocket-data:/app/data
 

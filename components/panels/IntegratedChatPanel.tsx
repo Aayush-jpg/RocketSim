@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '@/lib/auth/AuthContext';
 import ChatPanel from '../ChatPanel';
 
 // Utility function to format numbers
@@ -180,6 +181,8 @@ export default function IntegratedChatPanel({
   activeAnalysis?: string | null;
   onAnalysisClick?: (analysisId: string) => void;
 }) {
+  const { user, userSession } = useAuth();
+
   return (
     <div className="h-full flex flex-col min-w-0 overflow-hidden">
       {/* Metrics summary that sits above chat with proper spacing */}

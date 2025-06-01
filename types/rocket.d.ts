@@ -1,3 +1,29 @@
+/**
+ * ROCKETv1 - TypeScript Type Definitions
+ * =====================================
+ * 
+ * This file contains all TypeScript interfaces and type definitions for the rocket engineering platform.
+ * It provides strong typing for rocket components, simulation results, analysis data, and configuration objects.
+ * 
+ * Key Type Categories:
+ * - **Rocket Parts**: PartBase, Nose, Body, Fin, Engine - Define rocket component structures
+ * - **Rocket Model**: Main Rocket interface containing parts array, motor, and physical properties
+ * - **Simulation Data**: SimulationResult, TrajectoryData, FlightEvent - Results from physics simulations
+ * - **Analysis Results**: StabilityAnalysis, MotorAnalysis, MonteCarloResult - Engineering analysis outputs
+ * - **Configuration**: EnvironmentConfig, LaunchParameters - Simulation setup parameters
+ * - **Statistics**: MonteCarloStatistics - Statistical analysis for uncertainty quantification
+ * 
+ * These types ensure type safety across:
+ * - Frontend React components and state management
+ * - Backend API routes and database operations
+ * - AI/ML services for design optimization
+ * - Physics simulation interfaces
+ * - Database schema validation
+ * 
+ * @version 1.0.0
+ * @author ROCKETv1 Team
+ */
+
 export interface PartBase { id: string; type: string; color: string }
 export interface Nose extends PartBase { type: "nose"; shape:"ogive"|"conical"; length:number; baseØ:number }
 export interface Body extends PartBase { type: "body"; Ø:number; length:number }
@@ -31,6 +57,8 @@ export interface SimulationResult {
   maxVelocity?: number;
   maxAcceleration?: number;
   apogeeTime?: number;
+  flightTime?: number;
+  landingVelocity?: number;
   stabilityMargin?: number;
   thrustCurve?: [number, number][]; // [time, thrust] pairs
   simulationFidelity?: string;

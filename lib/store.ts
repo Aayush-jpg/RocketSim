@@ -10,6 +10,13 @@ import {
   MotorAnalysis,
   RecoveryPrediction
 } from '@/types/rocket';
+import { 
+  databaseService, 
+  saveRocketToDb, 
+  saveSimulationToDb, 
+  saveChatToDb,
+  getCurrentSessionId
+} from '@/lib/services/database.service';
 
 // Default rocket configuration
 export const DEFAULT_ROCKET: Rocket = {
@@ -91,6 +98,13 @@ export interface RocketState {
   lastSimulationType: string;
   simulationMessage: string;
   
+  // Database integration state
+  isDatabaseConnected: boolean;
+  currentSessionId: string | null;
+  savedRockets: Rocket[];
+  isSaving: boolean;
+  initializationAttempted: boolean;
+  
   // Actions
   updateRocket: (fn: (rocket: Rocket) => Rocket) => void;
   setSim: (sim: SimulationResult | null) => void;
@@ -104,10 +118,16 @@ export interface RocketState {
   setSimulationProgress: (progress: number) => void;
   setLastSimulationType: (type: string) => void;
   setSimulationMessage: (message: string) => void;
+  
+  // Database actions
+  saveCurrentRocket: () => Promise<void>;
+  loadUserRockets: () => Promise<void>;
+  initializeDatabase: () => Promise<void>;
+  saveChatMessage: (role: 'user' | 'assistant' | 'system', content: string, actions?: any) => Promise<void>;
 }
 
 // Create the enhanced store
-export const useRocket = create<RocketState>()((set) => ({
+export const useRocket = create<RocketState>()((set, get) => ({
   // Core state
   rocket: DEFAULT_ROCKET,
   sim: null,
@@ -128,9 +148,56 @@ export const useRocket = create<RocketState>()((set) => ({
   lastSimulationType: "standard",
   simulationMessage: "",
   
+  // Database state
+  isDatabaseConnected: false,
+  currentSessionId: null,
+  savedRockets: [],
+  isSaving: false,
+  initializationAttempted: false,
+  
   // Core actions
-  updateRocket: (fn) => set((s) => ({ rocket: fn(structuredClone(s.rocket)) })),
-  setSim: (sim) => set({ sim }),
+  updateRocket: (fn) => {
+    const newRocket = fn(structuredClone(get().rocket));
+    set({ rocket: newRocket });
+    
+    // Auto-save to database if connected (non-blocking)
+    if (get().isDatabaseConnected) {
+      get().saveCurrentRocket();
+    }
+  },
+  
+  setSim: async (sim) => {
+    set({ sim });
+    
+    // Save simulation result to database if connected (non-blocking)
+    if (sim && get().isDatabaseConnected) {
+      const state = get();
+      
+      try {
+        // FIRST: Ensure rocket is saved to database
+        const savedRocket = await saveRocketToDb(state.rocket);
+        
+        if (savedRocket) {
+          // THEN: Save simulation with the rocket ID from database
+          await saveSimulationToDb(
+            savedRocket.id, // Use DB rocket ID, not store rocket ID
+            sim, 
+            state.lastSimulationType
+          );
+          console.log('Simulation saved successfully');
+        } else {
+          // Fallback: try with store rocket ID
+          await saveSimulationToDb(
+            state.rocket.id, 
+            sim, 
+            state.lastSimulationType
+          );
+        }
+      } catch (error) {
+        console.warn('Failed to save simulation to database:', error);
+      }
+    }
+  },
   
   // Configuration actions
   setEnvironment: (environment) => set({ environment }),
@@ -147,4 +214,118 @@ export const useRocket = create<RocketState>()((set) => ({
   setSimulationProgress: (simulationProgress) => set({ simulationProgress }),
   setLastSimulationType: (lastSimulationType) => set({ lastSimulationType }),
   setSimulationMessage: (message) => set({ simulationMessage: message }),
-})); 
+  
+  // Database actions
+  saveCurrentRocket: async () => {
+    const state = get();
+    if (state.isSaving) return; // Prevent concurrent saves
+    
+    set({ isSaving: true });
+    try {
+      const saved = await saveRocketToDb(state.rocket);
+      if (saved) {
+        console.log('Rocket saved to database successfully');
+        // Update saved rockets list
+        get().loadUserRockets();
+      }
+    } catch (error) {
+      console.warn('Failed to save rocket:', error);
+    } finally {
+      set({ isSaving: false });
+    }
+  },
+  
+  loadUserRockets: async () => {
+    try {
+      const rockets = await databaseService.loadUserRockets();
+      set({ savedRockets: rockets });
+    } catch (error) {
+      console.warn('Failed to load user rockets:', error);
+      set({ savedRockets: [] });
+    }
+  },
+  
+  initializeDatabase: async () => {
+    const state = get();
+    if (state.initializationAttempted) {
+      return; // Prevent multiple initialization attempts
+    }
+    
+    set({ initializationAttempted: true });
+    
+    try {
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database initialization timeout')), 10000)
+      );
+      
+      const initPromise = (async () => {
+        // Test database connection
+        const isConnected = await databaseService.testConnection();
+        
+        if (isConnected) {
+          // Get or create session
+          const sessionId = await getCurrentSessionId();
+          
+          // Load user rockets
+          const rockets = await databaseService.loadUserRockets();
+          
+          set({ 
+            isDatabaseConnected: true, 
+            currentSessionId: sessionId,
+            savedRockets: rockets
+          });
+          
+          console.log('Database initialized successfully');
+        } else {
+          console.warn('Database connection failed - running in offline mode');
+          set({ isDatabaseConnected: false });
+        }
+      })();
+      
+      await Promise.race([initPromise, timeoutPromise]);
+      
+    } catch (error) {
+      console.warn('Database initialization failed:', error);
+      set({ isDatabaseConnected: false });
+    }
+  },
+  
+  saveChatMessage: async (role, content, actions) => {
+    const state = get();
+    if (!state.isDatabaseConnected) {
+      return; // Graceful degradation - just don't save
+    }
+    
+    try {
+      // FIRST: Ensure we have a valid session
+      let sessionId = state.currentSessionId;
+      if (!sessionId) {
+        sessionId = await getCurrentSessionId();
+        set({ currentSessionId: sessionId });
+      }
+      
+      // THEN: Save chat message
+      await saveChatToDb(
+        sessionId,
+        role,
+        content,
+        state.rocket.id,
+        actions
+      );
+    } catch (error) {
+      console.warn('Failed to save chat message:', error);
+    }
+  }
+}));
+
+// Initialize database connection when store is created (with better error handling)
+if (typeof window !== 'undefined') {
+  // Only run in browser environment and add delay to avoid race conditions
+  setTimeout(() => {
+    const state = useRocket.getState();
+    if (!state.initializationAttempted) {
+      state.initializeDatabase();
+    }
+  }, 1000); // Wait 1 second for auth to settle
+} 

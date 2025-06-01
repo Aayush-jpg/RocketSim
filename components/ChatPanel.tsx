@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRocket } from '@/lib/store'
 import { dispatchActions } from '@/lib/ai/actions'
+import { useAuth } from '@/lib/auth/AuthContext'
+import { chatService } from '@/lib/services/chat.service'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
@@ -20,10 +22,11 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanelProps) {
+  const { user, userSession } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: 'Welcome to RocketSim! I can help you design and optimize your rocket. What would you like to work on today?',
+      content: 'Welcome to ROCKETv1! I can help you design and optimize your rocket. What would you like to work on today?',
       agent: 'master'
     }
   ]);
@@ -36,12 +39,67 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
   const [currentlyRunningAgent, setCurrentlyRunningAgent] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   
+  // Load chat history when component mounts
+  useEffect(() => {
+    if (user && userSession) {
+      loadChatHistory();
+    }
+  }, [user, userSession]);
+  
   // Auto-scroll chat to bottom on new messages
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
+  
+  // Load previous chat messages from database
+  const loadChatHistory = async () => {
+    if (!user || !userSession) return;
+    
+    try {
+      const history = await chatService.getChatHistory(userSession.session_id, 50);
+      if (history.length > 0) {
+        const formattedHistory = history.map((msg: any) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          agent: msg.context_data?.agent || 'master'
+        }));
+        setMessages([
+          {
+            role: 'assistant',
+            content: 'Welcome back to ROCKETv1! Your previous conversation has been restored. How can I help you today?',
+            agent: 'master'
+          },
+          ...formattedHistory
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    }
+  };
+  
+  // Save message to database
+  const saveMessage = async (message: ChatMessage, context?: any) => {
+    if (!user || !userSession) return;
+    
+    try {
+      await chatService.saveChatMessage({
+        userId: user.id,
+        sessionId: userSession.session_id,
+        role: message.role,
+        content: message.content,
+        contextData: {
+          agent: message.agent,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          ...context
+        }
+      });
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
+  };
   
   // Suggested commands
   const quickActions = [
@@ -221,6 +279,10 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick }: ChatPanel
         agent: json.agent_used // Store the agent that handled this message
       };
       setMessages([...history, assistantMessage]);
+      
+      // Save both user and assistant messages to database
+      await saveMessage(userMessage, { rocket, environment });
+      await saveMessage(assistantMessage, { actions: json.actions, agentUsed: json.agent_used });
       
       // Store which agent was used for next request
       if (json.agent_used) {

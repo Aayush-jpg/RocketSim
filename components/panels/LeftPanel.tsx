@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import UserProfile from "@/components/ui/UserProfile"
 
 interface SidebarProps {
   isCollapsed: boolean
@@ -172,15 +173,7 @@ export default function Sidebar({ isCollapsed, onCollapse }: SidebarProps) {
 
       {/* Footer */}
       <div className="p-6 border-t border-white/5">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium">U</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white">User</p>
-            <p className="text-xs text-gray-400">Pro Plan</p>
-          </div>
-        </div>
+        <UserProfile />
       </div>
     </div>
   )
