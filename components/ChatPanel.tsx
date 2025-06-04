@@ -20,9 +20,10 @@ interface ChatPanelProps {
   activeAnalysis?: string | null;
   onAnalysisClick?: (analysisId: string) => void;
   loadSessionId?: string | null;  // Add this prop to trigger loading a specific session
+  projectId?: string | null;  // Add this prop to load project-specific conversations
 }
 
-export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSessionId }: ChatPanelProps) {
+export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSessionId, projectId }: ChatPanelProps) {
   const { user, userSession } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -55,6 +56,13 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
       useRocket.getState().loadChatSession(loadSessionId);
     }
   }, [loadSessionId]);
+  
+  // Load project-specific chat history when projectId changes
+  useEffect(() => {
+    if (projectId && user) {
+      loadProjectChatHistory(projectId);
+    }
+  }, [projectId, user]);
   
   // Auto-scroll chat to bottom on new messages
   useEffect(() => {
@@ -130,6 +138,98 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     }
   };
   
+  // Load chat history for a specific project
+  const loadProjectChatHistory = async (rocketId: string) => {
+    if (!user) return;
+    
+    console.log('🚀 Loading project chat history for rocket ID:', rocketId);
+    
+    try {
+      const history = await chatService.getChatHistoryByRocket(rocketId, 100);
+      console.log('🚀 Found', history.length, 'messages for rocket', rocketId);
+      
+      if (history.length > 0) {
+        const formattedHistory = history.map((msg: any) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          agent: msg.context_data?.agent || 'master'
+        }));
+        setMessages([
+          {
+            role: 'assistant',
+            content: `Loading conversations for this project. You can continue where you left off!`,
+            agent: 'system'
+          },
+          ...formattedHistory
+        ]);
+        console.log('🚀 Successfully loaded project chat history');
+      } else {
+        console.log('⚠️ No messages found for rocket', rocketId, 'trying alternative approach...');
+        
+        // Try to get all sessions associated with this rocket
+        const sessions = await chatService.getSessionsByRocket(rocketId);
+        console.log('🚀 Found sessions for rocket:', sessions);
+        
+        if (sessions.length > 0) {
+          // Load messages from all sessions associated with this rocket
+          let allMessages: any[] = [];
+          for (const sessionId of sessions) {
+            const sessionHistory = await chatService.getChatHistory(sessionId, 50);
+            allMessages = [...allMessages, ...sessionHistory];
+          }
+          
+          console.log('🚀 Found', allMessages.length, 'messages across', sessions.length, 'sessions');
+          
+          if (allMessages.length > 0) {
+            // Sort by created_at
+            allMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            
+            const formattedHistory = allMessages.map((msg: any) => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+              agent: msg.context_data?.agent || 'master'
+            }));
+            
+            setMessages([
+              {
+                role: 'assistant',
+                content: `Loading conversations for this project from ${sessions.length} session(s). You can continue where you left off!`,
+                agent: 'system'
+              },
+              ...formattedHistory
+            ]);
+            console.log('🚀 Successfully loaded project chat history from sessions');
+          } else {
+            setMessages([
+              {
+                role: 'assistant',
+                content: 'No previous conversations found for this project. Let\'s start designing!',
+                agent: 'system'
+              }
+            ]);
+          }
+        } else {
+          setMessages([
+            {
+              role: 'assistant',
+              content: 'No previous conversations found for this project. Let\'s start designing!',
+              agent: 'system'
+            }
+          ]);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading project chat history:', error);
+      setMessages([
+        {
+          role: 'assistant',
+          content: 'Welcome to this project! How can I help you with your rocket design?',
+          agent: 'master'
+        }
+      ]);
+    }
+  };
+  
   // Save message to database
   const saveMessage = async (message: ChatMessage, context?: any) => {
     if (!user) return;
@@ -138,17 +238,23 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     const targetSessionId = loadSessionId || userSession?.session_id;
     if (!targetSessionId) return;
     
+    // Get current rocket ID - prioritize projectId if we're in project mode
+    const currentRocketId = projectId || context?.rocketId || useRocket.getState().rocket?.id;
+    
+    console.log('💾 Saving message with rocket ID:', currentRocketId, 'session:', targetSessionId);
+    
     try {
       await chatService.saveChatMessage({
         userId: user.id,
         sessionId: targetSessionId,
-        rocketId: context?.rocketId, // Include rocket ID from context
+        rocketId: currentRocketId, // Use the current rocket ID
         role: message.role,
         content: message.content,
         contextData: {
           agent: message.agent,
           timestamp: new Date().toISOString(),
           userAgent: navigator.userAgent,
+          projectId: projectId, // Also store projectId in context
           ...context
         }
       });

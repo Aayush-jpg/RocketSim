@@ -662,6 +662,96 @@ export class ChatService {
       };
     }
   }
+
+  /**
+   * Get chat history for a specific rocket/project
+   */
+  async getChatHistoryByRocket(rocketId: string, limit = 50): Promise<ChatMessage[]> {
+    try {
+      console.log('🔍 Fetching chat history for rocket:', rocketId);
+      
+      // Try with inner join first
+      const { data: innerJoinData, error: innerJoinError } = await supabase
+        .from('chat_messages')
+        .select(`
+          *,
+          user_sessions!inner(session_id)
+        `)
+        .eq('rocket_id', rocketId)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      
+      if (innerJoinData && innerJoinData.length > 0) {
+        console.log('🔍 Found', innerJoinData.length, 'messages with inner join');
+        return innerJoinData;
+      }
+      
+      // If inner join doesn't work, try without the join
+      const { data: simpleData, error: simpleError } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('rocket_id', rocketId)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      
+      if (simpleError) {
+        console.error('Error fetching chat history by rocket (simple query):', simpleError);
+        return [];
+      }
+      
+      console.log('🔍 Found', simpleData?.length || 0, 'messages with simple query');
+      return simpleData || [];
+    } catch (error) {
+      console.error('Chat history by rocket fetch failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all sessions associated with a specific rocket
+   */
+  async getSessionsByRocket(rocketId: string): Promise<string[]> {
+    try {
+      console.log('🔍 Searching for sessions associated with rocket:', rocketId);
+      
+      // First, try to find messages directly linked to the rocket
+      const { data: directMessages, error: directError } = await supabase
+        .from('chat_messages')
+        .select('session_id')
+        .eq('rocket_id', rocketId)
+        .order('created_at', { ascending: false });
+      
+      if (directError) {
+        console.error('Error fetching direct messages by rocket:', directError);
+      }
+      
+      const directSessionIds = new Set(directMessages?.map(row => row.session_id).filter(Boolean) || []);
+      console.log('🔍 Found', directSessionIds.size, 'sessions with direct rocket links');
+      
+      // Also search for messages that might reference this rocket ID in content or context
+      const { data: contextMessages, error: contextError } = await supabase
+        .from('chat_messages')
+        .select('session_id, context_data, content')
+        .or(`context_data->rocketId.eq.${rocketId},content.ilike.%${rocketId}%`)
+        .order('created_at', { ascending: false });
+      
+      if (contextError) {
+        console.error('Error fetching context messages:', contextError);
+      }
+      
+      const contextSessionIds = new Set(contextMessages?.map(row => row.session_id).filter(Boolean) || []);
+      console.log('🔍 Found', contextSessionIds.size, 'additional sessions with rocket references in context');
+      
+      // Combine all session IDs
+      const allSessionIds = Array.from(new Set([...Array.from(directSessionIds), ...Array.from(contextSessionIds)]));
+      console.log('🔍 Total unique sessions found:', allSessionIds.length);
+      
+      return allSessionIds;
+    } catch (error) {
+      console.error('Sessions by rocket fetch failed:', error);
+      return [];
+    }
+  }
 }
 
 export const chatService = new ChatService(); 

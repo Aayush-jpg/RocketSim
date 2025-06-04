@@ -152,14 +152,22 @@ export default function RocketSim() {
   const [showTooltips, setShowTooltips] = useState(false);
   
   const [loadChatSessionId, setLoadChatSessionId] = useState<string | null>(null); // Add state for loading specific chat sessions
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null); // Add state for project-specific conversations
 
   // Handle chat session loading
   const handleChatSessionClick = (sessionId: string) => {
     setLoadChatSessionId(sessionId);
+    setCurrentProjectId(null); // Clear project-specific mode when loading a specific session
   };
 
   const handleChatSessionLoad = (sessionId: string | null) => {
     setLoadChatSessionId(sessionId);
+  };
+
+  // Handle project clicks - load project-specific conversations
+  const handleProjectClick = (projectId: string) => {
+    setCurrentProjectId(projectId);
+    setLoadChatSessionId(null); // Clear session-specific mode when loading project conversations
   };
 
   useEffect(() => {
@@ -188,8 +196,8 @@ export default function RocketSim() {
           >
             <LeftPanel 
               isCollapsed={isLeftPanelCollapsed} 
-              onCollapse={() => setIsLeftPanelCollapsed(true)}
-              onChatSessionClick={handleChatSessionClick}
+              onCollapse={toggleLeftPanel}
+              onProjectClick={handleProjectClick}
             />
             
             {/* Tooltip for left panel */}
@@ -198,6 +206,22 @@ export default function RocketSim() {
                 Cmd+1 to toggle
               </div>
             )}
+          </motion.div>
+        )}
+        
+        {/* Collapsed Left Panel - Show minimal expand button */}
+        {isLeftPanelCollapsed && (
+          <motion.div
+            className="h-full relative w-16"
+            initial={{ width: '64px' }}
+            animate={{ width: '64px' }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <LeftPanel 
+              isCollapsed={isLeftPanelCollapsed} 
+              onCollapse={toggleLeftPanel}
+              onProjectClick={handleProjectClick}
+            />
           </motion.div>
         )}
         
@@ -259,6 +283,7 @@ export default function RocketSim() {
             isCollapsed={isRightPanelCollapsed}
             loadSessionId={loadChatSessionId}
             onChatSessionLoad={handleChatSessionLoad}
+            projectId={currentProjectId}
           />
           
           {/* Tooltip for right panel collapse */}

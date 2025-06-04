@@ -40,7 +40,7 @@ import { cleanupOrphanedSessions } from '@/lib/services/database.service'
 interface LeftPanelProps {
   isCollapsed: boolean
   onCollapse: () => void
-  onChatSessionClick?: (sessionId: string) => void
+  onProjectClick?: (projectId: string) => void
 }
 
 interface NewRocketDialogProps {
@@ -151,7 +151,7 @@ function formatTimeAgo(dateString: string): string {
   return `${diffDays}d ago`
 }
 
-export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick }: LeftPanelProps) {
+export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: LeftPanelProps) {
   const { 
     savedRockets, 
     userSimulations, 
@@ -183,19 +183,19 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
   }
 
   const handleLoadRocket = (rocket: Rocket) => {
+    // Load the rocket in the 3D view
     loadRocket(rocket)
+    
+    // Notify parent component that a project was clicked so it can load project-specific chat
+    if (onProjectClick) {
+      onProjectClick(rocket.id)
+    }
   }
 
   const handleDeleteRocket = async (rocketId: string) => {
     await deleteRocketFromList(rocketId)
     refreshPanelData()
   }
-
-  const handleChatSessionClick = (sessionId: string) => {
-    if (onChatSessionClick) {
-      onChatSessionClick(sessionId);
-    }
-  };
 
   const handleCleanupSessions = async () => {
     setIsRefreshing(true);
@@ -282,25 +282,15 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
           </Button>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation - Remove Files tab, only show Projects */}
         <div className="flex space-x-1 bg-black/20 rounded-lg p-1">
           <Button
-            variant={activeSection === "projects" ? "default" : "ghost"}
+            variant="default"
             size="sm"
-            onClick={() => setActiveSection("projects")}
             className="flex-1"
           >
             <FileText className="w-4 h-4 mr-2" />
             Projects
-          </Button>
-          <Button
-            variant={activeSection === "files" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveSection("files")}
-            className="flex-1"
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Files
           </Button>
         </div>
       </div>
@@ -318,7 +308,7 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
             <p className="text-sm">Loading...</p>
           </div>
-        ) : activeSection === "projects" ? (
+        ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-gray-300">
@@ -371,13 +361,19 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
                       
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="p-1 opacity-0 group-hover:opacity-100">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleLoadRocket(rocket)}>
-                            Load Rocket
+                        <DropdownMenuContent>
+                          <DropdownMenuItem 
+                            onClick={() => handleLoadRocket(rocket)}
+                          >
+                            Open Project
                           </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => handleDeleteRocket(rocket.id)}
@@ -393,135 +389,6 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
                 ))}
               </div>
             )}
-
-            <NewRocketDialog 
-              open={showNewRocketDialog}
-              onOpenChange={setShowNewRocketDialog}
-              onCreateRocket={handleCreateRocket}
-            />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-300">Data Files</h2>
-              <Button variant="ghost" size="sm" className="text-xs" onClick={refreshPanelData}>
-                Refresh
-              </Button>
-            </div>
-
-            {/* Statistics Cards */}
-            {userStats && (
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <Card className="p-3 text-center">
-                  <div className="text-lg font-bold text-white">{userStats.rocketsCount}</div>
-                  <div className="text-xs text-gray-400">Rockets</div>
-                </Card>
-                <Card className="p-3 text-center">
-                  <div className="text-lg font-bold text-white">{userStats.simulationsCount}</div>
-                  <div className="text-xs text-gray-400">Simulations</div>
-                </Card>
-                <Card className="p-3 text-center">
-                  <div className="text-lg font-bold text-white">{userStats.messagesCount}</div>
-                  <div className="text-xs text-gray-400">Messages</div>
-                </Card>
-              </div>
-            )}
-
-            {/* Simulations */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                Recent Simulations ({userSimulations.length})
-              </h3>
-              {userSimulations.slice(0, 5).map((sim) => (
-                <div
-                  key={sim.id}
-                  className="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/5 cursor-pointer"
-                >
-                  <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-4 h-4 text-blue-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
-                      {sim.rockets?.name || 'Unknown Rocket'} Simulation
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {sim.fidelity} • {sim.max_altitude?.toFixed(1) || 'N/A'}m
-                    </p>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    {formatTimeAgo(sim.created_at)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Chat Sessions */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-gray-300">CHAT SESSIONS ({userChatSessions.length})</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCleanupSessions}
-                    disabled={isRefreshing}
-                    className="text-xs text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
-                    title="Clean up empty sessions"
-                  >
-                    🧹
-                  </button>
-                  <button
-                    onClick={refreshPanelData}
-                    disabled={isRefreshing}
-                    className="text-xs text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              {userChatSessions.slice(0, 5).map((session) => {
-                // Find the rocket that was being worked on in this session
-                const sessionRockets = savedRockets.filter(rocket => 
-                  // This is a simplified check - in a real implementation, 
-                  // you'd want to track rocket-session relationships in the database
-                  true
-                );
-                
-                // Create a meaningful session name
-                const sessionName = session.message_count > 0 
-                  ? `Chat Session - ${session.message_count} messages`
-                  : session.rocket_count > 0 
-                    ? `Design Session - ${session.rocket_count} rockets`
-                    : 'New Session';
-                
-                const timeAgo = formatTimeAgo(session.last_activity);
-                
-                return (
-                  <div 
-                    key={session.session_id}
-                    onClick={() => handleChatSessionClick(session.session_id)}
-                    className="group flex items-center justify-between p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center space-x-3 min-w-0 flex-1">
-                      <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                        <MessageSquare className="w-4 h-4 text-green-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-white truncate">
-                          {sessionName}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {session.message_count} messages • {session.rocket_count} rockets
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2 text-xs text-gray-500">
-                      <Clock className="w-3 h-3" />
-                      <span>{timeAgo}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
       </div>
@@ -530,6 +397,13 @@ export default function LeftPanel({ isCollapsed, onCollapse, onChatSessionClick 
       <div className="p-6 border-t border-white/5">
         <UserProfile />
       </div>
+
+      {/* New Rocket Dialog */}
+      <NewRocketDialog 
+        open={showNewRocketDialog}
+        onOpenChange={setShowNewRocketDialog}
+        onCreateRocket={handleCreateRocket}
+      />
     </div>
   )
 }

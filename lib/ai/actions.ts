@@ -222,33 +222,74 @@ export function dispatchActions(actions: any[]) {
   let modifiedRocket = structuredClone(currentRocket);
   let actualChanges = false; // Track if we made actual changes
   
-  // CLEAN UP ACTIONS - Fix truncated IDs with "..." 
+  // CLEAN UP ACTIONS - Fix truncated IDs with "..." AND handle simple names
   const cleanedActions = actions.map(action => {
-    if (action.id && typeof action.id === 'string' && action.id.endsWith('...')) {
-      // AI agent is adding "..." to IDs - try to find the real ID
-      const truncatedId = action.id.replace('...', '');
-      console.log(`🔧 AI added "..." to ID. Truncated: "${action.id}" → Looking for: "${truncatedId}"`);
-      
-      // Find the real part ID that starts with the truncated version
-      const realPart = currentRocket.parts.find(part => 
-        part.id === truncatedId || part.id.startsWith(truncatedId)
-      );
-      
-      if (realPart) {
-        console.log(`✅ Found real part ID: "${realPart.id}" for truncated "${action.id}"`);
-        return { ...action, id: realPart.id };
-      } else {
-        console.warn(`⚠️ Could not find real part for truncated ID: "${action.id}"`);
-        // Try partial matching - find part that contains the truncated ID
-        const partialMatch = currentRocket.parts.find(part => 
-          part.id.includes(truncatedId) || truncatedId.includes(part.id)
+    if (action.id && typeof action.id === 'string') {
+      // Handle truncated IDs with "..."
+      if (action.id.endsWith('...')) {
+        const truncatedId = action.id.replace('...', '');
+        console.log(`🔧 AI truncated ID: "${action.id}" → Looking for prefix: "${truncatedId}"`);
+        console.log(`🔧 Available part IDs:`, currentRocket.parts.map(p => `"${p.id}"`));
+        
+        const realPart = currentRocket.parts.find(part => 
+          part.id === truncatedId || part.id.startsWith(truncatedId)
         );
-        if (partialMatch) {
-          console.log(`🔍 Found partial match: "${partialMatch.id}" for "${action.id}"`);
-          return { ...action, id: partialMatch.id };
+        
+        if (realPart) {
+          console.log(`✅ Found real part ID: "${realPart.id}" for truncated "${action.id}"`);
+          return { ...action, id: realPart.id };
+        } else {
+          console.warn(`⚠️ NO MATCH FOUND for truncated ID: "${action.id}"`);
+          console.warn(`⚠️ Tried prefix: "${truncatedId}"`);
+          console.warn(`⚠️ Available parts:`, currentRocket.parts.map(p => ({ id: p.id, type: p.type })));
+          
+          // Try shorter prefix as fallback (first 8 characters)
+          if (truncatedId.length >= 8) {
+            const shortPrefix = truncatedId.substring(0, 8);
+            console.log(`🔧 Trying shorter prefix: "${shortPrefix}"`);
+            const fallbackPart = currentRocket.parts.find(part => part.id.startsWith(shortPrefix));
+            if (fallbackPart) {
+              console.log(`✅ Found with short prefix: "${fallbackPart.id}"`);
+              return { ...action, id: fallbackPart.id };
+            }
+          }
         }
       }
+      
+      // Handle simple agent names like "body1", "nose1", "finset1", etc.
+      const simpleNamePattern = /^(body|nose|fin|finset)(\d*)$/i;
+      const match = action.id.match(simpleNamePattern);
+      
+      if (match) {
+        const partType = match[1].toLowerCase();
+        const partIndex = parseInt(match[2] || '1') - 1; // Convert to 0-based index
+        
+        console.log(`🔧 AI used simple name: "${action.id}" → Looking for ${partType} part at index ${partIndex}`);
+        
+        // Map part type names
+        let targetType = partType;
+        if (partType === 'finset') targetType = 'fin';
+        
+        // Find parts of the target type
+        const partsOfType = currentRocket.parts.filter(part => part.type === targetType);
+        
+        if (partsOfType.length > 0) {
+          // Use the specified index, or the first part if index is out of bounds
+          const targetPart = partsOfType[Math.min(partIndex, partsOfType.length - 1)];
+          console.log(`✅ Mapped simple name "${action.id}" to real part ID: "${targetPart.id}" (type: ${targetPart.type})`);
+          return { ...action, id: targetPart.id };
+        } else {
+          console.warn(`⚠️ No parts of type "${targetType}" found for simple name "${action.id}"`);
+        }
+      }
+      
+      // Handle motor updates in update_rocket actions
+      if (action.action === 'update_rocket' && action.props && action.props.motorId) {
+        console.log(`🚀 Found motor update in rocket action: ${action.props.motorId}`);
+        return action; // Pass through as-is
+      }
     }
+    
     return action;
   });
   
@@ -283,22 +324,31 @@ export function dispatchActions(actions: any[]) {
           console.log('🔧 Found part to update:', part);
           console.log('🔧 Props to apply:', action.props);
           
+          // Normalize property names - handle diameter symbol
+          const normalizedProps = { ...action.props };
+          if (normalizedProps.Ø !== undefined) {
+            normalizedProps['Ø'] = normalizedProps.Ø; // Keep the symbol
+          }
+          if (normalizedProps['baseØ'] !== undefined) {
+            normalizedProps['baseØ'] = normalizedProps['baseØ']; // Keep for nose parts
+          }
+          
           // Check if this will actually change anything
           let willChange = false;
-          Object.keys(action.props).forEach(key => {
-            if (part[key as keyof Part] !== action.props[key]) {
+          Object.keys(normalizedProps).forEach(key => {
+            if (part[key as keyof Part] !== normalizedProps[key]) {
               willChange = true;
-              console.log(`🔧 Property ${key} will change: ${part[key as keyof Part]} → ${action.props[key]}`);
+              console.log(`🔧 Property ${key} will change: ${part[key as keyof Part]} → ${normalizedProps[key]}`);
             } else {
               console.log(`🔧 Property ${key} unchanged: ${part[key as keyof Part]}`);
             }
           });
           
           if (willChange) {
-            Object.assign(part, action.props);
+            Object.assign(part, normalizedProps);
             rocketModified = true;
             actualChanges = true;
-            modificationDescription = `Modified ${part.type}${action.props.color ? ` color to ${action.props.color}` : ''}`;
+            modificationDescription = `Modified ${part.type}${normalizedProps.color ? ` color to ${normalizedProps.color}` : ''}`;
             console.log('🔧 Part after update:', part);
           } else {
             console.log('🔧 No actual changes needed for this part');
@@ -363,10 +413,19 @@ export function dispatchActions(actions: any[]) {
           modifiedRocket.units = action.units;
           rocketChanged = true;
         }
+        // Handle motorId updates from agent
+        if (action.props && action.props.motorId && modifiedRocket.motorId !== action.props.motorId) {
+          console.log(`🚀 Updating motor from ${modifiedRocket.motorId} to ${action.props.motorId}`);
+          modifiedRocket.motorId = action.props.motorId;
+          rocketChanged = true;
+          modificationDescription = `Changed motor to ${action.props.motorId}`;
+        }
         if (rocketChanged) {
           rocketModified = true;
           actualChanges = true;
-          modificationDescription = action.description || 'Updated rocket configuration';
+          if (!modificationDescription) {
+            modificationDescription = action.description || 'Updated rocket configuration';
+          }
         }
         break;
         

@@ -101,11 +101,12 @@ function formatNumber(value: number): string {
   return value.toFixed(value < 10 ? 2 : 1).replace(/\.?0+$/, '');
 }
 
-type RightPanelProps = {
+interface RightPanelProps {
   onCollapse: () => void;
   isCollapsed: boolean;
   loadSessionId?: string | null;
   onChatSessionLoad?: (sessionId: string | null) => void;
+  projectId?: string | null;
 }
 
 const analysisTypes = [
@@ -119,7 +120,7 @@ const analysisTypes = [
   { id: "versions", label: "Versions", icon: "🕐", description: "Design history" },
 ];
 
-export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onChatSessionLoad }: RightPanelProps) {
+export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onChatSessionLoad, projectId }: RightPanelProps) {
   const [metricsExpanded, setMetricsExpanded] = useState(false);
   const [activeAnalysis, setActiveAnalysis] = useState<string | null>(null);
   
@@ -345,6 +346,7 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
               activeAnalysis={activeAnalysis}
               onAnalysisClick={handleAnalysisClick}
               loadSessionId={loadSessionId}
+              projectId={projectId}
             />
           </div>
 
