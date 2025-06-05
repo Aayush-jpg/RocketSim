@@ -23,6 +23,7 @@ export default function VersionHistoryTab() {
     isLoadingVersions, 
     loadRocketVersions, 
     revertToVersion,
+    loadRocketVersion,
     rocket,
     savedRockets,
     isDatabaseConnected
@@ -42,6 +43,11 @@ export default function VersionHistoryTab() {
     if (window.confirm('Are you sure you want to revert to this version? This will create a new version with the reverted design.')) {
       revertToVersion(versionId);
     }
+  };
+
+  const handleLoadVersion = (versionId: string) => {
+    console.log('Loading version:', versionId, 'for rocket:', rocket.id);
+    loadRocketVersion(versionId, rocket.id);
   };
 
   return (
@@ -158,6 +164,15 @@ export default function VersionHistoryTab() {
                   </div>
                   
                   <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleLoadVersion(version.id)}
+                      className="text-xs bg-white/5 border-white/20 hover:bg-white/10"
+                    >
+                      <Clock className="w-3 h-3 mr-1" />
+                      Load
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

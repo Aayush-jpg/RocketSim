@@ -157,6 +157,9 @@ export interface RocketState {
   loadRocketVersions: () => Promise<void>;
   revertToVersion: (versionId: string) => Promise<void>;
   clearRocketVersions: () => void;
+  
+  // New function to load a specific rocket version
+  loadRocketVersion: (versionId: string, originalRocketId: string) => Promise<void>;
 }
 
 // Create the enhanced store
@@ -206,14 +209,22 @@ export const useRocket = create<RocketState>()((set, get) => ({
     // Auto-save to database if connected (non-blocking)
     if (get().isDatabaseConnected && !skipAutoSave) {
       // Check if this is an existing rocket (has a saved version) 
-      // If so, save as new version instead of creating new rocket
+      // Use a more robust check for existing rockets
       const currentRocket = get().rocket;
-      if (get().savedRockets.some(r => r.id === currentRocket.id)) {
+      const existingRocket = get().savedRockets.find(r => r.id === currentRocket.id);
+      
+      if (existingRocket) {
         // This is an existing rocket - save new version
+        console.log('🔄 Saving version for existing rocket:', currentRocket.name);
         get().saveRocketVersionWithDescription('Auto-saved changes', 'user_edit');
       } else {
-        // This is a new rocket - save normally
-        get().saveCurrentRocket();
+        // This is a new rocket - only save if it has a proper name and isn't a temporary rocket
+        if (currentRocket.name && !currentRocket.name.includes('Default') && !currentRocket.id.includes('local-')) {
+          console.log('💾 Saving new rocket:', currentRocket.name);
+          get().saveCurrentRocket();
+        } else {
+          console.log('⏭️ Skipping auto-save for temporary/default rocket');
+        }
       }
     }
   },
@@ -274,11 +285,24 @@ export const useRocket = create<RocketState>()((set, get) => ({
     
     set({ isSaving: true });
     try {
-      const saved = await saveRocketToDb(state.rocket);
-      if (saved) {
-        console.log('Rocket saved to database successfully');
-        // Update saved rockets list
+      // Check if rocket already exists in database
+      const existingRocket = state.savedRockets.find(r => r.id === state.rocket.id);
+      
+      if (existingRocket) {
+        // Update existing rocket instead of creating new one
+        console.log('🔄 Updating existing rocket:', state.rocket.name);
+        await databaseService.updateRocket(state.rocket);
+        // Refresh saved rockets list
         get().loadUserRockets();
+      } else {
+        // Save as new rocket
+        console.log('💾 Saving new rocket:', state.rocket.name);
+        const saved = await saveRocketToDb(state.rocket);
+        if (saved) {
+          console.log('Rocket saved to database successfully');
+          // Update saved rockets list
+          get().loadUserRockets();
+        }
       }
     } catch (error) {
       console.warn('Failed to save rocket:', error);
@@ -372,6 +396,7 @@ export const useRocket = create<RocketState>()((set, get) => ({
   
   // Left panel actions
   loadRocket: (rocket) => {
+    console.log('🚀 Loading rocket:', rocket.name, 'ID:', rocket.id);
     set({ rocket });
     // Clear version history when switching rockets
     get().clearRocketVersions();
@@ -504,6 +529,40 @@ export const useRocket = create<RocketState>()((set, get) => ({
     } catch (error) {
       console.error('Failed to load rocket versions:', error);
       set({ rocketVersions: [], isLoadingVersions: false });
+    }
+  },
+  
+  // New function to load a specific rocket version
+  loadRocketVersion: async (versionId: string, originalRocketId: string) => {
+    const state = get();
+    if (!state.isDatabaseConnected) return;
+    
+    try {
+      console.log('🕐 Loading rocket version:', versionId, 'for rocket:', originalRocketId);
+      
+      // Get the version data
+      const version = state.rocketVersions.find(v => v.id === versionId);
+      if (!version) {
+        console.error('Version not found:', versionId);
+        return;
+      }
+      
+      // Create rocket object from version data, but keep the original rocket ID
+      const versionRocket: Rocket = {
+        id: originalRocketId, // Keep original rocket ID for chat history
+        name: version.name,
+        parts: typeof version.parts === 'string' ? JSON.parse(version.parts) : version.parts,
+        motorId: version.motor_id,
+        Cd: version.drag_coefficient,
+        units: version.units as 'metric' | 'imperial'
+      };
+      
+      // Load the version rocket (this will maintain chat history since ID is preserved)
+      set({ rocket: versionRocket });
+      console.log('✅ Loaded version rocket with preserved ID for chat history');
+      
+    } catch (error) {
+      console.error('Failed to load rocket version:', error);
     }
   },
   

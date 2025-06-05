@@ -159,6 +159,44 @@ export class DatabaseService {
   }
 
   /**
+   * Update existing rocket to database (prevents duplicates)
+   */
+  async updateRocket(rocket: Rocket): Promise<DbRocket | null> {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return null;
+
+      const rocketData = this.convertRocketToDb(rocket);
+      
+      const { data, error } = await supabase
+        .from('rockets')
+        .update({
+          name: rocketData.name,
+          parts: rocketData.parts,
+          motor_id: rocketData.motor_id,
+          drag_coefficient: rocketData.drag_coefficient,
+          units: rocketData.units,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', rocket.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating rocket in database:', error);
+        return null;
+      }
+
+      console.log('✅ Rocket updated successfully:', rocket.name);
+      return data;
+    } catch (error) {
+      console.error('Database update failed:', error);
+      return null;
+    }
+  }
+
+  /**
    * Load user rockets from database
    */
   async loadUserRockets(): Promise<Rocket[]> {
