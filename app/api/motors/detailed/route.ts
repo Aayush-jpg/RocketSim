@@ -1,28 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MOTOR_DATABASE } from "@/lib/data/motors";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    // Forward request to RocketPy service
-    const rocketpyUrl = process.env.ROCKETPY_URL || "http://localhost:8000";
-    const response = await fetch(`${rocketpyUrl}/motors/detailed`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("RocketPy motor data failed:", errorText);
-      throw new Error(`Motor data retrieval failed: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    
-    // Add metadata
-    result.timestamp = new Date().toISOString();
+    // Use centralized motor database directly for detailed specs
+    const result = {
+      motors: MOTOR_DATABASE,
+      timestamp: new Date().toISOString(),
+      total_count: Object.keys(MOTOR_DATABASE).length,
+      categories: {
+        solid: Object.values(MOTOR_DATABASE).filter(m => m.type === "solid").length,
+        liquid: Object.values(MOTOR_DATABASE).filter(m => m.type === "liquid").length,
+        hybrid: Object.values(MOTOR_DATABASE).filter(m => m.type === "hybrid").length
+      }
+    };
 
     return NextResponse.json(result);
   } catch (error) {

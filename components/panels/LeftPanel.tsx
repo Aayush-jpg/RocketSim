@@ -349,7 +349,7 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
                       >
                         <h3 className="font-medium text-white text-sm">{rocket.name}</h3>
                         <p className="text-xs text-gray-400 mt-1">
-                          {rocket.parts.length} parts • {rocket.motorId}
+                          {(rocket.body_tubes?.length || 0) + (rocket.fins?.length || 0) + (rocket.parachutes?.length || 0) + (rocket.nose_cone ? 1 : 0)} parts • {rocket.motor?.motor_database_id || 'No motor'}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <RocketStatusBadge rocket={rocket} simulations={userSimulations} />

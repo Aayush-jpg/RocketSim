@@ -12,7 +12,6 @@ import {
 import * as THREE from 'three'
 import { motion } from 'framer-motion'
 import { useRocket } from '@/lib/store'
-import { Part } from '@/types/rocket'
 
 // Flame component for rocket engine
 function RocketFlame({ isLaunched, throttle = 0, preLaunchFire = false, countdownStage = 0 }: { 
@@ -135,52 +134,51 @@ function RocketModel({
 }) {
   const rocketRef = useRef<THREE.Group>(null)
   
-  // Get rocket parts from the store with explicit subscription to force re-renders
+  // Get rocket from store
   const rocket = useRocket(state => state.rocket)
-  const { parts } = rocket
   
-  // Force re-render when rocket parts change - enhanced detection
+  // Access components directly - much cleaner approach!
+  const nosePart = rocket.nose_cone;
+  const bodyPart = rocket.body_tubes[0]; // Use first body tube
+  const finParts = rocket.fins;
+  const enginePart = rocket.motor;
+  const parachuteParts = rocket.parachutes;
+  
+  // Calculate component count for re-render tracking
+  const componentCount = (nosePart ? 1 : 0) + rocket.body_tubes.length + rocket.fins.length + rocket.parachutes.length + (enginePart ? 1 : 0);
+  
+  // Force re-render when rocket components change - enhanced detection
   const [renderKey, setRenderKey] = useState(0)
-  const prevPartsRef = useRef(parts)
-  const partsHashRef = useRef('')
+  const prevRocketRef = useRef(rocket)
+  const rocketHashRef = useRef('')
   
-  // Create a comprehensive hash of all part properties
-  const createPartsHash = useCallback((parts: Part[]) => {
-    return parts.map(p => {
-      const baseKey = `${p.type}-${p.id}-${p.color}`;
-      if (p.type === 'fin') {
-        const finPart = p as any;
-        return `${baseKey}-root:${finPart.root || 0}-span:${finPart.span || 0}-sweep:${finPart.sweep || 0}`;
-      } else if (p.type === 'body') {
-        const bodyPart = p as any;
-        return `${baseKey}-Ø:${bodyPart.Ø || 0}-length:${bodyPart.length || 0}`;
-      } else if (p.type === 'nose') {
-        const nosePart = p as any;
-        return `${baseKey}-shape:${nosePart.shape || 'ogive'}-length:${nosePart.length || 0}-baseØ:${nosePart.baseØ || 0}`;
-      } else if (p.type === 'engine') {
-        const enginePart = p as any;
-        return `${baseKey}-thrust:${enginePart.thrust || 0}-Isp:${enginePart.Isp || 0}`;
-      }
-      return baseKey;
-    }).join('|');
+  // Create a comprehensive hash of all component properties
+  const createRocketHash = useCallback((rocket: any) => {
+    const components = [
+      rocket.nose_cone ? `nose-${rocket.nose_cone.id}-${rocket.nose_cone.length_m}-${rocket.nose_cone.base_radius_m}` : '',
+      ...rocket.body_tubes.map((body: any) => `body-${body.id}-${body.outer_radius_m}-${body.length_m}`),
+      ...rocket.fins.map((fin: any) => `fin-${fin.id}-${fin.root_chord_m}-${fin.span_m}`),
+      rocket.motor ? `motor-${rocket.motor.motor_database_id}` : '',
+      ...rocket.parachutes.map((para: any) => `para-${para.id}`)
+    ].filter(Boolean);
+    return components.join('|');
   }, []);
   
   useEffect(() => {
-    const currentPartsHash = createPartsHash(parts);
-    const prevPartsHash = partsHashRef.current;
+    const currentRocketHash = createRocketHash(rocket);
+    const prevRocketHash = rocketHashRef.current;
     
-    console.log('🔍 RocketModel: Checking for parts changes');
-    console.log('📊 Current parts hash:', currentPartsHash);
-    console.log('📋 Previous parts hash:', prevPartsHash);
-    console.log('🔄 Parts changed:', currentPartsHash !== prevPartsHash);
-    console.log('📦 Current parts count:', parts.length);
-    console.log('📦 Previous parts count:', prevPartsRef.current.length);
+    console.log('🔍 RocketModel: Checking for component changes');
+    console.log('📊 Current rocket hash:', currentRocketHash);
+    console.log('📋 Previous rocket hash:', prevRocketHash);
+    console.log('🔄 Components changed:', currentRocketHash !== prevRocketHash);
+    console.log('📦 Current component count:', componentCount);
     
-    if (currentPartsHash !== prevPartsHash) {
-      console.log('🚀 PARTS CHANGED - Forcing complete re-render!');
+    if (currentRocketHash !== prevRocketHash) {
+      console.log('🚀 COMPONENTS CHANGED - Forcing complete re-render!');
       console.log('🆚 Detailed comparison:');
-      console.log('   Previous parts:', JSON.stringify(prevPartsRef.current, null, 2));
-      console.log('   Current parts:', JSON.stringify(parts, null, 2));
+      console.log('   Previous rocket:', JSON.stringify(prevRocketRef.current, null, 2));
+      console.log('   Current rocket:', JSON.stringify(rocket, null, 2));
       
       setRenderKey(prev => {
         const newKey = prev + 1;
@@ -188,8 +186,8 @@ function RocketModel({
         return newKey;
       });
       
-      prevPartsRef.current = structuredClone(parts);
-      partsHashRef.current = currentPartsHash;
+      prevRocketRef.current = structuredClone(rocket);
+      rocketHashRef.current = currentRocketHash;
       
       // Force a more aggressive re-render by changing the rocket's position slightly
       if (rocketRef.current) {
@@ -202,63 +200,53 @@ function RocketModel({
         }, 1);
       }
     }
-  }, [parts, createPartsHash]);
-  
-  // Also trigger re-render when individual part properties change
+  }, [rocket, createRocketHash, componentCount]);
+
+  // Also trigger re-render when individual component properties change
   const [partChangeKey, setPartChangeKey] = useState(0);
   useEffect(() => {
-    // Watch for changes in specific part properties that affect rendering
-    const bodyPart = parts.find(part => part.type === 'body') as any;
-    const finParts = parts.filter(part => part.type === 'fin') as any[];
-    const nosePart = parts.find(part => part.type === 'nose') as any;
-    
+    // Watch for changes in specific component properties that affect rendering
     const criticalValues = {
-      bodyDiameter: bodyPart?.Ø || 0,
-      bodyLength: bodyPart?.length || 0,
-      finRoot: finParts[0]?.root || 0,
-      finSpan: finParts[0]?.span || 0,
-      noseLength: nosePart?.length || 0,
-      partCount: parts.length
+      bodyDiameter: bodyPart?.outer_radius_m || 0,
+      bodyLength: bodyPart?.length_m || 0,
+      finRoot: finParts[0]?.root_chord_m || 0,
+      finSpan: finParts[0]?.span_m || 0,
+      noseLength: nosePart?.length_m || 0,
+      componentCount: componentCount
     };
     
     const criticalHash = JSON.stringify(criticalValues);
     const prevCriticalHash = localStorage.getItem('rocketCriticalHash') || '';
     
     if (criticalHash !== prevCriticalHash) {
-      console.log('🎯 Critical part properties changed, forcing re-render');
+      console.log('🎯 Critical component properties changed, forcing re-render');
       console.log('⚙️ Critical values:', criticalValues);
       setPartChangeKey(prev => prev + 1);
       localStorage.setItem('rocketCriticalHash', criticalHash);
     }
-  }, [parts]);
-  
-  // Find parts by type
-  const nosePart = parts.find(part => part.type === 'nose')
-  const bodyPart = parts.find(part => part.type === 'body')
-  const finParts = parts.filter(part => part.type === 'fin')
-  const enginePart = parts.find(part => part.type === 'engine') // Add engine part lookup
-  
-  // DEBUG: Log bodyPart details
-  console.log("RocketModel: bodyPart from store:", bodyPart);
-  console.log("RocketModel: bodyPart.Ø:", bodyPart?.Ø);
+  }, [nosePart, bodyPart, finParts, componentCount]);
 
-  // Get dimensions from the store or use defaults, scaled for the scene (e.g., cm / 10 = scene units)
-  const bodyRadius = bodyPart?.Ø ? bodyPart.Ø / 20 : 0.5; // Diameter to Radius, then scale
+  // DEBUG: Log component details
+  console.log("RocketModel: bodyPart from store:", bodyPart);
+  console.log("RocketModel: bodyPart outer_radius_m:", bodyPart?.outer_radius_m);
+
+  // Get dimensions directly from components - FIXED SCALING!
+  const bodyRadius = Math.max(bodyPart?.outer_radius_m || 0.05, 0.3); // Ensure minimum visible thickness
   console.log("RocketModel: calculated bodyRadius for scene:", bodyRadius);
   
-  const bodyLengthScaled = bodyPart?.length ? bodyPart.length / 10 : 4;
-  const noseLengthScaled = nosePart?.length ? nosePart.length / 10 : 1.5;
-  const noseShape = nosePart?.shape || 'ogive'; // Currently, 'ogive' is handled by cone, 'conical' would be the same.
+  // ✅ FIXED: Realistic rocket proportions like real rockets
+  const bodyLengthScaled = bodyPart?.length_m ? bodyPart.length_m * 4 : 8; // Taller for realistic proportions
+  const noseLengthScaled = nosePart?.length_m ? nosePart.length_m * 3 : 2; // Longer, more aerodynamic nose
+  const noseShape = nosePart?.shape || 'ogive';
   
-  // Fin dimensions
-  const finRootScaled = finParts[0]?.root ? finParts[0].root / 10 : 1;
-  const finSpanScaled = finParts[0]?.span ? finParts[0].span / 10 : 0.8;
-  // const finSweepScaled = finParts[0]?.sweep ? finParts[0].sweep / 100 : 0; // Sweep is not used by current boxGeometry
+  // Fin dimensions - FIXED: Realistic fin proportions  
+  const finRootScaled = finParts[0]?.root_chord_m ? finParts[0].root_chord_m * 4 : 2; 
+  const finSpanScaled = finParts[0]?.span_m ? finParts[0].span_m * 4 : 1.2;
 
   // DEBUG: Log fin dimensions every render
   console.log("🔧 RocketModel: finParts from store:", finParts);
   console.log("🔧 RocketModel: finRootScaled:", finRootScaled, "finSpanScaled:", finSpanScaled);
-  console.log("🔧 RocketModel: fin raw values - root:", finParts[0]?.root, "span:", finParts[0]?.span);
+  console.log("🔧 RocketModel: fin raw values - root:", finParts[0]?.root_chord_m, "span:", finParts[0]?.span_m);
 
   // Force Three.js to recognize the dimension change with a unique string
   const dimensionKey = `dims-radius${bodyRadius.toFixed(4)}-finRoot${finRootScaled.toFixed(4)}-finSpan${finSpanScaled.toFixed(4)}-renderKey${renderKey}-partKey${partChangeKey}`;
@@ -267,54 +255,41 @@ function RocketModel({
   console.log("RocketModel: finDimensionKey for fin geometries:", finDimensionKey);
   
   // Enhanced render key that includes everything
-  const comprehensiveRenderKey = `${renderKey}-${partChangeKey}-parts${parts.length}-fin-${finRootScaled.toFixed(3)}-${finSpanScaled.toFixed(3)}-body-${bodyRadius.toFixed(3)}-${bodyLengthScaled.toFixed(3)}`;
+  const comprehensiveRenderKey = `${renderKey}-${partChangeKey}-components${componentCount}-fin-${finRootScaled.toFixed(3)}-${finSpanScaled.toFixed(3)}-body-${bodyRadius.toFixed(3)}-${bodyLengthScaled.toFixed(3)}`;
   console.log("🔧 RocketModel: comprehensiveRenderKey:", comprehensiveRenderKey);
   
-  // Proportional lengths for body segments based on original hardcoded ratio (1.6 upper, 2.4 lower => 40% upper, 60% lower)
-  const upperBodyActualLength = bodyLengthScaled * 0.4;
-  const lowerBodyActualLength = bodyLengthScaled * 0.6;
+  // ✅ FIXED: Better proportioned upper/lower body design for recovery system
+  const upperBodyLength = bodyLengthScaled * 0.4; // Upper payload/recovery section (smaller)
+  const lowerBodyLength = bodyLengthScaled * 0.6; // Lower motor/fin section (larger)
+  
+  // Define the recovery bay position (between upper and lower body)
+  const recoveryBayY = 1; // Slightly elevated central reference point
+  
+  const upperBodyCenterY = recoveryBayY + upperBodyLength / 2;
+  const lowerBodyCenterY = recoveryBayY - lowerBodyLength / 2;
+  
+  const topOfUpperBodyY = recoveryBayY + upperBodyLength;
+  const bottomOfLowerBodyY = recoveryBayY - lowerBodyLength;
 
-  // Define key Y positions based on the original structure's reference seam (where upper and lower body meet)
-  // This seam was effectively at Y=0.4 in the original hardcoded model, relative to rocketRef's origin.
-  const seamY = 0.4; 
-
-  const lowerBodyCenterY = seamY - lowerBodyActualLength / 2;
-  const upperBodyCenterY = seamY + upperBodyActualLength / 2;
-
-  const bottomOfLowerBodyY = seamY - lowerBodyActualLength; 
-  const topOfUpperBodyY = seamY + upperBodyActualLength;   
-
-  // Nose cone positioning
+  // Nose cone positioning - at the top of upper body, make it MUCH sharper
   const noseConeBaseY = topOfUpperBodyY;
   const noseConeCenterY = noseConeBaseY + noseLengthScaled / 2;
 
-  // Electronics bay (centered at seamY, fixed height of 0.4)
-  const electronicsBayCenterY = seamY;
+  // Electronics bay - much smaller and at the junction
+  const electronicsBayCenterY = recoveryBayY;
 
-  // Fins positioning
-  // Fins are attached at the bottom of the lower body, extending upwards.
-  // Their center is half their root length up from the bottom of the lower body.
-  const finCenterY = bottomOfLowerBodyY + finRootScaled / 2;
-  const finRadialOffset = bodyRadius + 0.05; // Position fins slightly outside the body radius
-
-  // Engine positioning
-  // Original engine group center Y was -2.2. Original bottomOfLowerBodyY was -2.0. Offset = -0.2.
-  const engineGroupCenterY = bottomOfLowerBodyY - 0.2;
+  // Engine positioning - FIXED: Attached directly to body tube
+  const engineGroupCenterY = bottomOfLowerBodyY - 0.3; // Much closer to body
   
-  // Parachute positioning
-  // Original parachute Y was 1.5. SeamY was 0.4. Original upper body length was 1.6.
-  // Proportional distance up from seam: (1.5 - 0.4) / 1.6 = 0.6875
-  const parachuteCenterY = seamY + (upperBodyActualLength * 0.6875);
+  // Parachute positioning - in upper body
+  const parachuteCenterY = upperBodyCenterY;
 
-  // Flame positioning: RocketFlame's internal flame group is hardcoded at y=-3.
-  // We need to place the RocketFlame component instance such that this y=-3 aligns with the engine nozzle tip.
-  // Approximate engine nozzle tip Y: engineGroupCenterY - (engine main cylinder height/2) - (engine cone height) - (engine small cylinder height)
-  // Original engine: main cyl height 0.5, cone 0.4, small cyl 0.3. Total ~0.95 from engineGroupCenterY to nozzle tip.
+  // Flame positioning for the engine
   const engineNozzleTipY = engineGroupCenterY - 0.95; 
-  // So, if RocketFlame instance is placed at Y_placement, its visual flame appears at Y_placement - 3.
-  // We want Y_placement - 3 = engineNozzleTipY
-  // Y_placement = engineNozzleTipY + 3
   const flameComponentPlacementY = engineNozzleTipY + 3;
+  
+  // Fins positioning - FIXED: Connect body to engine seamlessly
+  const finCenterY = bottomOfLowerBodyY - 0.15; // Between body and engine
   
   // Trigger re-render when the bodyRadius changes
   const [prevBodyRadius, setPrevBodyRadius] = useState(bodyRadius);
@@ -473,31 +448,31 @@ function RocketModel({
       key={`rocket-${comprehensiveRenderKey}`}
       position={[0, 0.8, 0]}
     >
-      {/* Upper body */}
+      {/* Upper body - White like real rockets */}
       <mesh position={[0, upperBodyCenterY, 0]} name="upper-airframe">
         <cylinderGeometry 
           key={dimensionKey + '-upper'} 
-          args={[bodyRadius, bodyRadius, upperBodyActualLength, 32]} 
+          args={[bodyRadius, bodyRadius, upperBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color={bodyPart?.color || "#8C8D91"} 
-          metalness={0.6} 
-          roughness={0.2} 
+          color="#F8F8FF" 
+          metalness={0.1} 
+          roughness={0.3} 
           emissive={getEmissive('airframe')}
           emissiveIntensity={getEmissiveIntensity('airframe')}
         />
       </mesh>
       
-      {/* Lower body */}
+      {/* Lower body - White like real rockets */}
       <mesh position={[0, lowerBodyCenterY, 0]} name="lower-airframe">
         <cylinderGeometry 
           key={dimensionKey + '-lower'} 
-          args={[bodyRadius, bodyRadius, lowerBodyActualLength, 32]} 
+          args={[bodyRadius, bodyRadius, lowerBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color={bodyPart?.color || "#8C8D91"} 
-          metalness={0.6} 
-          roughness={0.2} 
+          color="#F8F8FF" 
+          metalness={0.1} 
+          roughness={0.3} 
           emissive={getEmissive('airframe')}
           emissiveIntensity={getEmissiveIntensity('airframe')}
         />
@@ -512,84 +487,86 @@ function RocketModel({
         <meshStandardMaterial color="#FFFFFF" />
       </mesh>
       
-      {/* Nose cone */}
+      {/* Nose cone - Realistic aerodynamic design */}
       <mesh position={[0, noseConeCenterY, 0]} name="nosecone">
-        <coneGeometry 
-          key={dimensionKey + '-nose'} 
-          args={[bodyRadius, noseLengthScaled, 32]} 
-        /> {/* Use noseLengthScaled */}
+        {noseShape === 'conical' ? (
+          <coneGeometry 
+            key={dimensionKey + '-nose-conical'} 
+            args={[bodyRadius * 0.98, noseLengthScaled, 32]} 
+          />
+        ) : noseShape === 'elliptical' ? (
+          <sphereGeometry 
+            key={dimensionKey + '-nose-elliptical'} 
+            args={[bodyRadius, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2]} 
+          />
+        ) : (
+          /* Sharp, aerodynamic ogive nose cone */
+          <coneGeometry 
+            key={dimensionKey + '-nose-ogive'} 
+            args={[bodyRadius * 0.98, noseLengthScaled, 32]} 
+          />
+        )}
         <meshStandardMaterial 
-          color={nosePart?.color || "#A0A7B8"} 
-          metalness={0.7} 
-          roughness={0.2} 
+          color="#2C3E50" 
+          metalness={0.3} 
+          roughness={0.4} 
           emissive={getEmissive('nosecone')}
           emissiveIntensity={getEmissiveIntensity('nosecone')}
         />
       </mesh>
       
-      {/* Electronics bay */}
+      {/* Electronics bay - FIXED: More visible recovery/electronics section */}
       <group position={[0, electronicsBayCenterY, 0]} name="electronics">
         <mesh>
           <cylinderGeometry 
             key={dimensionKey + '-electronics'} 
-            args={[bodyRadius + 0.01, bodyRadius + 0.01, 0.4, 32]} 
-          /> {/* Fixed height 0.4 */}
+            args={[bodyRadius + 0.02, bodyRadius + 0.02, 0.15, 32]} 
+          /> {/* FIXED: More visible height 0.15 and slightly larger radius */}
           <meshStandardMaterial 
-            color="#222222"
-            metalness={0.35}
-            roughness={0.7}
+            color="#B87333"
+            metalness={0.4}
+            roughness={0.6}
             emissive={getEmissive('electronics')}
             emissiveIntensity={getEmissiveIntensity('electronics')}
           />
         </mesh>
         
-        {/* Rings */}
-        {[0.2, -0.2].map((y, i) => (
-          <mesh key={i} position={[0, y, 0]}>
-          <torusGeometry 
-            key={`${dimensionKey}-ring-${i}`} 
-            args={[bodyRadius + 0.01, 0.02, 16, 32]} 
-          />
-          <meshStandardMaterial color="#888888" metalness={0.8} roughness={0.2} />
-        </mesh>
-        ))}
-        
-        {/* Details */}
-      {[0, 1, 2, 3].map((i) => (
-        <mesh 
-          key={i}
-          position={[
-              Math.sin(i * Math.PI / 2) * (bodyRadius - 0.05),
-              0, 
-              Math.cos(i * Math.PI / 2) * (bodyRadius - 0.05)
-            ]}
-            rotation={[0, i * Math.PI / 2, Math.PI / 2]}
-          >
-            <cylinderGeometry args={[0.04, 0.04, 0.1, 8]} /> {/* Fixed size detail */}
-            <meshStandardMaterial color="#444444" metalness={0.7} roughness={0.3} />
-          </mesh>
-        ))}
+        {/* Small recovery system ports */}
+        {[0, 1, 2, 3].map((i) => (
+          <mesh 
+            key={i}
+            position={[
+                Math.sin(i * Math.PI / 2) * (bodyRadius + 0.01),
+                0, 
+                Math.cos(i * Math.PI / 2) * (bodyRadius + 0.01)
+              ]}
+              rotation={[0, i * Math.PI / 2, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.01, 0.01, 0.02, 8]} /> {/* Small recovery ports */}
+              <meshStandardMaterial color="#8B4513" metalness={0.6} roughness={0.4} />
+            </mesh>
+          ))}
       </group>
       
-      {/* Fins */}
+      {/* Realistic aerodynamic fins */}
       {[0, 1, 2, 3].map((i) => (
         <mesh 
           key={i}
           position={[
-            Math.sin(i * Math.PI / 2) * finRadialOffset, // Use dynamic radial offset
-            finCenterY, // Use dynamic Y center for fins
-            Math.cos(i * Math.PI / 2) * finRadialOffset
+            Math.sin(i * Math.PI / 2) * (bodyRadius + finSpanScaled/3), 
+            finCenterY, 
+            Math.cos(i * Math.PI / 2) * (bodyRadius + finSpanScaled/3)
           ]}
           rotation={[0, i * Math.PI / 2, 0]}
           name="fins"
         >
           <boxGeometry 
             key={`${finDimensionKey}-fin-${i}`} 
-            args={[0.1, finRootScaled, finSpanScaled]} 
-          /> {/* Use finRootScaled, finSpanScaled */}
+            args={[0.05, finRootScaled, finSpanScaled]} 
+          />
           <meshStandardMaterial 
-            color={finParts[0]?.color || "#A0A7B8"} 
-            metalness={0.3} 
+            color="#696969" 
+            metalness={0.4} 
             roughness={0.3} 
             emissive={getEmissive('fins')}
             emissiveIntensity={getEmissiveIntensity('fins')}
@@ -597,42 +574,44 @@ function RocketModel({
         </mesh>
       ))}
       
-      {/* Engine */}
+      {/* Realistic rocket engine - Connected to body */}
       <group position={[0, engineGroupCenterY, 0]} name="engine">
-        {/* Engine parts have fixed dimensions relative to engineGroupCenterY */}
-        <mesh>
-          <cylinderGeometry args={[0.35, 0.4, 0.5, 32]} />
+        {/* Main engine chamber - connects directly to body */}
+        <mesh position={[0, 0.1, 0]}>
+          <cylinderGeometry args={[bodyRadius, bodyRadius * 0.95, 0.4, 32]} />
           <meshStandardMaterial 
-            color={enginePart?.color || "#0066FF"} 
-            metalness={0.7} 
-            roughness={0.3} 
+            color="#708090" 
+            metalness={0.8} 
+            roughness={0.2} 
             emissive={getEmissive('engine')}
             emissiveIntensity={getEmissiveIntensity('engine')}
           />
-      </mesh>
+        </mesh>
 
-        <mesh position={[0, -0.3, 0]}> {/* Relative to engine group center */}
-          <coneGeometry args={[0.4, 0.4, 32, 1, true]} />
+        {/* Engine nozzle - realistic cone shape */}
+        <mesh position={[0, -0.25, 0]}>
+          <coneGeometry args={[bodyRadius * 0.9, 0.6, 32, 1, true]} />
           <meshStandardMaterial 
-            color={enginePart?.color || "#0066FF"} 
-            metalness={0.7} 
-            roughness={0.2}
+            color="#2F4F4F" 
+            metalness={0.9} 
+            roughness={0.1}
             emissive={getEmissive('engine')}
             emissiveIntensity={getEmissiveIntensity('engine')}
           />
         </mesh>
         
-        <mesh position={[0, -0.5, 0]} rotation={[Math.PI, 0, 0]}> {/* Relative to engine group center */}
-          <cylinderGeometry args={[0.28, 0.32, 0.3, 32]} />
-          <meshStandardMaterial color="#111111" metalness={0.5} roughness={0.8} />
+        {/* Engine throat - dark interior */}
+        <mesh position={[0, -0.5, 0]} rotation={[Math.PI, 0, 0]}>
+          <cylinderGeometry args={[bodyRadius * 0.6, bodyRadius * 0.7, 0.25, 32]} />
+          <meshStandardMaterial color="#1C1C1C" metalness={0.5} roughness={0.8} />
         </mesh>
       </group>
 
       {/* Parachute */}
       <mesh position={[0, parachuteCenterY, 0]} name="parachute">
-        <cylinderGeometry args={[0.2, 0.2, 0.3, 16]} /> {/* Fixed size parachute */}
+        <cylinderGeometry args={[0.2, 0.2, 0.3, 16]} />
         <meshStandardMaterial 
-          color="#DD2222" 
+          color={parachuteParts[0]?.color || "#DD2222"} 
           metalness={0.2} 
           roughness={0.5}
           emissive={getEmissive('parachute')}
@@ -1560,7 +1539,8 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
       console.log('🔄 MiddlePanel: Rocket state changed, forcing re-render!');
       console.log('📊 Previous hash length:', lastRocketHash.length);
       console.log('📊 Current hash length:', currentRocketHash.length);
-      console.log('📦 Parts count changed:', rocket.parts.length);
+      const partsCount = (rocket.nose_cone ? 1 : 0) + rocket.body_tubes.length + rocket.fins.length + rocket.parachutes.length + (rocket.motor ? 1 : 0);
+      console.log('📦 Parts count changed:', partsCount);
       
       setForceRenderKey(prev => {
         const newKey = prev + 1;
@@ -1588,21 +1568,17 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
     }
   }, []);
   
-  // Create a simple hash of parts for key generation
-  const partsHash = rocket.parts.map(p => {
-    const baseKey = `${p.type}-${p.id}`;
-    if (p.type === 'fin') {
-      return `${baseKey}-${(p as any).root || 0}-${(p as any).span || 0}`;
-    } else if (p.type === 'body') {
-      return `${baseKey}-${(p as any).Ø || 0}-${(p as any).length || 0}`;
-    } else if (p.type === 'nose') {
-      return `${baseKey}-${(p as any).length || 0}-${(p as any).baseØ || 0}`;
-    }
-    return baseKey;
-  }).join('|');
+  // Create a simple hash of components for key generation
+  const componentsHash = [
+    rocket.nose_cone ? `nose-${rocket.nose_cone.id}-${rocket.nose_cone.length_m}` : '',
+    ...rocket.body_tubes.map(body => `body-${body.id}-${body.outer_radius_m}-${body.length_m}`),
+    ...rocket.fins.map(fin => `fin-${fin.id}-${fin.root_chord_m}-${fin.span_m}`),
+    rocket.motor ? `motor-${rocket.motor.motor_database_id}` : '',
+    ...rocket.parachutes.map(para => `para-${para.id}`)
+  ].filter(Boolean).join('|');
   
   // ENHANCED KEY GENERATION with force render key
-  const finalRenderKey = `${partsHash}-force${forceRenderKey}`;
+  const finalRenderKey = `${componentsHash}-force${forceRenderKey}`;
   console.log('🔧 MiddlePanel: Final render key:', finalRenderKey);
   
   // Fixed ground position that places rocket on top of grid

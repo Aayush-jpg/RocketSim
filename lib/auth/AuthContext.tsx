@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/database/supabase';
+import { markAuthAttempt, autoRecoverFromAuthTimeout } from '@/lib/utils/authHelpers';
 
 interface AuthContextType {
   user: User | null;
@@ -31,12 +32,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for previous auth timeout issues and auto-recover
+    autoRecoverFromAuthTimeout();
+    
+    // Mark this auth attempt
+    markAuthAttempt();
+    
     // Get initial session with timeout protection
     const getInitialSession = async () => {
       try {
-        // Add timeout to prevent hanging auth check
+        // Reduce timeout from 8000ms to 5000ms (5 seconds)
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Auth initialization timeout')), 8000)
+          setTimeout(() => reject(new Error('Auth initialization timeout')), 5000)
         );
         
         const sessionPromise = supabase.auth.getSession();
@@ -52,8 +59,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setSession(initialSession);
           setUser(initialSession?.user ?? null);
           
+          // Only initialize user session after a brief delay to avoid race conditions
           if (initialSession?.user) {
-            await initializeUserSession(initialSession.user);
+            setTimeout(() => initializeUserSession(initialSession.user), 500);
           }
         }
       } catch (error) {
@@ -77,7 +85,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        await initializeUserSession(session.user);
+        // Add delay to prevent race conditions with user record creation
+        setTimeout(() => initializeUserSession(session.user), 300);
       } else {
         setUserSession(null);
       }
@@ -86,11 +95,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(false);
     });
 
-    // Safety timeout to ensure loading doesn't stay true indefinitely
+    // Reduce safety timeout from 10000ms to 6000ms (6 seconds)
     const safetyTimeout = setTimeout(() => {
       console.warn('Auth loading timeout - forcing loading to false');
       setLoading(false);
-    }, 10000); // 10 second safety timeout
+    }, 6000);
 
     return () => {
       subscription.unsubscribe();
@@ -147,9 +156,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Create a new session record for tracking user activity
       const sessionId = crypto.randomUUID(); // Use proper UUID format
       
-      // Add timeout for session creation to prevent hanging
+      // Reduce timeout from 5000ms to 3000ms (3 seconds)
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session creation timeout')), 5000)
+        setTimeout(() => reject(new Error('Session creation timeout')), 3000)
       );
       
       const sessionPromise = supabase
@@ -181,12 +190,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.error('Foreign key constraint violation - user may not exist in database');
           console.log('Attempting to resolve user synchronization issue...');
           
-          // Try to sync the user again and retry session creation
+          // Try to sync the user again and retry session creation ONCE
           await ensureUserRecord(user);
           
-          // Retry session creation once more
+          // Single retry with shorter timeout
           try {
-            const { data: retrySession, error: retryError } = await supabase
+            const retryPromise = supabase
               .from('user_sessions')
               .insert({
                 user_id: user.id,
@@ -201,6 +210,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               })
               .select()
               .single();
+
+            const retryTimeout = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Retry timeout')), 2000)
+            );
+
+            const { data: retrySession, error: retryError } = await Promise.race([
+              retryPromise,
+              retryTimeout
+            ]) as any;
 
             if (retryError) {
               throw retryError;

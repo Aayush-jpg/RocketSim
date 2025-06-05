@@ -90,13 +90,13 @@ export default function LocationPermissionDialog({
     const soundSpeed = Math.sqrt(1.4 * 287.05 * tempK);
 
     // Update global environment conditions with real data
-    window.environmentConditions = {
+    const environmentConfig = {
       latitude: locationData.latitude,
       longitude: locationData.longitude,
       elevation: locationData.elevation,
       windSpeed: weatherData.current.windSpeed,
       windDirection: weatherData.current.windDirection,
-      atmosphericModel: "real_time",
+      atmosphericModel: "forecast" as const,
       date: new Date().toISOString(),
       temperature: weatherData.current.temperature,
       pressure: weatherData.current.pressure,
@@ -105,6 +105,12 @@ export default function LocationPermissionDialog({
       cloudCover: weatherData.current.cloudCover,
       airDensity: density,
       soundSpeed: soundSpeed
+    };
+
+    // Update global environment conditions with real data
+    window.environmentConditions = {
+      ...environmentConfig,
+      atmosphericModel: "forecast"
     };
 
     // Dispatch event for UI updates

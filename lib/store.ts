@@ -1,21 +1,20 @@
 import { create } from 'zustand';
 import { 
   Rocket, 
-  Part, 
   SimulationResult, 
   EnvironmentConfig, 
-  LaunchParameters,
-  MonteCarloResult,
-  StabilityAnalysis,
-  MotorAnalysis,
-  RecoveryPrediction
+  LaunchParameters, 
+  MonteCarloResult, 
+  StabilityAnalysis, 
+  MotorAnalysis, 
+  RecoveryPrediction 
 } from '@/types/rocket';
 import { 
   databaseService, 
-  saveRocketToDb, 
-  saveSimulationToDb, 
+  saveRocketToDb,
+  saveSimulationToDb,
+  getCurrentSessionId, 
   saveChatToDb,
-  getCurrentSessionId,
   createNewRocket,
   deleteRocket,
   getUserSimulations,
@@ -24,49 +23,14 @@ import {
   saveRocketVersion,
   getRocketVersions,
   revertToRocketVersion,
+  loadRocketById,
+  getRocketForSession,
   cleanupOrphanedSessions
 } from '@/lib/services/database.service';
+import { getDefaultRocket } from '@/lib/data/templates';
 
-// Default rocket configuration
-export const DEFAULT_ROCKET: Rocket = {
-  id: crypto.randomUUID(),
-  name: 'Default Rocket',
-  parts: [
-    {
-      id: crypto.randomUUID(),
-      type: 'nose',
-      color: '#A0A7B8',
-      shape: 'ogive',
-      length: 15,
-      baseØ: 5
-    },
-    {
-      id: crypto.randomUUID(),
-      type: 'body',
-      color: '#8C8D91',
-      Ø: 10,
-      length: 40
-    },
-    {
-      id: crypto.randomUUID(),
-      type: 'fin',
-      color: '#A0A7B8',
-      root: 10,
-      span: 8,
-      sweep: 6
-    },
-    {
-      id: crypto.randomUUID(),
-      type: 'engine',
-      color: '#0066FF',
-      thrust: 32,
-      Isp: 200
-    }
-  ],
-  motorId: 'default-motor',
-  Cd: 0.35,
-  units: 'metric'
-};
+// Use centralized default rocket from templates
+const DEFAULT_ROCKET = getDefaultRocket();
 
 // Default environment configuration
 export const DEFAULT_ENVIRONMENT: EnvironmentConfig = {
@@ -330,9 +294,9 @@ export const useRocket = create<RocketState>()((set, get) => ({
     set({ initializationAttempted: true });
     
     try {
-      // Add timeout to prevent hanging
+      // Reduce timeout from 10000ms to 6000ms (6 seconds)
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Database initialization timeout')), 10000)
+        setTimeout(() => reject(new Error('Database initialization timeout')), 6000)
       );
       
       const initPromise = (async () => {
@@ -547,19 +511,13 @@ export const useRocket = create<RocketState>()((set, get) => ({
         return;
       }
       
-      // Create rocket object from version data, but keep the original rocket ID
-      const versionRocket: Rocket = {
-        id: originalRocketId, // Keep original rocket ID for chat history
-        name: version.name,
-        parts: typeof version.parts === 'string' ? JSON.parse(version.parts) : version.parts,
-        motorId: version.motor_id,
-        Cd: version.drag_coefficient,
-        units: version.units as 'metric' | 'imperial'
-      };
-      
-      // Load the version rocket (this will maintain chat history since ID is preserved)
-      set({ rocket: versionRocket });
-      console.log('✅ Loaded version rocket with preserved ID for chat history');
+      // Load the rocket from database using the original rocket ID
+      const versionRocket = await loadRocketById(originalRocketId);
+      if (versionRocket) {
+        // Load the version rocket (this will maintain chat history since ID is preserved)
+        set({ rocket: versionRocket });
+        console.log('✅ Loaded version rocket with preserved ID for chat history');
+      }
       
     } catch (error) {
       console.error('Failed to load rocket version:', error);
@@ -590,11 +548,11 @@ export const useRocket = create<RocketState>()((set, get) => ({
 
 // Initialize database connection when store is created (with better error handling)
 if (typeof window !== 'undefined') {
-  // Only run in browser environment and add delay to avoid race conditions
+  // Increase delay from 1000ms to 2000ms to wait for auth to fully settle
   setTimeout(() => {
     const state = useRocket.getState();
     if (!state.initializationAttempted) {
       state.initializeDatabase();
     }
-  }, 1000); // Wait 1 second for auth to settle
+  }, 2000); // Wait 2 seconds for auth to settle
 } 

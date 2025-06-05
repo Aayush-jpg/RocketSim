@@ -6,8 +6,8 @@
  * It provides strong typing for rocket components, simulation results, analysis data, and configuration objects.
  * 
  * Key Type Categories:
- * - **Rocket Parts**: PartBase, Nose, Body, Fin, Engine - Define rocket component structures
- * - **Rocket Model**: Main Rocket interface containing parts array, motor, and physical properties
+ * - **Rocket Components**: Component-based architecture for professional-grade design
+ * - **Rocket Model**: Main Rocket interface using component-based architecture
  * - **Simulation Data**: SimulationResult, TrajectoryData, FlightEvent - Results from physics simulations
  * - **Analysis Results**: StabilityAnalysis, MotorAnalysis, MonteCarloResult - Engineering analysis outputs
  * - **Configuration**: EnvironmentConfig, LaunchParameters - Simulation setup parameters
@@ -20,20 +20,87 @@
  * - Physics simulation interfaces
  * - Database schema validation
  * 
- * @version 1.0.0
+ * @version 3.0.0 - Component-based architecture only
  * @author ROCKETv1 Team
  */
 
-export interface PartBase { id: string; type: string; color: string }
-export interface Nose extends PartBase { type: "nose"; shape:"ogive"|"conical"; length:number; baseØ:number }
-export interface Body extends PartBase { type: "body"; Ø:number; length:number }
-export interface Fin  extends PartBase { type: "fin"; root:number; span:number; sweep:number }
-export interface Engine extends PartBase { type: "engine"; thrust:number; Isp?:number }
-export type Part = Nose | Body | Fin | Engine;
+// ===========================
+// COMPONENT-BASED MODEL
+// ===========================
 
+/** Component-based nose cone with SI units and material properties */
+export interface NoseComponent {
+  id: string;
+  shape: "ogive" | "conical" | "elliptical" | "parabolic";
+  length_m: number;                    // Length in meters
+  base_radius_m?: number;             // Base radius in meters (if different from body)
+  wall_thickness_m: number;           // Wall thickness in meters
+  material_density_kg_m3: number;     // Material density in kg/m³
+  surface_roughness_m: number;        // Surface roughness in meters
+  color?: string;                     // Optional color for rendering
+}
+
+/** Component-based body tube with SI units and material properties */
+export interface BodyComponent {
+  id: string;
+  outer_radius_m: number;             // Outer radius in meters
+  length_m: number;                   // Length in meters
+  wall_thickness_m: number;           // Wall thickness in meters
+  material_density_kg_m3: number;     // Material density in kg/m³
+  surface_roughness_m: number;        // Surface roughness in meters
+  color?: string;                     // Optional color for rendering
+}
+
+/** Component-based fin with SI units and aerodynamic properties */
+export interface FinComponent {
+  id: string;
+  fin_count: number;                  // Number of fins (typically 3 or 4)
+  root_chord_m: number;               // Root chord length in meters
+  tip_chord_m: number;                // Tip chord length in meters
+  span_m: number;                     // Fin span in meters
+  sweep_length_m: number;             // Sweep length in meters
+  thickness_m: number;                // Fin thickness in meters
+  material_density_kg_m3: number;     // Material density in kg/m³
+  airfoil?: string;                   // Airfoil type (e.g., "symmetric")
+  cant_angle_deg: number;             // Cant angle in degrees
+  color?: string;                     // Optional color for rendering
+}
+
+/** Component-based motor with database reference and positioning */
+export interface MotorComponent {
+  id: string;
+  motor_database_id: string;          // Reference to motor in database
+  position_from_tail_m: number;       // Position from rocket tail in meters
+  nozzle_expansion_ratio?: number;    // Nozzle expansion ratio
+  chamber_pressure_pa?: number;       // Chamber pressure in Pascals
+}
+
+/** Component-based parachute with deployment parameters */
+export interface ParachuteComponent {
+  id: string;
+  name: string;                       // Parachute name
+  cd_s_m2: number;                    // Drag coefficient × reference area in m²
+  trigger: string | number;           // Trigger: "apogee", altitude in meters, or custom
+  sampling_rate_hz: number;           // Sampling rate in Hz
+  lag_s: number;                      // Deployment lag in seconds
+  noise_bias: number;                 // Noise bias
+  noise_deviation: number;            // Noise standard deviation
+  noise_correlation: number;          // Noise correlation
+  position_from_tail_m: number;       // Position from rocket tail in meters
+  color?: string;                     // Optional color for rendering
+}
+
+/** Main component-based rocket model */
 export interface Rocket {
-  id: string; name: string; parts: Part[];
-  motorId: string; Cd: number; units:"metric"|"imperial";
+  id: string;
+  name: string;
+  nose_cone: NoseComponent;
+  body_tubes: BodyComponent[];
+  fins: FinComponent[];
+  motor: MotorComponent;
+  parachutes: ParachuteComponent[];
+  coordinate_system: "tail_to_nose" | "nose_to_tail";
+  rail_guides_position_m?: number[];  // Rail guide positions from tail in meters
 }
 
 // Enhanced simulation types
@@ -114,6 +181,14 @@ export interface EnvironmentConfig {
   windDirection: number;
   atmosphericModel: "standard" | "forecast" | "custom";
   date?: string;
+  temperature?: number;
+  pressure?: number;
+  humidity?: number;
+  visibility?: number;
+  cloudCover?: number;
+  airDensity?: number;
+  soundSpeed?: number;
+  timestamp?: string;
 }
 
 export interface LaunchParameters {

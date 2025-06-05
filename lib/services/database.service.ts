@@ -2,40 +2,33 @@
  * ROCKETv1 - Database Integration Service
  * ======================================
  * 
- * This service provides a non-destructive database persistence layer that integrates with the existing
- * Zustand store and React Three Fiber frontend without breaking current functionality. It acts as a
- * bridge between the application's in-memory state and Supabase PostgreSQL database.
+ * This service provides a database persistence layer for component-based rocket designs.
+ * It stores and retrieves rocket designs using the professional component-based architecture
+ * with SI units and material properties.
  * 
  * **Core Responsibilities:**
- * - Convert between frontend Rocket types and database schema formats
- * - Save/load rocket designs with graceful degradation on failures
+ * - Store component-based rocket designs in database
+ * - Save/load rocket designs with full component fidelity
  * - Persist simulation results and analysis data
  * - Manage chat message history and session tracking
  * - Extract searchable tags from rocket configurations
  * - Provide user statistics and data insights
  * 
  * **Integration Philosophy:**
- * - **Non-blocking**: Database failures don't crash the application
- * - **Graceful degradation**: Returns empty arrays/null on database errors
- * - **Type safety**: Proper conversion between store types and database types
- * - **Session management**: Tracks user activity and rocket creation statistics
- * - **Authentication aware**: Respects user authentication state
+ * - **Component-first**: All rockets use professional component-based model
+ * - **SI Units**: Consistent use of metric system throughout
+ * - **Type safety**: Full TypeScript support for component properties
+ * - **Material properties**: Store density, thickness, surface roughness
+ * - **Engineering precision**: Professional-grade data storage
  * 
- * **Database Operations:**
- * - Rocket CRUD operations with tag extraction and categorization
- * - Simulation result persistence with JSONB trajectory data
- * - Chat message storage with session correlation
- * - User session tracking for analytics and activity monitoring
+ * **Database Schema:**
+ * - Rockets stored as JSONB with component structure
+ * - Full material property preservation
+ * - SI unit consistency enforced
+ * - Professional metadata tracking
  * 
- * **Error Handling:**
- * - All database operations wrapped in try-catch blocks
- * - Console logging for debugging without disrupting user experience
- * - Fallback to local-only operation when database unavailable
- * 
- * @version 1.0.0
+ * @version 3.0.0 - Component-based architecture only
  * @author ROCKETv1 Team
- * @see {@link lib/database/supabase.ts} for database client configuration
- * @see {@link lib/store.ts} for Zustand store integration
  */
 
 import { supabase, getCurrentUser } from '@/lib/database/supabase';
@@ -48,12 +41,13 @@ import type {
   NewChatMessage,
   AnalysisResult
 } from '@/lib/database/supabase';
-import { Rocket, SimulationResult, Part } from '@/types/rocket';
+import { Rocket, SimulationResult } from '@/types/rocket';
 import { toJson } from '@/lib/database/types';
+import { MATERIALS } from '@/lib/data/materials';
+import { createRocketFromTemplate, TEMPLATES } from '@/lib/data/templates';
 
 /**
- * Database service that integrates with existing functionality
- * Provides persistence layer without breaking existing features
+ * Database service for component-based rocket architecture
  */
 export class DatabaseService {
   private static instance: DatabaseService;
@@ -66,63 +60,122 @@ export class DatabaseService {
   }
 
   /**
-   * Convert store rocket to database format
+   * Convert component rocket to database format
    */
   private convertRocketToDb(rocket: Rocket): Omit<NewRocket, 'user_id'> {
     return {
       name: rocket.name,
-      parts: rocket.parts as any,
-      motor_id: rocket.motorId,
-      drag_coefficient: rocket.Cd,
-      units: rocket.units,
+      parts: {
+        nose_cone: rocket.nose_cone,
+        body_tubes: rocket.body_tubes,
+        fins: rocket.fins,
+        motor: rocket.motor,
+        parachutes: rocket.parachutes,
+        coordinate_system: rocket.coordinate_system,
+        rail_guides_position_m: rocket.rail_guides_position_m
+      } as any,
+      motor_id: rocket.motor.motor_database_id,
+      drag_coefficient: this.calculateDragCoefficient(rocket),
+      units: 'metric', // Always metric for component-based rockets
       is_public: false,
       tags: this.extractRocketTags(rocket)
     };
   }
 
   /**
-   * Convert database rocket to store format
+   * Convert database rocket to component format
    */
   private convertRocketFromDb(dbRocket: DbRocket): Rocket {
+    const parts = dbRocket.parts as any;
+    
     return {
       id: dbRocket.id,
       name: dbRocket.name,
-      parts: dbRocket.parts as unknown as Part[],
-      motorId: dbRocket.motor_id || 'default-motor',
-      Cd: typeof dbRocket.drag_coefficient === 'number' 
-        ? dbRocket.drag_coefficient 
-        : parseFloat(String(dbRocket.drag_coefficient) || '0.35'),
-      units: (dbRocket.units as 'metric' | 'imperial') || 'metric'
+      nose_cone: parts.nose_cone,
+      body_tubes: parts.body_tubes || [],
+      fins: parts.fins || [],
+      motor: parts.motor,
+      parachutes: parts.parachutes || [],
+      coordinate_system: parts.coordinate_system || "tail_to_nose",
+      rail_guides_position_m: parts.rail_guides_position_m
     };
   }
 
   /**
-   * Extract tags from rocket for categorization
+   * Calculate drag coefficient from component properties
+   */
+  private calculateDragCoefficient(rocket: Rocket): number {
+    // Professional calculation based on component geometry
+    const noseDrag = this.calculateNoseDrag(rocket.nose_cone);
+    const bodyDrag = this.calculateBodyDrag(rocket.body_tubes);
+    const finDrag = this.calculateFinDrag(rocket.fins);
+    
+    return noseDrag + bodyDrag + finDrag;
+  }
+
+  private calculateNoseDrag(nose: any): number {
+    // Simplified nose drag calculation based on shape and length
+    const baseCoeff: { [key: string]: number } = {
+      'ogive': 0.15,
+      'conical': 0.18,
+      'elliptical': 0.12,
+      'parabolic': 0.14
+    };
+    return baseCoeff[nose.shape] || 0.15;
+  }
+
+  private calculateBodyDrag(bodies: any[]): number {
+    // Body tube drag is minimal in subsonic flight
+    return 0.02 * bodies.length;
+  }
+
+  private calculateFinDrag(fins: any[]): number {
+    // Fin drag calculation based on fin area and configuration
+    let totalDrag = 0;
+    fins.forEach(fin => {
+      const finArea = fin.root_chord_m * fin.span_m * fin.fin_count;
+      totalDrag += 0.01 * finArea; // Simplified calculation
+    });
+    return totalDrag;
+  }
+
+  /**
+   * Extract tags from component rocket for categorization
    */
   private extractRocketTags(rocket: Rocket): string[] {
     const tags: string[] = [];
     
-    // Add part types
-    const partTypes = Array.from(new Set(rocket.parts.map((p: Part) => p.type)));
-    tags.push(...partTypes);
+    // Add component types
+    tags.push('nose_cone', 'body_tube', 'motor');
+    if (rocket.fins.length > 0) tags.push('fins');
+    if (rocket.parachutes.length > 0) tags.push('parachute');
     
-    // Add size category
-    const bodyParts = rocket.parts.filter((p: Part) => p.type === 'body');
-    if (bodyParts.length > 0) {
-      const totalLength = bodyParts.reduce((sum: number, p: Part) => {
-        const bodyPart = p as any; // Type assertion for body-specific properties
-        return sum + (bodyPart.length || 0);
-      }, 0);
-      if (totalLength < 30) tags.push('small');
-      else if (totalLength < 60) tags.push('medium');
-      else tags.push('large');
-    }
+    // Add size category based on total length
+    const totalLength = rocket.nose_cone.length_m + 
+      rocket.body_tubes.reduce((sum, body) => sum + body.length_m, 0);
+    
+    if (totalLength < 0.5) tags.push('small');
+    else if (totalLength < 1.2) tags.push('medium');
+    else tags.push('large');
     
     // Add motor class
-    if (rocket.motorId && rocket.motorId !== 'default-motor') {
-      const motorClass = rocket.motorId.charAt(0);
+    if (rocket.motor.motor_database_id && rocket.motor.motor_database_id !== 'default-motor') {
+      const motorClass = rocket.motor.motor_database_id.charAt(0);
       tags.push(`motor-${motorClass}`);
     }
+    
+    // Add material types using centralized constants
+    const materials = new Set<string>();
+    if (rocket.nose_cone.material_density_kg_m3 === MATERIALS.DENSITY_FIBERGLASS) materials.add('fiberglass');
+    if (rocket.nose_cone.material_density_kg_m3 === MATERIALS.DENSITY_ALUMINUM) materials.add('aluminum');
+    if (rocket.nose_cone.material_density_kg_m3 === MATERIALS.DENSITY_PLYWOOD) materials.add('plywood');
+    
+    rocket.fins.forEach(fin => {
+      if (fin.material_density_kg_m3 === MATERIALS.DENSITY_PLYWOOD) materials.add('plywood');
+      if (fin.material_density_kg_m3 === MATERIALS.DENSITY_FIBERGLASS) materials.add('fiberglass');
+    });
+    
+    tags.push(...Array.from(materials));
     
     return tags;
   }
@@ -445,10 +498,15 @@ export class DatabaseService {
         return `local-${Date.now()}`;
       }
 
+      // Add timeout protection for database operations
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Session lookup timeout')), 4000)
+      );
+
       // Try to get recent session (within 24 hours)
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       
-      const { data: existingSession } = await supabase
+      const sessionPromise = supabase
         .from('user_sessions')
         .select('id, session_id') // Get both UUID id and session_id
         .eq('user_id', user.id)
@@ -457,18 +515,33 @@ export class DatabaseService {
         .limit(1)
         .maybeSingle();
 
+      const { data: existingSession } = await Promise.race([
+        sessionPromise,
+        timeoutPromise
+      ]);
+
       if (existingSession) {
-        // Update last activity
-        await supabase
-          .from('user_sessions')
-          .update({ last_activity: new Date().toISOString() })
-          .eq('id', existingSession.id);
+        // Update last activity with timeout
+        try {
+          const updatePromise = supabase
+            .from('user_sessions')
+            .update({ last_activity: new Date().toISOString() })
+            .eq('id', existingSession.id);
+          
+          const updateTimeout = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Update timeout')), 2000)
+          );
+          
+          await Promise.race([updatePromise, updateTimeout]);
+        } catch (updateError) {
+          console.warn('Could not update session activity:', updateError);
+        }
         
         // Return the session_id (VARCHAR) for foreign key reference
         return existingSession.session_id;
       }
 
-      // Create new session with retry logic
+      // Create new session with retry logic and timeout
       const sessionId = crypto.randomUUID();
       const sessionData = {
         user_id: user.id,
@@ -480,11 +553,20 @@ export class DatabaseService {
         simulation_count: 0
       };
 
-      const { data, error } = await supabase
+      const createPromise = supabase
         .from('user_sessions')
         .insert(sessionData)
         .select('session_id')
         .single();
+      
+      const createTimeout = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Create session timeout')), 3000)
+      );
+
+      const { data, error } = await Promise.race([
+        createPromise,
+        createTimeout
+      ]);
 
       if (error) {
         console.error('Failed to create user session:', error);
@@ -707,49 +789,22 @@ export class DatabaseService {
    */
   async createNewRocket(name: string, template: 'basic' | 'advanced' | 'sport' = 'basic'): Promise<Rocket | null> {
     try {
-      const templates = {
-        basic: {
-          parts: [
-            { id: crypto.randomUUID(), type: 'nose' as const, color: '#A0A7B8', shape: 'ogive' as const, length: 15, baseØ: 5 },
-            { id: crypto.randomUUID(), type: 'body' as const, color: '#8C8D91', Ø: 10, length: 40 },
-            { id: crypto.randomUUID(), type: 'fin' as const, color: '#A0A7B8', root: 10, span: 8, sweep: 6 },
-            { id: crypto.randomUUID(), type: 'engine' as const, color: '#0066FF', thrust: 32, Isp: 200 }
-          ] as Part[],
-          motorId: 'C6-5',
-          Cd: 0.35,
-          units: 'metric' as const
-        },
-        advanced: {
-          parts: [
-            { id: crypto.randomUUID(), type: 'nose' as const, color: '#FF6B35', shape: 'von-karman' as const, length: 20, baseØ: 6 },
-            { id: crypto.randomUUID(), type: 'body' as const, color: '#2E86C1', Ø: 12, length: 60 },
-            { id: crypto.randomUUID(), type: 'fin' as const, color: '#FF6B35', root: 15, span: 12, sweep: 8 },
-            { id: crypto.randomUUID(), type: 'engine' as const, color: '#E74C3C', thrust: 62, Isp: 220 }
-          ] as Part[],
-          motorId: 'D12-5',
-          Cd: 0.32,
-          units: 'metric' as const
-        },
-        sport: {
-          parts: [
-            { id: crypto.randomUUID(), type: 'nose' as const, color: '#F39C12', shape: 'parabolic' as const, length: 25, baseØ: 8 },
-            { id: crypto.randomUUID(), type: 'body' as const, color: '#8E44AD', Ø: 16, length: 80 },
-            { id: crypto.randomUUID(), type: 'fin' as const, color: '#F39C12', root: 20, span: 16, sweep: 10 },
-            { id: crypto.randomUUID(), type: 'engine' as const, color: '#C0392B', thrust: 125, Isp: 240 }
-          ] as Part[],
-          motorId: 'E9-6',
-          Cd: 0.30,
-          units: 'metric' as const
-        }
+      // Map template names to our centralized template IDs
+      const templateMap = {
+        basic: 'basic_starter',
+        advanced: 'high_performance', 
+        sport: 'sport_rocket'
       };
+      
+      const templateId = templateMap[template];
+      const rocket = createRocketFromTemplate(templateId, name);
+      
+      if (!rocket) {
+        console.error('Failed to create rocket from template:', templateId);
+        return null;
+      }
 
-      const newRocket: Rocket = {
-        id: crypto.randomUUID(),
-        name,
-        ...templates[template]
-      };
-
-      return newRocket;
+      return rocket;
     } catch (error) {
       console.error('Failed to create new rocket:', error);
       return null;
@@ -874,16 +929,19 @@ export class DatabaseService {
           return null;
         }
 
+        // Convert rocket for database storage
+        const rocketData = this.convertRocketToDb(rocket);
+
         // Start a transaction to avoid race conditions
         const { data, error } = await supabase.rpc('create_rocket_version', {
           p_rocket_id: rocketId,
           p_user_id: user.id,
           p_rocket_name: rocket.name,
           p_description: description || 'Version created',
-          p_parts: toJson(rocket.parts),
-          p_motor_id: rocket.motorId,
-          p_drag_coefficient: rocket.Cd,
-          p_units: rocket.units,
+          p_parts: toJson(rocketData.parts),
+          p_motor_id: rocketData.motor_id,
+          p_drag_coefficient: rocketData.drag_coefficient,
+          p_units: rocketData.units,
           p_created_by_action: createdByAction
         });
 
@@ -911,10 +969,10 @@ export class DatabaseService {
           .from('rockets')
           .update({
             name: rocket.name,
-            parts: toJson(rocket.parts),
-            motor_id: rocket.motorId,
-            drag_coefficient: rocket.Cd,
-            units: rocket.units,
+            parts: rocketData.parts,
+            motor_id: rocketData.motor_id,
+            drag_coefficient: rocketData.drag_coefficient,
+            units: rocketData.units,
             updated_at: new Date().toISOString()
           })
           .eq('id', rocketId);
@@ -950,6 +1008,9 @@ export class DatabaseService {
       const user_id = userId || (await getCurrentUser())?.id;
       if (!user_id) return null;
 
+      // Convert rocket for database storage
+      const rocketData = this.convertRocketToDb(rocket);
+
       // Get the current highest version number with a small delay to reduce race conditions
       await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
       
@@ -974,10 +1035,10 @@ export class DatabaseService {
         version_number: nextVersion,
         name: `${rocket.name} v${nextVersion}`,
         description: description || `Version ${nextVersion}`,
-        parts: toJson(rocket.parts),
-        motor_id: rocket.motorId,
-        drag_coefficient: rocket.Cd,
-        units: rocket.units,
+        parts: toJson(rocketData.parts),
+        motor_id: rocketData.motor_id,
+        drag_coefficient: rocketData.drag_coefficient,
+        units: rocketData.units,
         created_by_action: createdByAction,
         is_current: true,
         user_id: user_id
@@ -1058,14 +1119,20 @@ export class DatabaseService {
         return null;
       }
 
-      // Create a new version based on the reverted version
+      // Parse the version parts data and convert to component format
+      const versionPartsData = typeof version.parts === 'string' ? JSON.parse(version.parts) : version.parts;
+      
+      // Create a component-based rocket from the version data
       const revertedRocket: Rocket = {
         id: rocketId,
         name: version.name.replace(/ v\d+$/, ''), // Remove version suffix
-        parts: version.parts as unknown as Part[],
-        motorId: version.motor_id,
-        Cd: version.drag_coefficient,
-        units: version.units as 'metric' | 'imperial'
+        nose_cone: versionPartsData.nose_cone,
+        body_tubes: versionPartsData.body_tubes || [],
+        fins: versionPartsData.fins || [],
+        motor: versionPartsData.motor,
+        parachutes: versionPartsData.parachutes || [],
+        coordinate_system: versionPartsData.coordinate_system || "tail_to_nose",
+        rail_guides_position_m: versionPartsData.rail_guides_position_m
       };
 
       // Save as new version with "reverted" description

@@ -357,8 +357,12 @@ async def reason(req: ChatRequest):
             raise HTTPException(status_code=422, detail="No valid messages provided")
         
         # Prepare the context with the current rocket state
-        system_message = create_enhanced_system_message("master", req, latest_message)
-        messages = [system_message] + cleaned_messages
+
+        ################ Not Used
+        #system_message = create_enhanced_system_message("master", req, latest_message)
+        #messages = [system_message] + cleaned_messages
+        ################ Not Used
+        
         rocket_json_str = json.dumps(req.rocket)
         
         print(f"DEBUG: System message created, rocket JSON length: {len(rocket_json_str)}")

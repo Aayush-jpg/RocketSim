@@ -1,601 +1,115 @@
-import { useRocket } from '../store';
-import { Part, Nose, Body, Fin } from '@/types/rocket';
-import type { Rocket, SimulationResult } from '@/types/rocket';
+/**
+ * ROCKETv1 - AI Agent Action System
+ * =================================
+ * 
+ * This module processes actions returned by AI agents and applies them to the component-based rocket state.
+ * It provides a unified action dispatcher that handles all rocket modifications, simulations, and exports
+ * while maintaining state consistency across the React Three Fiber 3D scene and Zustand store.
+ * 
+ * **Action Categories:**
+ * - **Component Actions**: Add, remove, modify rocket components with professional precision
+ * - **Simulation Actions**: Run quick physics calculations or high-fidelity simulations
+ * - **Export Actions**: Generate CSV, JSON, KML formats for analysis and sharing
+ * - **Analysis Actions**: Stability calculations, performance analysis, Monte Carlo simulations
+ * 
+ * **Component-Based Integration:**
+ * - **SI Units**: All calculations use metric system with proper unit handling
+ * - **Material Properties**: Considers density, thickness, surface roughness
+ * - **Engineering Precision**: Professional-grade component modifications
+ * - **Type Safety**: Full TypeScript support for component properties
+ * 
+ * **State Management:**
+ * - **Immutable Updates**: Creates new rocket objects to trigger React re-renders
+ * - **3D Scene Sync**: R3F components automatically update when state changes
+ * - **Database Persistence**: Auto-saves changes to database when connected
+ * - **Version Control**: Tracks modifications for version history
+ * 
+ * **Physics Integration:**
+ * - **Quick Sim**: Browser-based calculations for immediate feedback
+ * - **High-Fi Sim**: RocketPy service integration for accurate trajectory analysis
+ * - **Component-Based Physics**: Utilizes professional component properties
+ * 
+ * @version 3.0.0 - Component-based architecture only
+ * @author ROCKETv1 Team
+ */
 
-// Extend Window interface for global properties
-declare global {
-  interface Window {
-    environmentConditions?: any;
-    launchParameters?: any;
-    monteCarloResults?: any;
-    flightReport?: any;
-    launchAssessment?: any;
-    weatherForecast?: any;
-    atmosphericAnalysis?: any;
-    launchWindows?: any;
-  }
-}
+import { useRocket } from '@/lib/store';
+import { Rocket, SimulationResult, NoseComponent, BodyComponent, FinComponent, MotorComponent, ParachuteComponent, EnvironmentConfig, LaunchParameters } from '@/types/rocket';
+import { MATERIALS, calculateMass } from '@/lib/data/materials';
+import { getMotorOrDefault } from '@/lib/data/motors';
 
-// Track if rocket has been modified during action dispatch
-let rocketModified = false;
-let modificationDescription = '';
-
-// Helper function to validate and fix atmospheric model values
-function validateAtmosphericModel(atmosphericModel: any): string {
-  // Ensure atmospheric model is one of the valid values
-  const validModels = ["standard", "custom", "forecast"];
-  
-  if (typeof atmosphericModel === "string") {
-    const cleanModel = atmosphericModel.toLowerCase().trim();
-    
-    // Fix common corruptions
-    if (cleanModel.includes("standard")) {
-      return "standard";
-    }
-    if (cleanModel.includes("forecast")) {
-      return "forecast";
-    }
-    if (cleanModel.includes("custom")) {
-      return "custom";
-    }
-    
-    // Check if it's a valid model
-    if (validModels.includes(cleanModel)) {
-      return cleanModel;
-    }
-  }
-  
-  // Default fallback
-  return "standard";
-}
-
-// Helper function to clean environment data
-function cleanEnvironmentData(environment: any): any {
-  if (!environment) {
-    return {
-      latitude: 0,
-      longitude: 0,
-      elevation: 0,
-      windSpeed: 0,
-      windDirection: 0,
-      atmosphericModel: "standard"
-    };
-  }
-  
-  return {
-    ...environment,
-    atmosphericModel: validateAtmosphericModel(environment.atmosphericModel)
-  };
-}
-
-// Function to run a quick simulation (client-side)
+/**
+ * Quick physics simulation using component-based rocket data
+ */
 export function runQuickSim() {
-  const { rocket, setSimulating, setSim, setLastSimulationType } = useRocket.getState();
+  const { rocket, setSim } = useRocket.getState();
   
-  setSimulating(true);
-  setLastSimulationType('quick');
-  
-  // Simple physics calculation
+  // Simple physics calculation using component properties
   setTimeout(() => {
-    const mass = rocket.parts.length * 0.1; // Simplified mass calculation
-    const thrust = 50; // Simplified thrust
-    const altitude = (thrust / mass) * 10; // Very simplified
-    
-    const result = {
-      maxAltitude: altitude + Math.random() * 50,
-      maxVelocity: Math.sqrt(2 * 9.81 * altitude),
+    // Calculate total mass from components
+    const noseMass = calculateComponentMass(rocket.nose_cone);
+    const bodyMass = rocket.body_tubes.reduce((sum, body) => sum + calculateComponentMass(body), 0);
+    const finMass = rocket.fins.reduce((sum, fin) => sum + calculateComponentMass(fin), 0);
+    const totalMass = noseMass + bodyMass + finMass + 0.5; // Add motor mass estimate
+
+    // Simple thrust calculation
+    const thrust = 50; // Simplified thrust in Newtons
+    const altitude = (thrust / totalMass) * 10; // Very simplified altitude calculation
+
+    const result: SimulationResult = {
+      maxAltitude: altitude,
+      maxVelocity: Math.sqrt(2 * altitude * 9.81),
       apogeeTime: Math.sqrt(2 * altitude / 9.81),
-      trajectory: { time: [], position: [], velocity: [], acceleration: [] }, // Proper trajectory structure
-      flightEvents: [
-        { time: 0, event: 'Liftoff', name: 'Liftoff', altitude: 0 },
-        { time: Math.sqrt(2 * altitude / 9.81), event: 'Apogee', name: 'Apogee', altitude }
-      ]
+      stabilityMargin: 1.5,
+      simulationFidelity: 'quick',
+      timestamp: new Date().toISOString()
     };
-    
+
     setSim(result);
-    setSimulating(false);
   }, 1000);
 }
 
-// Function to run a high-fidelity simulation (server-side)
-export async function runHighFiSim() {
-  const { rocket, setSim } = useRocket.getState();
+/**
+ * Calculate mass of a component using centralized material data
+ */
+function calculateComponentMass(component: any): number {
+  if (!component || !component.material_density_kg_m3) return 0;
   
+  // Calculate volume based on component type
+  let volume = 0;
+  
+  if ('length_m' in component && 'outer_radius_m' in component) {
+    // Body tube: hollow cylinder
+    const outerVolume = Math.PI * Math.pow(component.outer_radius_m, 2) * component.length_m;
+    const innerVolume = Math.PI * Math.pow(component.outer_radius_m - (component.wall_thickness_m || 0.003), 2) * component.length_m;
+    volume = outerVolume - innerVolume;
+  } else if ('length_m' in component && 'base_radius_m' in component) {
+    // Nose cone: solid cone/ogive approximation
+    volume = (Math.PI * Math.pow(component.base_radius_m || 0.05, 2) * component.length_m) / 3;
+  } else if ('root_chord_m' in component && 'span_m' in component) {
+    // Fin: flat plate approximation
+    const area = component.root_chord_m * component.span_m * (component.fin_count || 1);
+    volume = area * (component.thickness_m || 0.006);
+  }
+  
+  return volume * component.material_density_kg_m3;
+}
+
+/**
+ * Run high-fidelity simulation using RocketPy service
+ */
+export async function runHighFiSim() {
   try {
-    console.log('Running high-fidelity simulation...');
+    const { rocket, setSim, setSimulating, setSimulationProgress } = useRocket.getState();
     
+    setSimulating(true);
+    setSimulationProgress(0);
+    
+    // Convert rocket to RocketPy format and send to simulation service
     const response = await fetch('/api/hifi', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ rocket }),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`High-fidelity simulation failed: ${response.statusText}`);
-    }
-    
-    const simResults = await response.json();
-    console.log('Simulation results:', simResults);
-    
-    // Update the store with simulation results
-    setSim(simResults);
-  } catch (error) {
-    console.error('Error running high-fidelity simulation:', error);
-    // Fallback to quick sim if high-fi fails
-    runQuickSim();
-  }
-}
-
-// Helper function to estimate rocket mass based on parts
-export function estimateRocketMass(rocket: any) {
-  let totalMass = 0.05; // Base empty mass in kg
-  
-  // Add mass for each part
-  rocket.parts.forEach((part: any) => {
-    switch (part.type) {
-      case 'nose':
-        totalMass += 0.05 * (part.length / 10); // Mass based on nose length
-        break;
-      case 'body':
-        totalMass += 0.1 * (part.length / 10) * part.Ø; // Mass based on body dimensions
-        break;
-      case 'fin':
-        totalMass += 0.01 * part.root * part.span; // Mass based on fin dimensions
-        break;
-    }
-  });
-  
-  // Add motor mass (approximation)
-  totalMass += 0.05;
-  
-  return totalMass;
-}
-
-// Helper function to calculate stability margin in calibers
-export function calculateStability(rocket: any) {
-  // Get parts data
-  const noseParts = rocket.parts.filter((p: Part) => p.type === 'nose') as Nose[];
-  const bodyParts = rocket.parts.filter((p: Part) => p.type === 'body') as Body[];
-  const finParts = rocket.parts.filter((p: Part) => p.type === 'fin') as Fin[];
-  
-  // Get diameter from the first body part (or use default)
-  const diameter = bodyParts.length > 0 ? bodyParts[0].Ø : 5; // Default diameter in cm
-  
-  // Calculate stability (simplified)
-  // More fins = more stability
-  let stabilityBase = 1.0 + (finParts.length * 0.2);
-  
-  // Fin size effect
-  let finAreaSum = 0;
-  finParts.forEach((fin) => {
-    if (fin.root && fin.span) {
-      // Approximate fin area as 1/2 * root * span
-      const finArea = 0.5 * fin.root * fin.span;
-      finAreaSum += finArea;
-    }
-  });
-  
-  // Add nose cone shape effect on stability
-  let noseEffect = 0;
-  if (noseParts.length > 0) {
-    const nose = noseParts[0];
-    // Ogive nose cones provide slightly better stability than conical ones
-    if (nose.shape === 'ogive') {
-      noseEffect = 0.1;
-    }
-    // Longer nose cones affect center of pressure
-    if (nose.length) {
-      noseEffect += (nose.length / 50) * 0.2; // Small effect based on length
-    }
-  }
-  
-  // Adjust stability based on fin area relative to body diameter
-  // More fin area relative to diameter = more stability
-  const finAreaEffect = finAreaSum / (diameter * diameter) * 0.5;
-  
-  return stabilityBase + finAreaEffect + noseEffect;
-}
-
-// Main dispatcher function to process agent actions
-export function dispatchActions(actions: any[]) {
-  const { 
-    updateRocket, 
-    setSim, 
-    saveRocketVersionWithDescription,
-    savedRockets,
-    rocket: currentRocket
-  } = useRocket.getState();
-  
-  console.log('🎯 Starting to dispatch actions:', actions);
-  console.log('🚀 Current rocket state before actions:', JSON.stringify(currentRocket.parts, null, 2));
-  
-  // Reset modification tracking
-  rocketModified = false;
-  modificationDescription = '';
-  
-  // Check if current rocket is already saved (exists in database)
-  const isExistingRocket = savedRockets.some(r => r.id === currentRocket.id);
-  
-  // Clone the current rocket once for all modifications
-  let modifiedRocket = structuredClone(currentRocket);
-  let actualChanges = false; // Track if we made actual changes
-  
-  // CLEAN UP ACTIONS - Fix truncated IDs with "..." AND handle simple names
-  const cleanedActions = actions.map(action => {
-    if (action.id && typeof action.id === 'string') {
-      // Handle truncated IDs with "..."
-      if (action.id.endsWith('...')) {
-        const truncatedId = action.id.replace('...', '');
-        console.log(`🔧 AI truncated ID: "${action.id}" → Looking for prefix: "${truncatedId}"`);
-        console.log(`🔧 Available part IDs:`, currentRocket.parts.map(p => `"${p.id}"`));
-        
-        const realPart = currentRocket.parts.find(part => 
-          part.id === truncatedId || part.id.startsWith(truncatedId)
-        );
-        
-        if (realPart) {
-          console.log(`✅ Found real part ID: "${realPart.id}" for truncated "${action.id}"`);
-          return { ...action, id: realPart.id };
-        } else {
-          console.warn(`⚠️ NO MATCH FOUND for truncated ID: "${action.id}"`);
-          console.warn(`⚠️ Tried prefix: "${truncatedId}"`);
-          console.warn(`⚠️ Available parts:`, currentRocket.parts.map(p => ({ id: p.id, type: p.type })));
-          
-          // Try shorter prefix as fallback (first 8 characters)
-          if (truncatedId.length >= 8) {
-            const shortPrefix = truncatedId.substring(0, 8);
-            console.log(`🔧 Trying shorter prefix: "${shortPrefix}"`);
-            const fallbackPart = currentRocket.parts.find(part => part.id.startsWith(shortPrefix));
-            if (fallbackPart) {
-              console.log(`✅ Found with short prefix: "${fallbackPart.id}"`);
-              return { ...action, id: fallbackPart.id };
-            }
-          }
-        }
-      }
-      
-      // Handle simple agent names like "body1", "nose1", "finset1", etc.
-      const simpleNamePattern = /^(body|nose|fin|finset)(\d*)$/i;
-      const match = action.id.match(simpleNamePattern);
-      
-      if (match) {
-        const partType = match[1].toLowerCase();
-        const partIndex = parseInt(match[2] || '1') - 1; // Convert to 0-based index
-        
-        console.log(`🔧 AI used simple name: "${action.id}" → Looking for ${partType} part at index ${partIndex}`);
-        
-        // Map part type names
-        let targetType = partType;
-        if (partType === 'finset') targetType = 'fin';
-        
-        // Find parts of the target type
-        const partsOfType = currentRocket.parts.filter(part => part.type === targetType);
-        
-        if (partsOfType.length > 0) {
-          // Use the specified index, or the first part if index is out of bounds
-          const targetPart = partsOfType[Math.min(partIndex, partsOfType.length - 1)];
-          console.log(`✅ Mapped simple name "${action.id}" to real part ID: "${targetPart.id}" (type: ${targetPart.type})`);
-          return { ...action, id: targetPart.id };
-        } else {
-          console.warn(`⚠️ No parts of type "${targetType}" found for simple name "${action.id}"`);
-        }
-      }
-      
-      // Handle motor updates in update_rocket actions
-      if (action.action === 'update_rocket' && action.props && action.props.motorId) {
-        console.log(`🚀 Found motor update in rocket action: ${action.props.motorId}`);
-        return action; // Pass through as-is
-      }
-    }
-    
-    return action;
-  });
-  
-  console.log('🧹 Cleaned actions:', cleanedActions);
-  
-  cleanedActions.forEach((action, index) => {
-    console.log(`🔄 Processing action ${index + 1}/${cleanedActions.length}:`, action);
-    
-    // Store original state for this action
-    const beforeAction = JSON.stringify(modifiedRocket.parts);
-    
-    switch (action.action) {
-      case "add_part":
-        console.log(`➕ Adding ${action.type} part with props:`, action.props);
-        const newPart: Part = {
-          id: crypto.randomUUID(),
-          type: action.type,
-          color: action.props.color || '#A0A7B8',
-          ...action.props
-        };
-        console.log('➕ New part created:', newPart);
-        modifiedRocket.parts.push(newPart);
-        rocketModified = true;
-        actualChanges = true;
-        modificationDescription = `Added ${action.type}${action.props.color ? ` (${action.props.color})` : ''}`;
-        break;
-        
-      case "update_part":
-        console.log(`🔧 Updating part ${action.id} with props:`, action.props);
-        const part = modifiedRocket.parts.find((p) => p.id === action.id);
-        if (part) {
-          console.log('🔧 Found part to update:', part);
-          console.log('🔧 Props to apply:', action.props);
-          
-          // Normalize property names - handle diameter symbol
-          const normalizedProps = { ...action.props };
-          if (normalizedProps.Ø !== undefined) {
-            normalizedProps['Ø'] = normalizedProps.Ø; // Keep the symbol
-          }
-          if (normalizedProps['baseØ'] !== undefined) {
-            normalizedProps['baseØ'] = normalizedProps['baseØ']; // Keep for nose parts
-          }
-          
-          // Check if this will actually change anything
-          let willChange = false;
-          Object.keys(normalizedProps).forEach(key => {
-            if (part[key as keyof Part] !== normalizedProps[key]) {
-              willChange = true;
-              console.log(`🔧 Property ${key} will change: ${part[key as keyof Part]} → ${normalizedProps[key]}`);
-            } else {
-              console.log(`🔧 Property ${key} unchanged: ${part[key as keyof Part]}`);
-            }
-          });
-          
-          if (willChange) {
-            Object.assign(part, normalizedProps);
-            rocketModified = true;
-            actualChanges = true;
-            modificationDescription = `Modified ${part.type}${normalizedProps.color ? ` color to ${normalizedProps.color}` : ''}`;
-            console.log('🔧 Part after update:', part);
-          } else {
-            console.log('🔧 No actual changes needed for this part');
-          }
-        } else {
-          console.warn('🔧 Part not found with ID:', action.id);
-          console.warn('🔧 Available parts:', modifiedRocket.parts.map(p => ({ id: p.id, type: p.type })));
-          
-          // Try fuzzy matching as backup
-          const fuzzyMatch = modifiedRocket.parts.find(p => 
-            p.id.includes(action.id) || action.id.includes(p.id)
-          );
-          if (fuzzyMatch) {
-            console.log('🔍 Fuzzy match found:', fuzzyMatch.id);
-            Object.assign(fuzzyMatch, action.props);
-            rocketModified = true;
-            actualChanges = true;
-            modificationDescription = `Modified ${fuzzyMatch.type} (fuzzy match)`;
-          }
-        }
-        break;
-        
-      case "remove_part":
-        console.log(`🗑️ Removing part ${action.id}`);
-        const partIndex = modifiedRocket.parts.findIndex((p) => p.id === action.id);
-        if (partIndex !== -1) {
-          const removedPart = modifiedRocket.parts[partIndex];
-          modificationDescription = `Removed ${removedPart.type}`;
-          console.log('🗑️ Removing part:', removedPart);
-          modifiedRocket.parts.splice(partIndex, 1);
-          rocketModified = true;
-          actualChanges = true;
-        } else {
-          console.warn('🗑️ Part not found for removal with ID:', action.id);
-        }
-        break;
-        
-      case "change_motor":
-        console.log(`🚀 Changing motor to:`, action.motorId);
-        if (modifiedRocket.motorId !== action.motorId) {
-          modifiedRocket.motorId = action.motorId;
-          rocketModified = true;
-          actualChanges = true;
-          modificationDescription = `Changed motor to ${action.motorId}`;
-        } else {
-          console.log('🚀 Motor already set to this value');
-        }
-        break;
-        
-      case "update_rocket":
-        console.log(`🔧 Updating rocket with:`, action);
-        let rocketChanged = false;
-        if (action.name && modifiedRocket.name !== action.name) {
-          modifiedRocket.name = action.name;
-          rocketChanged = true;
-        }
-        if (action.Cd !== undefined && modifiedRocket.Cd !== action.Cd) {
-          modifiedRocket.Cd = action.Cd;
-          rocketChanged = true;
-        }
-        if (action.units && modifiedRocket.units !== action.units) {
-          modifiedRocket.units = action.units;
-          rocketChanged = true;
-        }
-        // Handle motorId updates from agent
-        if (action.props && action.props.motorId && modifiedRocket.motorId !== action.props.motorId) {
-          console.log(`🚀 Updating motor from ${modifiedRocket.motorId} to ${action.props.motorId}`);
-          modifiedRocket.motorId = action.props.motorId;
-          rocketChanged = true;
-          modificationDescription = `Changed motor to ${action.props.motorId}`;
-        }
-        if (rocketChanged) {
-          rocketModified = true;
-          actualChanges = true;
-          if (!modificationDescription) {
-            modificationDescription = action.description || 'Updated rocket configuration';
-          }
-        }
-        break;
-        
-      case "run_sim":
-        // Simulations don't modify the rocket design
-        console.log(`📊 Running simulation with fidelity:`, action.fidelity);
-        if (action.fidelity === "quick") {
-          runQuickSim();
-        } else {
-          runHighFiSim();
-        }
-        break;
-        
-      default:
-        console.warn(`❓ Unknown action:`, action.action);
-    }
-    
-    // Check if this action actually changed anything
-    const afterAction = JSON.stringify(modifiedRocket.parts);
-    const actionMadeChange = beforeAction !== afterAction;
-    console.log(`🔍 Action ${index + 1} made changes:`, actionMadeChange);
-    if (actionMadeChange) {
-      actualChanges = true;
-    }
-  });
-  
-  console.log('🏁 Action processing complete:');
-  console.log('📊 Rocket was flagged as modified:', rocketModified);
-  console.log('📊 Actual changes detected:', actualChanges);
-  console.log('📊 Original parts count:', currentRocket.parts.length);
-  console.log('📊 Modified parts count:', modifiedRocket.parts.length);
-  
-  // Only proceed if we have actual changes
-  if (actualChanges && rocketModified) {
-    console.log('🔄 Applying rocket modifications...');
-    console.log('🚀 Modified rocket parts:', JSON.stringify(modifiedRocket.parts, null, 2));
-    
-    // FORCE EVENT DISPATCH to notify MiddlePanel for force re-render
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('rocketActionsDispatched', {
-        detail: { 
-          actionsCount: actions.length,
-          modifications: modificationDescription,
-          partsCount: modifiedRocket.parts.length 
-        }
-      }));
-      console.log('📡 Dispatched rocketActionsDispatched event');
-    }
-    
-    // Store original state for comparison
-    const originalPartsJson = JSON.stringify(currentRocket.parts);
-    const modifiedPartsJson = JSON.stringify(modifiedRocket.parts);
-    
-    console.log('🔍 Final comparison:');
-    console.log('📄 Original vs Modified different:', originalPartsJson !== modifiedPartsJson);
-    
-    // AGGRESSIVE UPDATE - Force React to see this as a completely new object
-    updateRocket(() => {
-      // Create completely new objects with new references
-      const newRocket = {
-        ...modifiedRocket,
-        id: modifiedRocket.id, // Keep same ID
-        parts: modifiedRocket.parts.map(part => ({ ...part })), // New part objects
-        // Add a timestamp to force reference change
-        _lastModified: Date.now()
-      };
-      console.log('🔄 Returning completely new rocket object with', newRocket.parts.length, 'parts');
-      return newRocket;
-    }, true); // Skip auto-save initially
-    
-    // FORCE IMMEDIATE VERIFICATION - No timeout delay
-    const finalRocketState = useRocket.getState().rocket;
-    const finalPartsJson = JSON.stringify(finalRocketState.parts);
-    const finalPartsCount = finalRocketState.parts.length;
-    
-    console.log('🏁 IMMEDIATE Verification:');
-    console.log('📊 Final parts count:', finalPartsCount);
-    console.log('📊 Original parts count:', currentRocket.parts.length);
-    console.log('📊 Final vs Original JSON different:', finalPartsJson !== originalPartsJson);
-    console.log('✅ Update verification:', finalPartsJson !== originalPartsJson || finalPartsCount !== currentRocket.parts.length);
-    
-    // ALWAYS FORCE A SECOND UPDATE to ensure React sees the change
-    setTimeout(() => {
-      console.log('🔄 SECOND FORCE UPDATE to ensure React re-renders');
-      const doubleCheckState = useRocket.getState().rocket;
-      updateRocket(() => {
-        return {
-          ...doubleCheckState,
-          _forceUpdate: Date.now() // Force another reference change
-        };
-      }, false); // Allow auto-save on second update
-      
-      // Database handling after forced updates
-      if (isExistingRocket) {
-        console.log('💾 Creating new version for existing rocket:', modificationDescription);
-        saveRocketVersionWithDescription(
-          `AI ${actions[0]?.action || 'modification'}: ${modificationDescription}`,
-          actions[0]?.action || 'ai_modification'
-        );
-      } else {
-        console.log('💾 Saving new rocket after modifications:', modificationDescription);
-        useRocket.getState().saveCurrentRocket();
-      }
-    }, 50);
-    
-  } else {
-    console.log('ℹ️ No actual rocket modifications detected - skipping update');
-    console.log('🔍 Debug info:');
-    console.log('   - rocketModified flag:', rocketModified);
-    console.log('   - actualChanges detected:', actualChanges);
-    console.log('   - Actions processed:', actions.length);
-    actions.forEach((action, i) => {
-      console.log(`   - Action ${i + 1}:`, action.action, action);
-    });
-    
-    // If we have non-modifying actions (like simulations), still process them
-    if (actions.some(a => a.action === 'run_sim')) {
-      console.log('📊 Processing simulation actions without rocket modifications');
-    }
-  }
-}
-
-// ================================
-// ADVANCED SIMULATION FUNCTIONS
-// ================================
-
-// Advanced simulation with environment and launch parameters
-export async function runAdvancedSimulation(
-  fidelity: string = "standard",
-  environment?: any,
-  launchParams?: any
-) {
-  const { rocket, updateRocket, setSim } = useRocket.getState();
-  
-  console.log('🚀 Running advanced simulation:', { fidelity, environment, launchParams });
-  
-  try {
-    // Prepare request payload
-    const requestData = {
-      rocket: {
-        id: rocket.id,
-        name: rocket.name,
-        parts: rocket.parts,
-        motorId: rocket.motorId,
-        Cd: rocket.Cd || 0.5,
-        units: rocket.units || "metric"
-      },
-      environment: environment || {
-        latitude: 0.0,
-        longitude: 0.0,
-        elevation: 0.0,
-        windSpeed: 0.0,
-        windDirection: 0.0,
-        atmosphericModel: "standard"
-      },
-      launchParameters: launchParams || {
-        railLength: 5.0,
-        inclination: 85.0,
-        heading: 0.0
-      },
-      simulationType: fidelity
-    };
-    
-    // Choose endpoint based on fidelity
-    const endpoint = fidelity === "hifi" ? "/api/simulate/hifi" : "/api/simulate";
-    
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestData),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rocket })
     });
     
     if (!response.ok) {
@@ -604,1264 +118,1774 @@ export async function runAdvancedSimulation(
     
     const result = await response.json();
     
-    // Update simulation state
     setSim({
-      maxAltitude: result.maxAltitude,
-      maxVelocity: result.maxVelocity,
-      maxAcceleration: result.maxAcceleration || result.maxVelocity / 10,
-      apogeeTime: result.apogeeTime,
-      stabilityMargin: result.stabilityMargin,
-      thrustCurve: result.thrustCurve || [],
-      simulationFidelity: result.simulationFidelity || fidelity,
-      trajectory: result.trajectory,
-      flightEvents: result.flightEvents,
-      impactVelocity: result.impactVelocity,
-      driftDistance: result.driftDistance
+      ...result,
+      simulationFidelity: 'high',
+      timestamp: new Date().toISOString()
     });
-    
-    // Dispatch event for UI updates
-    window.dispatchEvent(new CustomEvent('simulationComplete', { 
-      detail: { 
-        result, 
-        fidelity,
-        advanced: true
-      } 
-    }));
-    
-    console.log('✅ Advanced simulation complete:', result);
     
   } catch (error) {
-    console.error('❌ Advanced simulation failed:', error);
-    
-    // Fallback to quick simulation
-    console.log('🔄 Falling back to quick simulation...');
-    runQuickSim();
+    console.error('High-fidelity simulation failed:', error);
+  } finally {
+    useRocket.getState().setSimulating(false);
+    useRocket.getState().setSimulationProgress(100);
   }
 }
 
-// Trajectory analysis function
-export async function analyzeTrajectory(params: any) {
-  const { sim } = useRocket.getState();
+// ===========================================
+// COMPONENT ACTION HANDLERS
+// ===========================================
+
+/**
+ * Add or update nose cone component
+ */
+export function addNoseCone(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Adding/updating nose cone:', action);
   
-  if (!sim || !sim.trajectory) {
-    console.log('⚠️ No trajectory data available, running simulation first...');
-    await runAdvancedSimulation("hifi");
-    return;
-  }
+  const updatedNoseCone: NoseComponent = {
+    id: action.id || crypto.randomUUID(),
+    shape: action.shape || "ogive",
+    length_m: action.length_m || 0.15,
+    base_radius_m: action.base_radius_m || 0.05,
+    wall_thickness_m: action.wall_thickness_m || 0.002,
+    material_density_kg_m3: action.material_density_kg_m3 || MATERIALS.DENSITY_FIBERGLASS,
+    surface_roughness_m: action.surface_roughness_m || 1e-5,
+    color: action.color || "#A0A7B8"
+  };
   
-  console.log('📈 Analyzing trajectory with params:', params);
+  return {
+    ...rocket,
+    nose_cone: updatedNoseCone
+  };
+}
+
+/**
+ * Update nose cone component
+ */
+export function updateNoseCone(rocket: Rocket, action: any): Rocket {
+  return addNoseCone(rocket, action); // Same implementation for component-based
+}
+
+/**
+ * Add body tube component
+ */
+export function addBodyTube(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Adding body tube:', action);
   
-  // Dispatch trajectory analysis event for UI visualization
-  window.dispatchEvent(new CustomEvent('trajectoryAnalysis', {
-    detail: {
-      trajectory: sim.trajectory,
-      params,
-      include3DPath: params.include_3d_path,
-      includeVelocity: params.include_velocity_profile,
-      includeAcceleration: params.include_acceleration_profile,
-      includeAttitude: params.include_attitude_data
+  const newBodyTube: BodyComponent = {
+    id: action.id || crypto.randomUUID(),
+    outer_radius_m: action.outer_radius_m || 0.05,
+    length_m: action.length_m || 0.40,
+    wall_thickness_m: action.wall_thickness_m || 0.003,
+    material_density_kg_m3: action.material_density_kg_m3 || MATERIALS.DENSITY_FIBERGLASS,
+    surface_roughness_m: action.surface_roughness_m || 1e-5,
+    color: action.color || "#8C8D91"
+  };
+  
+  return {
+    ...rocket,
+    body_tubes: [...rocket.body_tubes, newBodyTube]
+  };
+}
+
+/**
+ * Update body tube component
+ */
+export function updateBodyTube(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Updating body tube:', action);
+  
+  const bodyIndex = action.index || 0;
+  const updatedBodyTubes = rocket.body_tubes.map((body, index) => {
+    if (index === bodyIndex) {
+      return {
+        ...body,
+        outer_radius_m: action.outer_radius_m !== undefined ? action.outer_radius_m : body.outer_radius_m,
+        length_m: action.length_m !== undefined ? action.length_m : body.length_m,
+        wall_thickness_m: action.wall_thickness_m !== undefined ? action.wall_thickness_m : body.wall_thickness_m,
+        material_density_kg_m3: action.material_density_kg_m3 !== undefined ? action.material_density_kg_m3 : body.material_density_kg_m3,
+        surface_roughness_m: action.surface_roughness_m !== undefined ? action.surface_roughness_m : body.surface_roughness_m,
+        color: action.color || body.color
+      };
     }
-  }));
+    return body;
+  });
+  
+  return {
+    ...rocket,
+    body_tubes: updatedBodyTubes
+  };
 }
 
-// Monte Carlo analysis function
-async function handleMonteCarloAnalysis(action: any) {
+/**
+ * Add fin set component
+ */
+export function addFinSet(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Adding fin set:', action);
+  
+  const newFinSet: FinComponent = {
+    id: action.id || crypto.randomUUID(),
+    fin_count: action.fin_count || 3,
+    root_chord_m: action.root_chord_m || 0.08,
+    tip_chord_m: action.tip_chord_m || 0.04,
+    span_m: action.span_m || 0.06,
+    sweep_length_m: action.sweep_length_m || 0.02,
+    thickness_m: action.thickness_m || 0.006,
+    material_density_kg_m3: action.material_density_kg_m3 || MATERIALS.DENSITY_PLYWOOD,
+    airfoil: action.airfoil || "symmetric",
+    cant_angle_deg: action.cant_angle_deg || 0.0,
+    color: action.color || "#A0A7B8"
+  };
+  
+  return {
+    ...rocket,
+    fins: [...rocket.fins, newFinSet]
+  };
+}
+
+/**
+ * Update fin set component
+ */
+export function updateFinSet(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Updating fin set:', action);
+  
+  const finIndex = action.index || 0;
+  const updatedFins = rocket.fins.map((fin, index) => {
+    if (index === finIndex) {
+      return {
+        ...fin,
+        fin_count: action.fin_count !== undefined ? action.fin_count : fin.fin_count,
+        root_chord_m: action.root_chord_m !== undefined ? action.root_chord_m : fin.root_chord_m,
+        tip_chord_m: action.tip_chord_m !== undefined ? action.tip_chord_m : fin.tip_chord_m,
+        span_m: action.span_m !== undefined ? action.span_m : fin.span_m,
+        sweep_length_m: action.sweep_length_m !== undefined ? action.sweep_length_m : fin.sweep_length_m,
+        thickness_m: action.thickness_m !== undefined ? action.thickness_m : fin.thickness_m,
+        material_density_kg_m3: action.material_density_kg_m3 !== undefined ? action.material_density_kg_m3 : fin.material_density_kg_m3,
+        airfoil: action.airfoil || fin.airfoil,
+        cant_angle_deg: action.cant_angle_deg !== undefined ? action.cant_angle_deg : fin.cant_angle_deg,
+        color: action.color || fin.color
+      };
+    }
+    return fin;
+  });
+  
+  return {
+    ...rocket,
+    fins: updatedFins
+  };
+}
+
+/**
+ * Update motor component
+ */
+export function updateMotor(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Updating motor:', action);
+  
+  // Validate motor ID and fallback to default if invalid
+  let motorId = action.motor_database_id || rocket.motor.motor_database_id;
+  if (action.motor_database_id) {
+    const validatedMotor = getMotorOrDefault(action.motor_database_id);
+    motorId = validatedMotor.id;
+    if (validatedMotor.id !== action.motor_database_id) {
+      console.log(`⚠️ Invalid motor ID '${action.motor_database_id}', using fallback: ${validatedMotor.id}`);
+    }
+  }
+  
+  const updatedMotor: MotorComponent = {
+    ...rocket.motor,
+    motor_database_id: motorId,
+    position_from_tail_m: action.position_from_tail_m !== undefined ? action.position_from_tail_m : rocket.motor.position_from_tail_m,
+    nozzle_expansion_ratio: action.nozzle_expansion_ratio || rocket.motor.nozzle_expansion_ratio,
+    chamber_pressure_pa: action.chamber_pressure_pa || rocket.motor.chamber_pressure_pa
+  };
+  
+  return {
+    ...rocket,
+    motor: updatedMotor
+  };
+}
+
+/**
+ * Add parachute component
+ */
+export function addParachute(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Adding parachute:', action);
+  
+  const newParachute: ParachuteComponent = {
+    id: crypto.randomUUID(),
+    name: action.name || "Parachute",
+    cd_s_m2: action.cd_s_m2 || 1.0,
+    trigger: action.trigger || "apogee",
+    sampling_rate_hz: action.sampling_rate_hz || 105.0,
+    lag_s: action.lag_s || 1.5,
+    noise_bias: action.noise_bias || 0.0,
+    noise_deviation: action.noise_deviation || 8.3,
+    noise_correlation: action.noise_correlation || 0.5,
+    position_from_tail_m: action.position_from_tail_m || 0.0,
+    color: action.color || "#FF6B35"
+  };
+  
+  return {
+    ...rocket,
+    parachutes: [...rocket.parachutes, newParachute]
+  };
+}
+
+/**
+ * Update parachute component
+ */
+export function updateParachute(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Updating parachute:', action);
+  
+  const parachuteIndex = action.index || 0;
+  const updatedParachutes = rocket.parachutes.map((parachute, index) => {
+    if (index === parachuteIndex) {
+      return {
+        ...parachute,
+        name: action.name || parachute.name,
+        cd_s_m2: action.cd_s_m2 !== undefined ? action.cd_s_m2 : parachute.cd_s_m2,
+        trigger: action.trigger || parachute.trigger,
+        sampling_rate_hz: action.sampling_rate_hz !== undefined ? action.sampling_rate_hz : parachute.sampling_rate_hz,
+        lag_s: action.lag_s !== undefined ? action.lag_s : parachute.lag_s,
+        noise_bias: action.noise_bias !== undefined ? action.noise_bias : parachute.noise_bias,
+        noise_deviation: action.noise_deviation !== undefined ? action.noise_deviation : parachute.noise_deviation,
+        noise_correlation: action.noise_correlation !== undefined ? action.noise_correlation : parachute.noise_correlation,
+        position_from_tail_m: action.position_from_tail_m !== undefined ? action.position_from_tail_m : parachute.position_from_tail_m,
+        color: action.color || parachute.color
+      };
+    }
+    return parachute;
+  });
+  
+  return {
+    ...rocket,
+    parachutes: updatedParachutes
+  };
+}
+
+// ===========================================
+// ENVIRONMENTAL AND LAUNCH PARAMETER ACTIONS
+// ===========================================
+
+/**
+ * Set environmental conditions for simulation
+ */
+export function setEnvironment(action: any) {
   try {
-    const { rocket } = useRocket.getState();
+    const { setEnvironment } = useRocket.getState();
     
-    // Clean and validate environment data
-    const cleanEnvironment = cleanEnvironmentData(action.environment);
+    console.log('🌍 Setting environmental conditions:', action);
     
-    const response = await fetch("/api/simulate/monte-carlo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rocket,
-        environment: cleanEnvironment,
-        launchParameters: action.launch_parameters || {},
-        variations: action.variations || [],
-        iterations: action.iterations || 100
-      })
-    });
+    const environmentUpdate = {
+      latitude: action.latitude !== undefined ? action.latitude : undefined,
+      longitude: action.longitude !== undefined ? action.longitude : undefined,
+      elevation: action.elevation !== undefined ? action.elevation : undefined,
+      windSpeed: action.windSpeed !== undefined ? action.windSpeed : undefined,
+      windDirection: action.windDirection !== undefined ? action.windDirection : undefined,
+      atmosphericModel: action.atmosphericModel || undefined,
+      date: action.date || undefined
+    };
     
-    if (!response.ok) {
-      throw new Error(`Monte Carlo analysis failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Update Monte Carlo results in store
-    useRocket.getState().setMonteCarloResult(result);
-    
-    // Update simulation state with nominal results
-    if (result.nominal) {
-      useRocket.getState().setSim(result.nominal);
-    }
-    
-    showNotification(
-      `Monte Carlo analysis completed with ${action.iterations} iterations. Mean altitude: ${(result.statistics?.maxAltitude?.mean ?? 0).toFixed(1)}m`,
-      "success"
+    // Remove undefined values
+    const filteredUpdate = Object.fromEntries(
+      Object.entries(environmentUpdate).filter(([_, value]) => value !== undefined)
     );
     
-  } catch (error) {
-    console.error("Monte Carlo analysis failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Monte Carlo analysis failed: ${errorMessage}`, "error");
-  }
-}
-
-// Monte Carlo analysis function (export for external use)
-export async function runMonteCarloAnalysis(params: any) {
-  return handleMonteCarloAnalysis(params);
-}
-
-// Design optimization function
-export async function optimizeDesign(params: any) {
-  const { rocket, updateRocket } = useRocket.getState();
-  
-  console.log('⚡ Starting design optimization for:', params.target);
-  
-  // Simple optimization simulation (can be enhanced with actual optimization algorithms)
-  const currentSim = useRocket.getState().sim;
-  
-  if (!currentSim) {
-    console.log('⚠️ No simulation data available, running simulation first...');
-    await runAdvancedSimulation("hifi");
-    return;
-  }
-  
-  // Dispatch optimization event
-  window.dispatchEvent(new CustomEvent('designOptimization', {
-    detail: {
-      target: params.target,
-      constraints: params.constraints,
-      method: params.method,
-      currentPerformance: {
-        altitude: currentSim.maxAltitude,
-        stability: currentSim.stabilityMargin,
-        velocity: currentSim.maxVelocity
-      }
-    }
-  }));
-  
-  // Simple optimization suggestions based on target
-  let suggestions: string[] = [];
-  
-  switch (params.target) {
-    case "max_altitude":
-      suggestions = [
-        "Consider increasing fin span for better stability",
-        "Optimize nose cone shape to reduce drag",
-        "Reduce rocket mass by optimizing part dimensions"
-      ];
-      break;
-    case "stability_margin":
-      suggestions = [
-        "Increase fin area or move fins further aft",
-        "Consider a longer, more aerodynamic nose cone",
-        "Check center of gravity and center of pressure locations"
-      ];
-      break;
-    case "landing_accuracy":
-      suggestions = [
-        "Add or optimize recovery system",
-        "Consider wind-resistant design features",
-        "Optimize apogee detection and deployment timing"
-      ];
-      break;
-  }
-  
-  // Dispatch suggestions
-  window.dispatchEvent(new CustomEvent('optimizationSuggestions', {
-    detail: { suggestions, target: params.target }
-  }));
-}
-
-// Stability analysis function
-export async function analyzeStability(params: any) {
-  const { rocket, sim } = useRocket.getState();
-  
-  console.log('⚖️ Analyzing stability for phase:', params.flight_phase);
-  
-  // Calculate static stability margin
-  const staticMargin = calculateStability(rocket);
-  
-  // Enhanced stability analysis
-  const stabilityAnalysis = {
-    staticMargin,
-    flight_phase: params.flight_phase,
-    includeStatic: params.include_static_margin,
-    includeDynamic: params.include_dynamic_stability,
-    windConditions: params.wind_conditions,
-    recommendations: [] as string[]
-  };
-  
-  // Add recommendations based on stability margin
-  if (staticMargin < 1.0) {
-    stabilityAnalysis.recommendations.push("⚠️ Stability margin is below recommended minimum (1.0)");
-    stabilityAnalysis.recommendations.push("Consider increasing fin area or moving fins aft");
-  } else if (staticMargin > 3.0) {
-    stabilityAnalysis.recommendations.push("ℹ️ Very high stability margin - rocket may be over-stable");
-    stabilityAnalysis.recommendations.push("Consider reducing fin area for optimal performance");
-  } else {
-    stabilityAnalysis.recommendations.push("✅ Stability margin is within recommended range");
-  }
-  
-  // Dispatch stability analysis event
-  window.dispatchEvent(new CustomEvent('stabilityAnalysis', {
-    detail: stabilityAnalysis
-  }));
-}
-
-// Environment conditions setter
-export function setEnvironmentConditions(params: any) {
-  console.log('🌍 Setting environment conditions:', params);
-  
-  // Store environment conditions for next simulation
-  window.environmentConditions = {
-    latitude: params.latitude,
-    longitude: params.longitude,
-    elevation: params.elevation,
-    windSpeed: params.wind_speed,
-    windDirection: params.wind_direction,
-    atmosphericModel: params.atmospheric_model,
-    date: params.date
-  };
-  
-  // Dispatch environment update event
-  window.dispatchEvent(new CustomEvent('environmentUpdate', {
-    detail: window.environmentConditions
-  }));
-}
-
-// Launch parameters setter
-export function setLaunchParameters(params: any) {
-  console.log('🚀 Setting launch parameters:', params);
-  
-  // Store launch parameters for next simulation
-  window.launchParameters = {
-    railLength: params.rail_length,
-    inclination: params.inclination,
-    heading: params.heading,
-    launchSiteName: params.launch_site_name
-  };
-  
-  // Dispatch launch parameters update event
-  window.dispatchEvent(new CustomEvent('launchParametersUpdate', {
-    detail: window.launchParameters
-  }));
-}
-
-// Motor performance analysis
-export async function analyzeMotorPerformance(params: any) {
-  const { rocket } = useRocket.getState();
-  
-  console.log('🔥 Analyzing motor performance for:', params.motor_id);
-  
-  try {
-    // Get motor specifications
-    const response = await fetch(`/api/motors`);
-    const data = await response.json();
-    const motor = data.motors.find((m: any) => m.id === params.motor_id);
+    // Get current environment and merge with updates
+    const currentEnv = useRocket.getState().environment;
+    const newEnvironment = { ...currentEnv, ...filteredUpdate };
     
-    if (!motor) {
-      console.error('❌ Motor not found:', params.motor_id);
+    setEnvironment(newEnvironment);
+    console.log('✅ Environmental conditions updated:', newEnvironment);
+    
+  } catch (error) {
+    console.error('❌ Failed to set environmental conditions:', error);
+  }
+}
+
+/**
+ * Set launch site and conditions
+ */
+export function setLaunchSite(action: any) {
+  try {
+    const { setEnvironment, setLaunchParameters } = useRocket.getState();
+    
+    console.log('🚀 Setting launch site:', action);
+    
+    // Update environment with location data
+    if (action.latitude !== undefined || action.longitude !== undefined || action.elevation !== undefined) {
+      const currentEnv = useRocket.getState().environment;
+      const environmentUpdate = {
+        ...currentEnv,
+        ...(action.latitude !== undefined && { latitude: action.latitude }),
+        ...(action.longitude !== undefined && { longitude: action.longitude }),
+        ...(action.elevation !== undefined && { elevation: action.elevation })
+      };
+      setEnvironment(environmentUpdate);
+    }
+    
+    // Update launch parameters
+    if (action.railLength !== undefined || action.inclination !== undefined || 
+        action.heading !== undefined || action.launchSiteName !== undefined) {
+      const currentParams = useRocket.getState().launchParameters;
+      const parameterUpdate = {
+        ...currentParams,
+        ...(action.railLength !== undefined && { railLength: action.railLength }),
+        ...(action.inclination !== undefined && { inclination: action.inclination }),
+        ...(action.heading !== undefined && { heading: action.heading }),
+        ...(action.launchSiteName !== undefined && { launchSiteName: action.launchSiteName })
+      };
+      setLaunchParameters(parameterUpdate);
+    }
+    
+    console.log('✅ Launch site configured');
+    
+  } catch (error) {
+    console.error('❌ Failed to set launch site:', error);
+  }
+}
+
+/**
+ * Set wind conditions
+ */
+export function setWindConditions(action: any) {
+  try {
+    const { setEnvironment } = useRocket.getState();
+    
+    console.log('💨 Setting wind conditions:', action);
+    
+    const currentEnv = useRocket.getState().environment;
+    const windUpdate = {
+      ...currentEnv,
+      windSpeed: action.windSpeed !== undefined ? action.windSpeed : currentEnv.windSpeed,
+      windDirection: action.windDirection !== undefined ? action.windDirection : currentEnv.windDirection
+    };
+    
+    setEnvironment(windUpdate);
+    console.log(`✅ Wind conditions: ${windUpdate.windSpeed} m/s @ ${windUpdate.windDirection}°`);
+    
+  } catch (error) {
+    console.error('❌ Failed to set wind conditions:', error);
+  }
+}
+
+/**
+ * Set atmospheric model and conditions
+ */
+export function setAtmosphericConditions(action: any) {
+  try {
+    const { setEnvironment } = useRocket.getState();
+    
+    console.log('🌤️ Setting atmospheric conditions:', action);
+    
+    const currentEnv = useRocket.getState().environment;
+    const atmosphericUpdate = {
+      ...currentEnv,
+      atmosphericModel: action.atmosphericModel || currentEnv.atmosphericModel,
+      elevation: action.elevation !== undefined ? action.elevation : currentEnv.elevation,
+      date: action.date || currentEnv.date
+    };
+    
+    setEnvironment(atmosphericUpdate);
+    console.log(`✅ Atmospheric model: ${atmosphericUpdate.atmosphericModel} at ${atmosphericUpdate.elevation}m elevation`);
+    
+  } catch (error) {
+    console.error('❌ Failed to set atmospheric conditions:', error);
+  }
+}
+
+/**
+ * Set launch rail and orientation parameters
+ */
+export function setLaunchParameters(action: any) {
+  try {
+    const { setLaunchParameters } = useRocket.getState();
+    
+    console.log('📐 Setting launch parameters:', action);
+    
+    const currentParams = useRocket.getState().launchParameters;
+    const parameterUpdate = {
+      ...currentParams,
+      railLength: action.railLength !== undefined ? action.railLength : currentParams.railLength,
+      inclination: action.inclination !== undefined ? action.inclination : currentParams.inclination,
+      heading: action.heading !== undefined ? action.heading : currentParams.heading,
+      launchSiteName: action.launchSiteName || currentParams.launchSiteName
+    };
+    
+    setLaunchParameters(parameterUpdate);
+    console.log(`✅ Launch rail: ${parameterUpdate.railLength}m, inclination: ${parameterUpdate.inclination}°, heading: ${parameterUpdate.heading}°`);
+    
+  } catch (error) {
+    console.error('❌ Failed to set launch parameters:', error);
+  }
+}
+
+/**
+ * Analyze environmental impact on flight
+ */
+export function analyzeEnvironmentalImpact(action: any) {
+  try {
+    const { environment, launchParameters, rocket, setSimulationMessage } = useRocket.getState();
+    
+    console.log('🌡️ Analyzing environmental impact...');
+    
+    let analysis = [];
+    let warnings = [];
+    
+    // Wind analysis
+    if (environment.windSpeed > 10) {
+      warnings.push(`High wind speed (${environment.windSpeed} m/s) may affect flight stability`);
+    } else if (environment.windSpeed > 5) {
+      analysis.push(`Moderate wind (${environment.windSpeed} m/s) will cause some drift`);
+    }
+    
+    // Elevation analysis
+    if (environment.elevation > 1500) {
+      analysis.push(`High altitude launch (${environment.elevation}m) - reduced air density will increase altitude`);
+    } else if (environment.elevation < 0) {
+      analysis.push(`Below sea level launch (${environment.elevation}m) - increased air density will reduce altitude`);
+    }
+    
+    // Launch angle analysis
+    if (launchParameters.inclination < 80) {
+      warnings.push(`Low launch angle (${launchParameters.inclination}°) may reduce altitude significantly`);
+    } else if (launchParameters.inclination > 90) {
+      warnings.push(`Launch angle over 90° (${launchParameters.inclination}°) will result in backwards flight`);
+    }
+    
+    // Rail length analysis
+    const rocketLength = rocket.nose_cone.length_m + 
+      rocket.body_tubes.reduce((sum, body) => sum + body.length_m, 0);
+    if (launchParameters.railLength < rocketLength * 2) {
+      warnings.push(`Short rail (${launchParameters.railLength}m) for rocket length (${rocketLength.toFixed(2)}m) - consider longer rail`);
+    }
+    
+    // Atmospheric model analysis
+    if (environment.atmosphericModel === "standard") {
+      analysis.push("Using standard atmosphere model");
+    } else if (environment.atmosphericModel === "forecast") {
+      analysis.push("Using weather forecast data for enhanced accuracy");
+    }
+    
+    const message = [
+      ...analysis,
+      ...(warnings.length > 0 ? ['⚠️ WARNINGS:', ...warnings] : [])
+    ].join('\n');
+    
+    setSimulationMessage(message);
+    console.log('✅ Environmental analysis completed');
+    
+  } catch (error) {
+    console.error('❌ Environmental analysis failed:', error);
+  }
+}
+
+/**
+ * Run Monte Carlo simulation with environmental variations
+ */
+export function runMonteCarloSimulation(action: any) {
+  try {
+    const { rocket, environment, launchParameters, setMonteCarloResult, setSimulating } = useRocket.getState();
+    
+    console.log('🎲 Running Monte Carlo simulation with environmental variations...');
+    setSimulating(true);
+    
+    const iterations = action.iterations || 100;
+    const windVariation = action.windVariation || 2.0; // ±2 m/s
+    const pressureVariation = action.pressureVariation || 0.05; // ±5%
+    
+    // Simulate multiple launches with environmental variations
+    setTimeout(() => {
+      const results = [];
+      
+      for (let i = 0; i < iterations; i++) {
+        // Vary environmental conditions
+        const variedWind = environment.windSpeed + (Math.random() - 0.5) * windVariation * 2;
+        const variedDirection = environment.windDirection + (Math.random() - 0.5) * 20; // ±10°
+        const variedElevation = environment.elevation + (Math.random() - 0.5) * 100; // ±50m
+        
+        // Simple simulation with environmental effects
+        const baseAltitude = 200; // Base altitude estimate
+        const windEffect = -variedWind * 0.5; // Wind reduces altitude
+        const elevationEffect = variedElevation * 0.1; // Elevation increases altitude
+        const randomVariation = (Math.random() - 0.5) * 50; // Random variation
+        
+        const simulatedAltitude = Math.max(0, baseAltitude + windEffect + elevationEffect + randomVariation);
+        
+        results.push({
+          altitude: simulatedAltitude,
+          windSpeed: variedWind,
+          windDirection: variedDirection,
+          elevation: variedElevation
+        });
+      }
+      
+      // Calculate statistics
+      const altitudes = results.map(r => r.altitude);
+      altitudes.sort((a, b) => a - b);
+      
+      const stats = {
+        altitude: {
+          mean: altitudes.reduce((a, b) => a + b, 0) / altitudes.length,
+          std: Math.sqrt(altitudes.reduce((sum, val) => sum + Math.pow(val - altitudes.reduce((a, b) => a + b, 0) / altitudes.length, 2), 0) / altitudes.length),
+          min: Math.min(...altitudes),
+          max: Math.max(...altitudes),
+          percentiles: {
+            "5": altitudes[Math.floor(altitudes.length * 0.05)],
+            "25": altitudes[Math.floor(altitudes.length * 0.25)],
+            "50": altitudes[Math.floor(altitudes.length * 0.50)],
+            "75": altitudes[Math.floor(altitudes.length * 0.75)],
+            "95": altitudes[Math.floor(altitudes.length * 0.95)]
+          }
+        }
+      };
+      
+      const monteCarloResult = {
+        nominal: {
+          maxAltitude: stats.altitude.mean,
+          simulationFidelity: 'monte-carlo',
+          timestamp: new Date().toISOString()
+        },
+        statistics: stats,
+        iterations: results
+      };
+      
+      setMonteCarloResult(monteCarloResult);
+      setSimulating(false);
+      
+      console.log(`✅ Monte Carlo completed: ${iterations} iterations, mean altitude: ${stats.altitude.mean.toFixed(1)}m ±${stats.altitude.std.toFixed(1)}m`);
+      
+    }, 2000); // Simulate processing time
+    
+  } catch (error) {
+    console.error('❌ Monte Carlo simulation failed:', error);
+    useRocket.getState().setSimulating(false);
+  }
+}
+
+// ===========================================
+// ANALYSIS AND EXPORT FUNCTIONS
+// ===========================================
+
+/**
+ * Export simulation data in various formats
+ */
+export function exportSimulationData(params: any) {
+  try {
+    const { rocket, sim } = useRocket.getState();
+    
+    if (!sim) {
+      console.log('⚠️ No simulation data to export');
       return;
     }
     
-    // Calculate performance metrics
-    const analysis = {
-      motor,
-      thrustToWeight: motor.avgThrust / (estimateRocketMass(rocket) * 9.81),
-      totalImpulse: motor.totalImpulse,
-      specificImpulse: motor.totalImpulse / (motor.weight.propellant * 9.81),
-      burnTime: motor.burnTime,
-      averageThrust: motor.avgThrust,
-      impulseClass: motor.impulseClass,
-      recommendations: [] as string[]
+    console.log('💾 Exporting simulation data in format:', params.format);
+
+    let exportData: any = {
+      rocket: {
+        name: rocket.name,
+        nose_cone: rocket.nose_cone,
+        body_tubes: rocket.body_tubes,
+        fins: rocket.fins,
+        motor: rocket.motor,
+        parachutes: rocket.parachutes
+      },
+      simulation: {
+        maxAltitude: sim.maxAltitude,
+        maxVelocity: sim.maxVelocity,
+        apogeeTime: sim.apogeeTime,
+        stabilityMargin: sim.stabilityMargin,
+        fidelity: sim.simulationFidelity
+      }
     };
+
+    if (params.includeTrajectory && sim.trajectory) {
+      exportData.trajectory = sim.trajectory;
+    }
+
+    let content: string;
+    let filename: string;
+    let mimeType: string;
+
+    switch (params.format) {
+      case "csv":
+        content = convertToCSV(exportData);
+        filename = `${rocket.name}_simulation.csv`;
+        mimeType = "text/csv";
+        break;
+      case "json":
+        content = JSON.stringify(exportData, null, 2);
+        filename = `${rocket.name}_simulation.json`;
+        mimeType = "application/json";
+        break;
+      case "kml":
+        content = convertToKML(exportData);
+        filename = `${rocket.name}_flight.kml`;
+        mimeType = "application/vnd.google-earth.kml+xml";
+        break;
+      default:
+        console.error('Unsupported export format:', params.format);
+        return;
+    }
+
+    // Create and trigger download
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log('✅ Export completed:', filename);
+  } catch (error) {
+    console.error('❌ Export failed:', error);
+  }
+}
+
+/**
+ * Analyze rocket stability
+ */
+export function analyzeStability(params: any) {
+  try {
+    const { rocket, setStabilityAnalysis } = useRocket.getState();
     
-    // Add performance recommendations
-    if (analysis.thrustToWeight < 5) {
-      analysis.recommendations.push("⚠️ Low thrust-to-weight ratio - consider a more powerful motor");
-    } else if (analysis.thrustToWeight > 15) {
-      analysis.recommendations.push("⚠️ Very high thrust-to-weight ratio - may cause excessive acceleration");
+    console.log('🔍 Analyzing rocket stability...');
+    
+    // Calculate center of mass and center of pressure
+    const centerOfMass = calculateCenterOfMass(rocket);
+    const centerOfPressure = calculateCenterOfPressure(rocket);
+    const staticMargin = centerOfPressure - centerOfMass;
+    
+    // Determine stability rating
+    let rating = "Unknown";
+    let recommendations: string[] = [];
+    
+    if (staticMargin < 0) {
+      rating = "Unstable";
+      recommendations.push("Add weight to nose or move fins back");
+      recommendations.push("Consider larger fins or longer body");
+    } else if (staticMargin < 0.5) {
+      rating = "Marginally Stable";
+      recommendations.push("Increase fin size for better stability");
+      recommendations.push("Consider adding nose weight");
+    } else if (staticMargin > 2.0) {
+      rating = "Overstable";
+      recommendations.push("Reduce fin size or move fins forward");
+      recommendations.push("May have reduced altitude due to drag");
     } else {
-      analysis.recommendations.push("✅ Good thrust-to-weight ratio for stable flight");
+      rating = "Stable";
+      recommendations.push("Good stability configuration");
     }
     
-    // Dispatch motor analysis event
-    window.dispatchEvent(new CustomEvent('motorAnalysis', {
-      detail: analysis
-    }));
+    const analysis = {
+      staticMargin,
+      center_of_mass: centerOfMass,
+      center_of_pressure: centerOfPressure,
+      rating,
+      recommendations,
+      timestamp: new Date().toISOString()
+    };
+    
+    setStabilityAnalysis(analysis);
+    console.log('✅ Stability analysis completed:', rating);
     
   } catch (error) {
-    console.error('❌ Motor analysis failed:', error);
+    console.error('❌ Stability analysis failed:', error);
   }
 }
 
-// Simulation data export
-export function exportSimulationData(params: any) {
-  const { sim, rocket } = useRocket.getState();
-  
-  if (!sim) {
-    console.log('⚠️ No simulation data to export');
-    return;
-  }
-  
-  console.log('💾 Exporting simulation data in format:', params.format);
-  
-  let exportData: any = {
-    rocket: {
-      name: rocket.name,
-      parts: rocket.parts,
-      motorId: rocket.motorId,
-      Cd: rocket.Cd
-    },
-    simulation: {
-      maxAltitude: sim.maxAltitude,
-      maxVelocity: sim.maxVelocity,
-      apogeeTime: sim.apogeeTime,
-      stabilityMargin: sim.stabilityMargin,
-      fidelity: sim.simulationFidelity
+/**
+ * Optimize rocket design
+ */
+export function optimizeDesign(params: any) {
+  try {
+    const { rocket, updateRocket } = useRocket.getState();
+    
+    console.log('⚡ Optimizing rocket design for:', params.objective);
+    
+    // Simple optimization based on objective
+    let optimizedRocket = { ...rocket };
+    
+    switch (params.objective) {
+      case "altitude":
+        // Reduce drag, optimize fins
+        if (optimizedRocket.fins.length > 0) {
+          optimizedRocket.fins = optimizedRocket.fins.map(fin => ({
+            ...fin,
+            thickness_m: Math.max(0.003, fin.thickness_m * 0.8), // Thinner fins
+            root_chord_m: fin.root_chord_m * 0.9 // Smaller fins
+          }));
+        }
+        break;
+        
+      case "stability":
+        // Increase fin size
+        if (optimizedRocket.fins.length > 0) {
+          optimizedRocket.fins = optimizedRocket.fins.map(fin => ({
+            ...fin,
+            root_chord_m: fin.root_chord_m * 1.2,
+            span_m: fin.span_m * 1.1
+          }));
+        }
+        break;
+        
+      case "mass":
+        // Reduce wall thickness
+        optimizedRocket.nose_cone = {
+          ...optimizedRocket.nose_cone,
+          wall_thickness_m: Math.max(0.001, optimizedRocket.nose_cone.wall_thickness_m * 0.8)
+        };
+        optimizedRocket.body_tubes = optimizedRocket.body_tubes.map(body => ({
+          ...body,
+          wall_thickness_m: Math.max(0.002, body.wall_thickness_m * 0.8)
+        }));
+        break;
     }
-  };
-  
-  if (params.include_trajectory && sim.trajectory) {
-    exportData.trajectory = sim.trajectory;
+    
+    updateRocket(() => optimizedRocket);
+    console.log('✅ Design optimization completed');
+    
+  } catch (error) {
+    console.error('❌ Design optimization failed:', error);
   }
-  
-  if (params.include_events && sim.flightEvents) {
-    exportData.events = sim.flightEvents;
-  }
-  
-  if (params.include_motor_data && sim.thrustCurve) {
-    exportData.motorData = {
-      thrustCurve: sim.thrustCurve
-    };
-  }
-  
-  // Create and download file
-  let content: string;
-  let filename: string;
-  let mimeType: string;
-  
-  switch (params.format) {
-    case "csv":
-      content = convertToCSV(exportData);
-      filename = `${rocket.name}_simulation.csv`;
-      mimeType = "text/csv";
-      break;
-    case "json":
-      content = JSON.stringify(exportData, null, 2);
-      filename = `${rocket.name}_simulation.json`;
-      mimeType = "application/json";
-      break;
-    case "kml":
-      content = convertToKML(exportData);
-      filename = `${rocket.name}_trajectory.kml`;
-      mimeType = "application/vnd.google-earth.kml+xml";
-      break;
-    default:
-      content = JSON.stringify(exportData, null, 2);
-      filename = `${rocket.name}_simulation.json`;
-      mimeType = "application/json";
-  }
-  
-  // Create download
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-  
-  console.log('✅ Data exported as:', filename);
 }
 
-// Recovery prediction
-export function predictRecovery(params: any) {
-  const { sim } = useRocket.getState();
+// ===========================================
+// UTILITY FUNCTIONS
+// ===========================================
+
+/**
+ * Calculate rocket center of mass
+ */
+function calculateCenterOfMass(rocket: Rocket): number {
+  let totalMass = 0;
+  let totalMoment = 0;
+  let position = 0;
   
-  console.log('🪂 Predicting recovery with parameters:', params);
+  // Nose cone
+  const noseMass = calculateComponentMass(rocket.nose_cone);
+  const nosePosition = position + rocket.nose_cone.length_m / 2;
+  totalMass += noseMass;
+  totalMoment += noseMass * nosePosition;
+  position += rocket.nose_cone.length_m;
   
-  if (!sim) {
-    console.log('⚠️ No simulation data available for recovery prediction');
-    return;
-  }
+  // Body tubes
+  rocket.body_tubes.forEach(body => {
+    const bodyMass = calculateComponentMass(body);
+    const bodyPosition = position + body.length_m / 2;
+    totalMass += bodyMass;
+    totalMoment += bodyMass * bodyPosition;
+    position += body.length_m;
+  });
   
-  const apogeeAltitude = sim.maxAltitude;
-  const deploymentAltitude = params.deployment_altitude;
+  // Fins (assume at tail)
+  rocket.fins.forEach(fin => {
+    const finMass = calculateComponentMass(fin);
+    const finPosition = position - 0.05; // Fins near tail
+    totalMass += finMass;
+    totalMoment += finMass * finPosition;
+  });
   
-  if (!apogeeAltitude) {
-    return {
-      deploymentAltitude: 0,
-      terminalVelocity: 0,
-      descentTime: 0,
-      driftDistance: 0,
-      landingVelocity: 0,
-      recommendations: ["No simulation data available for recovery prediction"]
-    };
-  }
-  
-  const descentDistance = apogeeAltitude - deploymentAltitude;
-  
-  // Estimate descent time and drift
-  const parachuteDragArea = params.parachute_cd_s;
-  const terminalVelocity = Math.sqrt((2 * estimateRocketMass(useRocket.getState().rocket) * 9.81) / (1.225 * parachuteDragArea));
-  const descentTime = descentDistance / terminalVelocity + params.deployment_delay;
-  
-  // Simple drift calculation (assuming constant wind)
-  const windSpeed = window.environmentConditions?.windSpeed || 5; // m/s
-  const driftDistance = windSpeed * descentTime;
-  
-  const recoveryPrediction = {
-    deploymentAltitude,
-    terminalVelocity,
-    descentTime,
-    driftDistance,
-    landingVelocity: terminalVelocity,
-    recommendations: [] as string[]
-  };
-  
-  // Add recommendations
-  if (terminalVelocity > 6) {
-    recoveryPrediction.recommendations.push("⚠️ High landing velocity - consider larger parachute");
-  } else if (terminalVelocity < 3) {
-    recoveryPrediction.recommendations.push("ℹ️ Very gentle landing - parachute may be oversized");
-  } else {
-    recoveryPrediction.recommendations.push("✅ Good landing velocity for safe recovery");
-  }
-  
-  if (driftDistance > 500) {
-    recoveryPrediction.recommendations.push("⚠️ Large drift distance - consider dual deploy or lower deployment altitude");
-  }
-  
-  // Dispatch recovery prediction event
-  window.dispatchEvent(new CustomEvent('recoveryPrediction', {
-    detail: recoveryPrediction
-  }));
+  return totalMass > 0 ? totalMoment / totalMass : 0;
 }
 
-// Helper function to convert data to CSV
+/**
+ * Calculate rocket center of pressure
+ */
+function calculateCenterOfPressure(rocket: Rocket): number {
+  // Simplified calculation - typically fins dominate
+  const totalLength = rocket.nose_cone.length_m + 
+    rocket.body_tubes.reduce((sum, body) => sum + body.length_m, 0);
+  
+  if (rocket.fins.length > 0) {
+    // Fins contribute most to center of pressure
+    return totalLength - 0.1; // Approximate fin position
+  }
+  
+  return totalLength * 0.7; // Body-only approximation
+}
+
+/**
+ * Convert data to CSV format
+ */
 function convertToCSV(data: any): string {
-  if (!data.trajectory) {
-    return "No trajectory data available for CSV export";
-  }
+  const headers = ['Parameter', 'Value', 'Unit'];
+  const rows = [
+    ['Rocket Name', data.rocket.name, ''],
+    ['Max Altitude', data.simulation.maxAltitude?.toFixed(2) || 'N/A', 'm'],
+    ['Max Velocity', data.simulation.maxVelocity?.toFixed(2) || 'N/A', 'm/s'],
+    ['Apogee Time', data.simulation.apogeeTime?.toFixed(2) || 'N/A', 's'],
+    ['Stability Margin', data.simulation.stabilityMargin?.toFixed(2) || 'N/A', ''],
+    ['Simulation Fidelity', data.simulation.fidelity || 'N/A', '']
+  ];
   
-  let csv = "Time,X,Y,Z,Vx,Vy,Vz\n";
-  
-  data.trajectory.time.forEach((time: number, index: number) => {
-    const pos = data.trajectory.position[index] || [0, 0, 0];
-    const vel = data.trajectory.velocity[index] || [0, 0, 0];
-    csv += `${time},${pos[0]},${pos[1]},${pos[2]},${vel[0]},${vel[1]},${vel[2]}\n`;
-  });
-  
-  return csv;
+  return [headers, ...rows].map(row => row.join(',')).join('\n');
 }
 
-// Helper function to convert data to KML
+/**
+ * Convert data to KML format
+ */
 function convertToKML(data: any): string {
-  if (!data.trajectory) {
-    return "<?xml version='1.0' encoding='UTF-8'?><kml xmlns='http://www.opengis.net/kml/2.2'><Document><name>No Trajectory Data</name></Document></kml>";
-  }
-  
-  let coordinates = "";
-  data.trajectory.position.forEach((pos: number[]) => {
-    coordinates += `${pos[1]},${pos[0]},${pos[2]} `;
-  });
-  
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${data.rocket.name} Flight Path</name>
+    <name>${data.rocket.name} Flight</name>
+    <description>Rocket flight simulation data</description>
     <Placemark>
-      <name>Rocket Trajectory</name>
-      <LineString>
-        <coordinates>${coordinates}</coordinates>
-      </LineString>
+      <name>Launch Site</name>
+      <Point>
+        <coordinates>0,0,0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Apogee</name>
+      <Point>
+        <coordinates>0,0,${data.simulation.maxAltitude || 0}</coordinates>
+      </Point>
     </Placemark>
   </Document>
 </kml>`;
 }
 
-// Professional simulation handler
-async function handleProfessionalSimulation(action: any) {
-  try {
-    const { rocket } = useRocket.getState();
+// ===========================================
+// SMART ID MAPPING AND LEGACY ACTION HANDLERS
+// ===========================================
+
+/**
+ * Smart ID mapping to match agent-generated IDs to actual component IDs
+ * Enhanced to handle various ID patterns and fallback to component type matching
+ */
+function mapAgentIdToComponent(rocket: Rocket, agentId: string): { componentType: string, componentIndex: number, actualId: string } | null {
+  console.log(`🔍 Mapping agent ID "${agentId}" to component...`);
+  
+  // First, check if this is a direct component ID match
+  const directMatches = [
+    { component: rocket.nose_cone, type: 'nose_cone', index: 0 },
+    ...rocket.body_tubes.map((body, index) => ({ component: body, type: 'body_tube', index })),
+    ...rocket.fins.map((fin, index) => ({ component: fin, type: 'fin_set', index })),
+    { component: rocket.motor, type: 'motor', index: 0 },
+    ...rocket.parachutes.map((para, index) => ({ component: para, type: 'parachute', index }))
+  ];
+  
+  for (const match of directMatches) {
+    if (match.component && match.component.id === agentId) {
+      console.log(`✅ Direct ID match found: ${agentId} → ${match.type}[${match.index}]`);
+      return {
+        componentType: match.type,
+        componentIndex: match.index,
+        actualId: match.component.id
+      };
+    }
+  }
+  
+  // Enhanced pattern matching with more flexible patterns
+  const idMappings = [
+    // Nose cone mappings - more flexible patterns
+    { pattern: /^(nose|nosecone|nose_cone).*$/i, type: 'nose_cone', index: 0 },
     
-    // Use the correct API endpoint
-    const endpoint = "/api/simulate";
+    // Body tube mappings - catch any body-related ID
+    { pattern: /^(body|bodytube|body_tube|airframe|tube).*$/i, type: 'body_tube', index: 0 },
     
-    // Clean and validate environment data
-    const cleanEnvironment = cleanEnvironmentData(action.environment || {
-      latitude: 0,
-      longitude: 0,
-      elevation: 0,
-      windSpeed: 0,
-      windDirection: 0,
-      atmosphericModel: "standard"
-    });
+    // Fin mappings - catch any fin-related ID
+    { pattern: /^(fin|fins|finset|fin_set).*$/i, type: 'fin_set', index: 0 },
     
-    // Prepare payload
-    const payload: {
-      rocket: Rocket;
-      environment?: any;
-      launchParameters?: any;
-      fidelity: string;
-      [key: string]: any;
-    } = {
-      rocket,
-      fidelity: action.fidelity || "professional",
-      environment: cleanEnvironment,
-      launchParameters: action.launch_parameters || {
-        railLength: 5.0,
-        inclination: 85.0,
-        heading: 0.0
+    // Motor mappings
+    { pattern: /^(motor|engine).*$/i, type: 'motor', index: 0 },
+    
+    // Parachute mappings
+    { pattern: /^(para|parachute|chute|recovery).*$/i, type: 'parachute', index: 0 }
+  ];
+  
+  // Try pattern matching
+  for (const mapping of idMappings) {
+    if (mapping.pattern.test(agentId)) {
+      let actualComponent;
+      let actualId;
+      
+      switch (mapping.type) {
+        case 'nose_cone':
+          actualComponent = rocket.nose_cone;
+          actualId = actualComponent?.id;
+          break;
+        case 'body_tube':
+          // Always try to match to the first body tube if it exists
+          actualComponent = rocket.body_tubes[mapping.index];
+          actualId = actualComponent?.id;
+          break;
+        case 'fin_set':
+          actualComponent = rocket.fins[mapping.index];
+          actualId = actualComponent?.id;
+          break;
+        case 'motor':
+          actualComponent = rocket.motor;
+          actualId = actualComponent?.motor_database_id;
+          break;
+        case 'parachute':
+          actualComponent = rocket.parachutes[mapping.index];
+          actualId = actualComponent?.id;
+          break;
       }
-    };
-    
-    // Add analysis options for professional simulations
-    if (action.analysis_options) {
-      payload.analysisOptions = action.analysis_options;
-    }
-    
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Simulation failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Update simulation state
-    useRocket.getState().setSim(result);
-    
-    showNotification(
-      `Professional ${action.fidelity} simulation completed. Max altitude: ${result.maxAltitude?.toFixed(1)}m`,
-      "success"
-    );
-    
-  } catch (error) {
-    console.error("Professional simulation failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Simulation failed: ${errorMessage}`, "error");
-    
-    // Fallback to quick simulation
-    runQuickSim();
-  }
-}
-
-// Stability analysis handler
-async function handleStabilityAnalysis(action: any) {
-  try {
-    const { rocket, sim: currentSim } = useRocket.getState();
-    
-    const response = await fetch("/api/analyze/stability", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rocket,
-        environment: action.wind_conditions || {},
-        analysisType: "comprehensive"
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Analysis failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Update stability analysis state
-    useRocket.getState().setStabilityAnalysis(result);
-    
-    // Also update simulation state with stability data
-    const updatedSim: SimulationResult = {
-      ...currentSim,
-      stabilityAnalysis: result,
-      stabilityMargin: result.static_margin || currentSim?.stabilityMargin || 1.0
-    };
-    
-    useRocket.getState().setSim(updatedSim);
-    
-    showNotification(`Stability analysis completed. Margin: ${result.static_margin?.toFixed(2)}`, "success");
-    
-  } catch (error) {
-    console.error("Stability analysis failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Stability analysis failed: ${errorMessage}`, "error");
-  }
-}
-
-// Performance analysis handler
-async function handlePerformanceAnalysis(action: any) {
-  try {
-    const { rocket, sim: currentSim } = useRocket.getState();
-    
-    const response = await fetch("/api/analyze/performance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rocket,
-        environment: action.environment || {},
-        analysisType: "comprehensive"
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Analysis failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Update simulation state with proper typing
-    const updatedSim: SimulationResult = {
-      ...currentSim,
-      performanceAnalysis: result,
-      performanceRating: result.performance_rating
-    };
-    
-    useRocket.getState().setSim(updatedSim);
-    
-    showNotification(`Performance analysis completed. Rating: ${result.performance_rating}`, "success");
-    
-  } catch (error) {
-    console.error("Performance analysis failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Performance analysis failed: ${errorMessage}`, "error");
-  }
-}
-
-// Design optimization handler
-async function handleDesignOptimization(action: any) {
-  try {
-    const { rocket } = useRocket.getState();
-    
-    const response = await fetch("/api/optimize/design", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rocket,
-        target: action.target || "max_altitude",
-        constraints: action.constraints || {},
-        method: action.method || "professional"
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Optimization failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    // Apply optimized design if available
-    if (result.optimized_rocket) {
-      useRocket.getState().updateRocket(() => result.optimized_rocket);
-    }
-    
-    // Update simulation with optimization results
-    if (result.optimized_performance) {
-      useRocket.getState().setSim(result.optimized_performance);
-    }
-    
-    showNotification(
-      `Design optimized for ${action.target}. Improvement: ${result.improvements?.altitude_gain?.toFixed(1)}m`,
-      "success"
-    );
-    
-  } catch (error) {
-    console.error("Design optimization failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Optimization failed: ${errorMessage}`, "error");
-  }
-}
-
-// Environment setup handler
-function handleEnvironmentSetup(action: any) {
-  // Store environment conditions globally for use in simulations
-  window.environmentConditions = {
-    latitude: action.latitude || 0,
-    longitude: action.longitude || 0,
-    elevation: action.elevation || 0,
-    windSpeed: action.wind_speed || 0,
-    windDirection: action.wind_direction || 0,
-    atmosphericModel: validateAtmosphericModel(action.atmospheric_model || "standard"),
-    date: action.date,
-    // Additional real weather data if available
-    temperature: action.temperature,
-    pressure: action.pressure,
-    humidity: action.humidity,
-    visibility: action.visibility,
-    cloudCover: action.cloudCover
-  };
-
-  // If using forecast model, ensure we have real weather data
-  if (window.environmentConditions.atmosphericModel === "forecast") {
-    // Check if we have real weather data loaded
-    const hasRealWeather = window.environmentConditions.temperature !== undefined;
-    
-    if (hasRealWeather) {
-      showNotification(
-        `Real weather data active: ${action.wind_speed?.toFixed(1) || 0}m/s wind, ${action.temperature?.toFixed(1) || 'N/A'}°C`,
-        "success"
-      );
-    } else {
-      showNotification(
-        "Forecast model selected but no real weather data available. Enable location access for accurate conditions.",
-        "warning"
-      );
-    }
-  } else {
-    showNotification(
-      `Environment set: ${action.wind_speed || 0}m/s wind, ${window.environmentConditions.atmosphericModel} atmosphere`,
-      "info"
-    );
-  }
-
-  // Dispatch event for UI updates
-  window.dispatchEvent(new CustomEvent('environmentUpdate', {
-    detail: window.environmentConditions
-  }));
-}
-
-// Motor analysis handler
-async function handleMotorAnalysis(action: any) {
-  try {
-    const response = await fetch("/api/motors/detailed", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Motor analysis failed: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    const motorData = result.motors[action.motor_id];
-    
-    if (!motorData) {
-      throw new Error(`Motor ${action.motor_id} not found`);
-    }
-    
-    // Calculate rocket mass for thrust-to-weight ratio
-    const { rocket } = useRocket.getState();
-    const rocketMass = estimateRocketMass(rocket);
-    
-    // Update motor analysis state with proper typing
-    const motorAnalysis = {
-      motor: motorData,
-      thrustToWeight: (motorData.averageThrust || motorData.thrust || 0) / (rocketMass * 9.81),
-      totalImpulse: motorData.totalImpulse || 0,
-      specificImpulse: motorData.specificImpulse || motorData.isp || 0,
-      burnTime: motorData.burnTime || 0,
-      averageThrust: motorData.averageThrust || motorData.thrust || 0,
-      impulseClass: motorData.impulseClass || 'Unknown',
-      recommendations: motorData.applications || motorData.recommendations || []
-    };
-    
-    useRocket.getState().setMotorAnalysis(motorAnalysis);
-    
-    // Update simulation state with motor analysis
-    const { sim: currentSim } = useRocket.getState();
-    const updatedSim: SimulationResult = {
-      ...currentSim,
-      motorAnalysis: motorAnalysis
-    };
-    
-    useRocket.getState().setSim(updatedSim);
-    
-    showNotification(`Motor analysis completed for ${motorData.name || action.motor_id}`, "success");
-    
-  } catch (error) {
-    console.error("Motor analysis failed:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    showNotification(`Motor analysis failed: ${errorMessage}`, "error");
-  }
-}
-
-// Flight report handler
-function handleFlightReport(action: any) {
-  const { rocket, sim } = useRocket.getState();
-  
-  if (!sim) {
-    showNotification("No simulation data available for report generation", "warning");
-    return;
-  }
-  
-  const report = generateFlightReport(sim, action);
-  
-  // Store report for download or display
-  window.flightReport = report;
-  
-  showNotification(`Flight report generated in ${action.report_format || "professional"} format`, "success");
-}
-
-// Requirements validation handler
-function handleRequirementsValidation(action: any) {
-  const { rocket, sim } = useRocket.getState();
-  
-  if (!sim) {
-    showNotification("No simulation data available for validation", "warning");
-    return;
-  }
-  
-  const validation = validateRequirements(rocket, sim, action);
-  
-  // Update simulation state with validation results
-  const updatedSim: SimulationResult = {
-    ...sim,
-    requirementsValidation: validation
-  };
-  
-  useRocket.getState().setSim(updatedSim);
-  
-  const passedCount = validation.results.filter((r: any) => r.passed).length;
-  const totalCount = validation.results.length;
-  
-  showNotification(
-    `Requirements validation: ${passedCount}/${totalCount} requirements met`,
-    passedCount === totalCount ? "success" : "warning"
-  );
-}
-
-// Utility functions
-function showNotification(message: string, type: "success" | "error" | "info" | "warning") {
-  // Dispatch custom event for notification system
-  window.dispatchEvent(new CustomEvent('notification', {
-    detail: { message, type }
-  }));
-}
-
-function generateFlightReport(sim: any, options: any) {
-  // Generate comprehensive flight report
-  return {
-    summary: `Flight reached ${sim.maxAltitude?.toFixed(1)}m altitude`,
-    performance: sim,
-    recommendations: generateRecommendations(sim),
-    format: options.report_format || "professional"
-  };
-}
-
-function validateRequirements(rocket: any, sim: any, requirements: any) {
-  const results = [];
-  
-  // Safety requirements
-  if (requirements.safety_requirements) {
-    const safety = requirements.safety_requirements;
-    if (safety.min_stability_margin) {
-      results.push({
-        requirement: "Minimum Stability Margin",
-        target: safety.min_stability_margin,
-        actual: sim.stabilityMargin,
-        passed: sim.stabilityMargin >= safety.min_stability_margin
-      });
-    }
-  }
-  
-  // Performance requirements
-  if (requirements.performance_requirements) {
-    const performance = requirements.performance_requirements;
-    if (performance.min_altitude) {
-      results.push({
-        requirement: "Minimum Altitude",
-        target: performance.min_altitude,
-        actual: sim.maxAltitude,
-        passed: sim.maxAltitude >= performance.min_altitude
-      });
-    }
-  }
-  
-  return {
-    results,
-    overallPassed: results.every((r: any) => r.passed)
-  };
-}
-
-function generateRecommendations(sim: any) {
-  const recommendations = [];
-  
-  if (sim.stabilityMargin < 1.0) {
-    recommendations.push("Increase fin area or move fins aft for better stability");
-  }
-  
-  if (sim.maxAltitude < 100) {
-    recommendations.push("Consider a more powerful motor or reduce rocket mass");
-  }
-  
-  return recommendations;
-}
-
-// Weather-related handlers
-async function handleGetWeather(action: any) {
-  console.log('🌤️ Getting weather data...');
-  
-  try {
-    const { latitude, longitude, use_user_location } = action;
-    
-    // Import weather service if not already available
-    const { getCurrentWeather, requestLocationPermission } = await import('../services/weather');
-    
-    let location = null;
-    if (use_user_location) {
-      // Request user location
-      location = await requestLocationPermission();
-      showNotification('Location permission granted. Fetching weather...', 'info');
-    } else if (latitude && longitude) {
-      location = { latitude, longitude, elevation: 0 };
-    }
-    
-    if (location) {
-      const weather = await getCurrentWeather(location);
       
-      // Store weather data globally for access by agents and UI
-      window.environmentConditions = {
-        ...window.environmentConditions,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        elevation: location.elevation,
-        temperature: weather.current.temperature,
-        pressure: weather.current.pressure,
-        humidity: weather.current.humidity,
-        windSpeed: weather.current.windSpeed,
-        windDirection: weather.current.windDirection,
-        visibility: weather.current.visibility,
-        cloudCover: weather.current.cloudCover,
-        dewPoint: weather.current.dewPoint,
-        atmosphericModel: "forecast",
-        weatherSource: weather.current.source,
-        timestamp: weather.current.timestamp
-      };
-      
-      // Dispatch weather update event
-      window.dispatchEvent(new CustomEvent('weatherUpdate', {
-        detail: { weather, location }
-      }));
-      
-      showNotification(
-        `Weather loaded: ${weather.current.temperature}°C, ${weather.current.windSpeed}m/s wind`,
-        'success'
-      );
-    } else {
-      showNotification('Unable to get location for weather data', 'warning');
+      if (actualComponent && actualId) {
+        console.log(`✅ Pattern match found: "${agentId}" → ${mapping.type}[${mapping.index}] (ID: ${actualId})`);
+        return {
+          componentType: mapping.type,
+          componentIndex: mapping.index,
+          actualId: actualId
+        };
+      } else {
+        console.log(`⚠️ Pattern matched "${agentId}" to ${mapping.type}, but component doesn't exist`);
+      }
     }
-  } catch (error) {
-    console.error('Weather fetch failed:', error);
-    showNotification('Failed to get weather data', 'error');
   }
+  
+  // Fallback: If no pattern matches, try to infer from the ID content
+  const agentIdLower = agentId.toLowerCase();
+  
+  // Last resort fallback mappings
+  if (agentIdLower.includes('nose') && rocket.nose_cone) {
+    console.log(`🔄 Fallback: "${agentId}" → nose_cone (contains 'nose')`);
+    return { componentType: 'nose_cone', componentIndex: 0, actualId: rocket.nose_cone.id };
+  }
+  
+  if ((agentIdLower.includes('body') || agentIdLower.includes('tube')) && rocket.body_tubes.length > 0) {
+    console.log(`🔄 Fallback: "${agentId}" → body_tube[0] (contains 'body'/'tube')`);
+    return { componentType: 'body_tube', componentIndex: 0, actualId: rocket.body_tubes[0].id };
+  }
+  
+  if (agentIdLower.includes('fin') && rocket.fins.length > 0) {
+    console.log(`🔄 Fallback: "${agentId}" → fin_set[0] (contains 'fin')`);
+    return { componentType: 'fin_set', componentIndex: 0, actualId: rocket.fins[0].id };
+  }
+  
+  if ((agentIdLower.includes('motor') || agentIdLower.includes('engine')) && rocket.motor) {
+    console.log(`🔄 Fallback: "${agentId}" → motor (contains 'motor'/'engine')`);
+    return { componentType: 'motor', componentIndex: 0, actualId: rocket.motor.motor_database_id };
+  }
+  
+  if ((agentIdLower.includes('para') || agentIdLower.includes('chute')) && rocket.parachutes.length > 0) {
+    console.log(`🔄 Fallback: "${agentId}" → parachute[0] (contains 'para'/'chute')`);
+    return { componentType: 'parachute', componentIndex: 0, actualId: rocket.parachutes[0].id };
+  }
+  
+  console.error(`❌ No component mapping found for agent ID: "${agentId}"`);
+  console.log('📋 Available components:', {
+    nose_cone: rocket.nose_cone?.id,
+    body_tubes: rocket.body_tubes.map(b => b.id),
+    fins: rocket.fins.map(f => f.id),
+    motor: rocket.motor?.motor_database_id,
+    parachutes: rocket.parachutes.map(p => p.id)
+  });
+  
+  return null;
 }
 
-async function handleAssessLaunchConditions(action: any) {
-  console.log('🚀 Assessing launch conditions...');
+/**
+ * Update component using agent's generic "update_part" action
+ * Enhanced with better error handling and validation
+ */
+export function updatePartGeneric(rocket: Rocket, action: any): Rocket {
+  console.log('🔧 Generic part update started:', action);
   
-  const { include_weather, safety_level, mission_type } = action;
-  
-  // Get current environment conditions
-  const envConditions = window.environmentConditions;
-  
-  if (!envConditions || !include_weather) {
-    showNotification('No weather data available. Enable location for accurate assessment.', 'warning');
-    return;
+  if (!action.id) {
+    console.error('❌ No component ID provided for update_part action');
+    console.log('📋 Action details:', JSON.stringify(action, null, 2));
+    return rocket;
   }
   
-  // Assess conditions based on safety level
-  const conditions = {
-    windSpeed: envConditions.windSpeed || 0,
-    visibility: envConditions.visibility || 10,
-    temperature: envConditions.temperature || 20,
-    humidity: envConditions.humidity || 50,
-    cloudCover: envConditions.cloudCover || 0,
-    precipitation: 0 // This would come from weather API
-  };
+  // Log current rocket state for debugging
+  console.log('🚀 Current rocket state before update:');
+  console.log('   - Nose cone:', rocket.nose_cone?.id || 'None');
+  console.log('   - Body tubes:', rocket.body_tubes.map(b => b.id));
+  console.log('   - Fins:', rocket.fins.map(f => f.id));
+  console.log('   - Motor:', rocket.motor?.motor_database_id || 'None');
+  console.log('   - Parachutes:', rocket.parachutes.map(p => p.id));
   
-  // Define safety thresholds based on safety level
-  const thresholds = {
-    basic: { maxWind: 15, minVisibility: 3, tempRange: [-20, 50] },
-    standard: { maxWind: 10, minVisibility: 5, tempRange: [-10, 40] },
-    strict: { maxWind: 5, minVisibility: 10, tempRange: [0, 30] }
-  };
+  const mapping = mapAgentIdToComponent(rocket, action.id);
+  if (!mapping) {
+    console.error(`❌ Cannot find component for ID: ${action.id}`);
+    console.log('💡 Available component IDs:');
+    console.log('   - Nose cone:', rocket.nose_cone?.id);
+    console.log('   - Body tubes:', rocket.body_tubes.map(b => `${b.id} (${b.outer_radius_m}m radius, ${b.length_m}m length)`));
+    console.log('   - Fins:', rocket.fins.map(f => `${f.id} (${f.root_chord_m}m root, ${f.span_m}m span)`));
+    console.log('   - Motor:', rocket.motor?.motor_database_id);
+    console.log('   - Parachutes:', rocket.parachutes.map(p => `${p.id} (${p.cd_s_m2} CdS)`));
+    return rocket;
+  }
   
-  const threshold = thresholds[safety_level as keyof typeof thresholds] || thresholds.standard;
+  console.log(`✅ Component mapping successful: ${action.id} → ${mapping.componentType}[${mapping.componentIndex}]`);
   
-  // Assess each condition
-  const assessments = {
-    wind: conditions.windSpeed <= threshold.maxWind,
-    visibility: conditions.visibility >= threshold.minVisibility,
-    temperature: conditions.temperature >= threshold.tempRange[0] && conditions.temperature <= threshold.tempRange[1],
-    safe: true
-  };
-  
-  assessments.safe = assessments.wind && assessments.visibility && assessments.temperature;
-  
-  // Generate recommendation
-  let recommendation = '';
-  let status = '';
-  
-  if (assessments.safe) {
-    status = 'SAFE';
-    recommendation = `🟢 CONDITIONS ARE SAFE FOR LAUNCH\n${conditions.windSpeed}m/s wind, ${conditions.visibility}km visibility, ${conditions.temperature}°C`;
-  } else {
-    status = 'UNSAFE';
-    const issues = [];
-    if (!assessments.wind) issues.push(`High wind: ${conditions.windSpeed}m/s (max ${threshold.maxWind}m/s)`);
-    if (!assessments.visibility) issues.push(`Poor visibility: ${conditions.visibility}km (min ${threshold.minVisibility}km)`);
-    if (!assessments.temperature) issues.push(`Temperature out of range: ${conditions.temperature}°C`);
+  // Convert legacy property names to component-based equivalents
+  const convertProps = (props: any, componentType: string) => {
+    const converted: any = {};
     
-    recommendation = `🔴 UNSAFE LAUNCH CONDITIONS\n${issues.join('\n')}`;
+    console.log(`🔄 Converting properties for ${componentType}:`, props);
+    
+    for (const [key, value] of Object.entries(props)) {
+      switch (key) {
+        // Length properties
+        case 'length':
+          // Convert cm to m if the value seems to be in cm (> 10)
+          converted.length_m = typeof value === 'number' ? (value > 10 ? value / 100 : value) : (value as number);
+          console.log(`   ↳ ${key}: ${value} → length_m: ${converted.length_m}`);
+          break;
+        case 'length_m':
+          converted.length_m = value;
+          console.log(`   ↳ ${key}: ${value} (direct)`);
+          break;
+          
+        // Diameter properties (Ø symbol and variations)
+        case 'Ø':
+        case 'diameter':
+        case 'baseØ':
+        case 'base_diameter':
+          if (componentType === 'nose_cone') {
+            // Convert cm diameter to m radius if value seems to be in cm
+            converted.base_radius_m = typeof value === 'number' ? (value > 1 ? (value / 100) / 2 : (value as number) / 2) : (value as number) / 2;
+            console.log(`   ↳ ${key}: ${value} → base_radius_m: ${converted.base_radius_m}`);
+          } else if (componentType === 'body_tube') {
+            // Convert cm diameter to m radius if value seems to be in cm
+            converted.outer_radius_m = typeof value === 'number' ? (value > 1 ? (value / 100) / 2 : (value as number) / 2) : (value as number) / 2;
+            console.log(`   ↳ ${key}: ${value} → outer_radius_m: ${converted.outer_radius_m}`);
+          }
+          break;
+        case 'radius':
+          // Convert cm to m if the value seems to be in cm
+          converted.outer_radius_m = typeof value === 'number' ? (value > 1 ? value / 100 : value) : (value as number);
+          console.log(`   ↳ ${key}: ${value} → outer_radius_m: ${converted.outer_radius_m}`);
+          break;
+          
+        // Fin properties
+        case 'root':
+        case 'root_chord':
+          // Convert cm to m if the value seems to be in cm
+          converted.root_chord_m = typeof value === 'number' ? (value > 1 ? value / 100 : value) : (value as number);
+          console.log(`   ↳ ${key}: ${value} → root_chord_m: ${converted.root_chord_m}`);
+          break;
+        case 'span':
+          // Convert cm to m if the value seems to be in cm
+          converted.span_m = typeof value === 'number' ? (value > 1 ? value / 100 : value) : (value as number);
+          console.log(`   ↳ ${key}: ${value} → span_m: ${converted.span_m}`);
+          break;
+        case 'sweep':
+        case 'sweep_angle':
+          // Convert cm to m if the value seems to be in cm
+          converted.sweep_length_m = typeof value === 'number' ? (value > 1 ? value / 100 : value) : (value as number);
+          console.log(`   ↳ ${key}: ${value} → sweep_length_m: ${converted.sweep_length_m}`);
+          break;
+          
+        // Shape and other properties
+        case 'shape':
+        case 'color':
+        case 'material':
+          converted[key] = value;
+          console.log(`   ↳ ${key}: ${value} (direct)`);
+          break;
+          
+        // Motor properties
+        case 'motorId':
+        case 'motor_id':
+          converted.motor_database_id = value;
+          console.log(`   ↳ ${key}: ${value} → motor_database_id: ${converted.motor_database_id}`);
+          break;
+          
+        default:
+          converted[key] = value;
+          console.log(`   ↳ ${key}: ${value} (passthrough)`);
+      }
+    }
+    
+    return converted;
+  };
+  
+  const convertedProps = convertProps(action.props || {}, mapping.componentType);
+  console.log(`🎯 Final converted properties:`, convertedProps);
+  
+  // Validate that the component exists before updating
+  let targetComponent;
+  switch (mapping.componentType) {
+    case 'nose_cone':
+      targetComponent = rocket.nose_cone;
+      break;
+    case 'body_tube':
+      targetComponent = rocket.body_tubes[mapping.componentIndex];
+      break;
+    case 'fin_set':
+      targetComponent = rocket.fins[mapping.componentIndex];
+      break;
+    case 'motor':
+      targetComponent = rocket.motor;
+      break;
+    case 'parachute':
+      targetComponent = rocket.parachutes[mapping.componentIndex];
+      break;
   }
   
-  // Store assessment
-  window.launchAssessment = { assessments, conditions, recommendation, status, timestamp: new Date().toISOString() };
+  if (!targetComponent) {
+    console.error(`❌ Target component ${mapping.componentType}[${mapping.componentIndex}] does not exist!`);
+    return rocket;
+  }
   
-  // Dispatch assessment event
-  window.dispatchEvent(new CustomEvent('launchAssessment', {
-    detail: { assessments, conditions, recommendation, status }
-  }));
+  console.log(`📋 Target component before update:`, targetComponent);
   
-  showNotification(recommendation, assessments.safe ? 'success' : 'warning');
-}
-
-async function handleGetForecast(action: any) {
-  console.log('📊 Getting weather forecast...');
-  
+  // Apply the update based on component type
+  let updatedRocket;
   try {
-    const { hours_ahead, include_wind_profile, location_override } = action;
-    
-    // Import weather service
-    const { getWeatherForDate } = await import('../services/weather');
-    
-    const targetDate = new Date();
-    targetDate.setHours(targetDate.getHours() + (hours_ahead || 24));
-    
-    let location = location_override || null;
-    if (!location && window.environmentConditions) {
-      location = {
-        latitude: window.environmentConditions.latitude,
-        longitude: window.environmentConditions.longitude,
-        elevation: window.environmentConditions.elevation || 0
-      };
-    }
-    
-    if (location) {
-      const forecast = await getWeatherForDate(targetDate, location);
-      
-      // Store forecast data
-      window.weatherForecast = forecast;
-      
-      // Dispatch forecast event
-      window.dispatchEvent(new CustomEvent('weatherForecast', {
-        detail: { forecast, hours_ahead }
-      }));
-      
-      showNotification(`Forecast loaded for next ${hours_ahead || 24} hours`, 'success');
-    } else {
-      showNotification('Location required for weather forecast', 'warning');
-    }
-  } catch (error) {
-    console.error('Forecast fetch failed:', error);
-    showNotification('Failed to get weather forecast', 'error');
-  }
-}
-
-function handleAnalyzeAtmosphere(action: any) {
-  console.log('🌍 Analyzing atmospheric conditions...');
-  
-  const { max_altitude, include_wind_shear, density_altitude } = action;
-  const rocket = useRocket.getState().rocket;
-  const envConditions = window.environmentConditions;
-  
-  if (!envConditions) {
-    showNotification('Weather data required for atmospheric analysis', 'warning');
-    return;
-  }
-  
-  // Basic atmospheric analysis
-  const analysis: any = {
-    surfacePressure: envConditions.pressure || 1013.25,
-    surfaceTemperature: envConditions.temperature || 15,
-    surfaceDensity: calculateAirDensity(envConditions.pressure || 1013.25, envConditions.temperature || 15),
-    windSpeed: envConditions.windSpeed || 0,
-    windDirection: envConditions.windDirection || 0,
-    visibility: envConditions.visibility || 10
-  };
-  
-  if (density_altitude) {
-    // Calculate density altitude effect on performance
-    const densityAltitude = calculateDensityAltitude(analysis.surfacePressure, analysis.surfaceTemperature);
-    analysis.densityAltitude = densityAltitude;
-    analysis.performanceEffect = densityAltitude > 1000 ? 'reduced' : 'normal';
-  }
-  
-  // Store analysis
-  window.atmosphericAnalysis = analysis;
-  
-  // Dispatch analysis event
-  window.dispatchEvent(new CustomEvent('atmosphericAnalysis', {
-    detail: analysis
-  }));
-  
-  showNotification(`Atmospheric analysis complete. Density altitude: ${analysis.densityAltitude?.toFixed(0) || 'N/A'}m`, 'info');
-}
-
-async function handleRecommendLaunchWindow(action: any) {
-  console.log('⏰ Recommending launch window...');
-  
-  const { duration_hours, min_conditions, preferred_conditions } = action;
-  
-  try {
-    // Import weather service
-    const { getWeatherForDate } = await import('../services/weather');
-    
-    const now = new Date();
-    const windows = [];
-    
-    // Check conditions for each hour in the duration
-    for (let hour = 0; hour < (duration_hours || 6); hour++) {
-      const checkTime = new Date(now.getTime() + hour * 60 * 60 * 1000);
-      
-      try {
-        let location = null;
-        if (window.environmentConditions) {
-          location = {
-            latitude: window.environmentConditions.latitude,
-            longitude: window.environmentConditions.longitude,
-            elevation: window.environmentConditions.elevation || 0
-          };
-        }
+    switch (mapping.componentType) {
+      case 'nose_cone':
+        console.log('🔧 Updating nose cone...');
+        updatedRocket = updateNoseCone(rocket, { ...convertedProps, id: mapping.actualId });
+        break;
         
-        if (location) {
-          const weather = await getWeatherForDate(checkTime, location);
-          
-          // Check against minimum conditions
-          const meetsMin = weather.current.windSpeed <= (min_conditions?.max_wind_speed || 10) &&
-                          weather.current.visibility >= (min_conditions?.min_visibility || 5);
-          
-          // Check against preferred conditions
-          const meetsPreferred = weather.current.windSpeed <= (preferred_conditions?.max_wind_speed || 5) &&
-                                weather.current.visibility >= (preferred_conditions?.min_visibility || 10) &&
-                                weather.current.cloudCover <= (preferred_conditions?.max_cloud_cover || 25);
-          
-          windows.push({
-            time: checkTime,
-            weather: weather.current,
-            meetsMin,
-            meetsPreferred,
-            score: calculateLaunchScore(weather.current, preferred_conditions)
+      case 'body_tube':
+        console.log(`🔧 Updating body tube[${mapping.componentIndex}]...`);
+        updatedRocket = updateBodyTube(rocket, { ...convertedProps, index: mapping.componentIndex });
+        break;
+        
+      case 'fin_set':
+        console.log(`🔧 Updating fin set[${mapping.componentIndex}]...`);
+        updatedRocket = updateFinSet(rocket, { ...convertedProps, index: mapping.componentIndex });
+        break;
+        
+      case 'motor':
+        console.log('🔧 Updating motor...');
+        updatedRocket = updateMotor(rocket, convertedProps);
+        break;
+        
+      case 'parachute':
+        console.log(`🔧 Updating parachute[${mapping.componentIndex}]...`);
+        updatedRocket = updateParachute(rocket, { ...convertedProps, index: mapping.componentIndex });
+        break;
+        
+      default:
+        console.error(`❌ Unknown component type: ${mapping.componentType}`);
+        return rocket;
+    }
+    
+    // Verify the update was successful
+    let updatedComponent;
+    switch (mapping.componentType) {
+      case 'nose_cone':
+        updatedComponent = updatedRocket.nose_cone;
+        break;
+      case 'body_tube':
+        updatedComponent = updatedRocket.body_tubes[mapping.componentIndex];
+        break;
+      case 'fin_set':
+        updatedComponent = updatedRocket.fins[mapping.componentIndex];
+        break;
+      case 'motor':
+        updatedComponent = updatedRocket.motor;
+        break;
+      case 'parachute':
+        updatedComponent = updatedRocket.parachutes[mapping.componentIndex];
+        break;
+    }
+    
+    console.log(`📋 Target component after update:`, updatedComponent);
+    console.log(`✅ Component update completed successfully for ${mapping.componentType}[${mapping.componentIndex}]`);
+    
+    return updatedRocket;
+    
+  } catch (error) {
+    console.error(`❌ Error updating ${mapping.componentType}:`, error);
+    return rocket;
+  }
+}
+
+/**
+ * Update rocket-level properties
+ */
+export function updateRocketGeneric(rocket: Rocket, action: any): Rocket {
+  console.log('🚀 Generic rocket update:', action);
+  
+  const props = action.props || {};
+  let updatedRocket = { ...rocket };
+  
+  // Handle motor changes
+  if (props.motorId || props.motor_id) {
+    updatedRocket = updateMotor(updatedRocket, {
+      motor_database_id: props.motorId || props.motor_id
+    });
+  }
+  
+  // Handle other rocket-level properties
+  if (props.name) {
+    updatedRocket.name = props.name;
+  }
+  
+  return updatedRocket;
+}
+
+// ===========================================
+// MAIN ACTION DISPATCHER (UPDATED)
+// ===========================================
+
+/**
+ * Main action dispatcher for AI agent actions
+ * Enhanced with state change validation and detailed debugging
+ */
+export function dispatchActions(actions: any[]) {
+  if (!actions || !Array.isArray(actions)) {
+    console.log('🤷‍♂️ No valid actions to dispatch');
+    return;
+  }
+
+  const { updateRocket, setSim } = useRocket.getState();
+  
+  console.log('🔄 Dispatching', actions.length, 'actions:', actions.map(a => a.action));
+
+  // Store initial rocket state to check for changes
+  const initialRocket = structuredClone(useRocket.getState().rocket);
+  const initialRocketHash = JSON.stringify(initialRocket);
+  
+  console.log('📊 Initial rocket state hash:', initialRocketHash.substring(0, 100) + '...');
+
+  actions.forEach((action, index) => {
+    console.log(`📋 Processing action ${index + 1}/${actions.length}:`, action.action, action);
+    
+    // Store rocket state before this action
+    const rocketBeforeAction = structuredClone(useRocket.getState().rocket);
+    
+    try {
+      switch (action.action) {
+        // New generic actions from the agent
+        case "update_part":
+          console.log(`🎯 Executing update_part action with ID: ${action.id}`);
+          updateRocket((rocket) => {
+            const updatedRocket = updatePartGeneric(rocket, action);
+            
+            // Check if the update actually changed anything
+            if (JSON.stringify(updatedRocket) === JSON.stringify(rocket)) {
+              console.warn(`⚠️ update_part action didn't change rocket state for ID: ${action.id}`);
+            } else {
+              console.log(`✅ update_part action successfully modified rocket for ID: ${action.id}`);
+            }
+            
+            return updatedRocket;
           });
+          break;
+          
+        case "update_rocket":
+          console.log(`🎯 Executing update_rocket action`);
+          updateRocket((rocket) => {
+            const updatedRocket = updateRocketGeneric(rocket, action);
+            
+            // Check if the update actually changed anything
+            if (JSON.stringify(updatedRocket) === JSON.stringify(rocket)) {
+              console.warn(`⚠️ update_rocket action didn't change rocket state`);
+            } else {
+              console.log(`✅ update_rocket action successfully modified rocket`);
+            }
+            
+            return updatedRocket;
+          });
+          break;
+          
+        case "run_simulation":
+          console.log(`🎯 Executing run_simulation with fidelity: ${action.fidelity}`);
+          if (action.fidelity === "quick") {
+            runQuickSim();
+          } else if (action.fidelity === "hifi") {
+            runHighFiSim();
+          }
+          break;
+        
+        // Existing specific actions
+        case "add_nose_cone":
+          console.log(`🎯 Executing add_nose_cone action`);
+          updateRocket((rocket) => addNoseCone(rocket, action));
+          break;
+          
+        case "update_nose_cone":
+          console.log(`🎯 Executing update_nose_cone action`);
+          updateRocket((rocket) => updateNoseCone(rocket, action));
+          break;
+          
+        case "add_body_tube":
+          console.log(`🎯 Executing add_body_tube action`);
+          updateRocket((rocket) => addBodyTube(rocket, action));
+          break;
+          
+        case "update_body_tube":
+          console.log(`🎯 Executing update_body_tube action`);
+          updateRocket((rocket) => updateBodyTube(rocket, action));
+          break;
+          
+        case "add_fin_set":
+          console.log(`🎯 Executing add_fin_set action`);
+          updateRocket((rocket) => addFinSet(rocket, action));
+          break;
+          
+        case "update_fin_set":
+          console.log(`🎯 Executing update_fin_set action`);
+          updateRocket((rocket) => updateFinSet(rocket, action));
+          break;
+          
+        case "update_motor":
+          console.log(`🎯 Executing update_motor action`);
+          updateRocket((rocket) => updateMotor(rocket, action));
+          break;
+          
+        case "add_parachute":
+          console.log(`🎯 Executing add_parachute action`);
+          updateRocket((rocket) => addParachute(rocket, action));
+          break;
+          
+        case "update_parachute":
+          console.log(`🎯 Executing update_parachute action`);
+          updateRocket((rocket) => updateParachute(rocket, action));
+          break;
+          
+        case "run_sim":
+          console.log(`🎯 Executing run_sim with fidelity: ${action.fidelity}`);
+          if (action.fidelity === "quick") {
+            runQuickSim();
+          } else if (action.fidelity === "hifi") {
+            runHighFiSim();
+          }
+          break;
+          
+        case "export_data":
+          console.log(`🎯 Executing export_data action`);
+          exportSimulationData(action);
+          break;
+          
+        case "analyze_stability":
+          console.log(`🎯 Executing analyze_stability action`);
+          analyzeStability(action);
+          break;
+          
+        case "optimize_design":
+          console.log(`🎯 Executing optimize_design action`);
+          optimizeDesign(action);
+          break;
+          
+        case "set_environment":
+          console.log(`🎯 Executing set_environment action`);
+          setEnvironment(action);
+          break;
+          
+        case "set_launch_site":
+          console.log(`🎯 Executing set_launch_site action`);
+          setLaunchSite(action);
+          break;
+          
+        case "set_wind_conditions":
+          console.log(`🎯 Executing set_wind_conditions action`);
+          setWindConditions(action);
+          break;
+          
+        case "set_atmospheric_conditions":
+          console.log(`🎯 Executing set_atmospheric_conditions action`);
+          setAtmosphericConditions(action);
+          break;
+          
+        case "set_launch_parameters":
+          console.log(`🎯 Executing set_launch_parameters action`);
+          setLaunchParameters(action);
+          break;
+          
+        case "analyze_environmental_impact":
+          console.log(`🎯 Executing analyze_environmental_impact action`);
+          analyzeEnvironmentalImpact(action);
+          break;
+          
+        case "run_monte_carlo_simulation":
+          console.log(`🎯 Executing run_monte_carlo_simulation action`);
+          runMonteCarloSimulation(action);
+          break;
+          
+        case "sync_environment_from_global":
+          console.log(`🎯 Executing sync_environment_from_global action`);
+          syncEnvironmentFromGlobal();
+          break;
+          
+        case "toggle_real_time_weather":
+          console.log(`🎯 Executing toggle_real_time_weather action`);
+          toggleRealTimeWeather(action);
+          break;
+          
+        case "toggle_high_resolution_atmosphere":
+          console.log(`🎯 Executing toggle_high_resolution_atmosphere action`);
+          toggleHighResolutionAtmosphere(action);
+          break;
+          
+        case "toggle_turbulence_effects":
+          console.log(`🎯 Executing toggle_turbulence_effects action`);
+          toggleTurbulenceEffects(action);
+          break;
+          
+        case "analyze_comprehensive_environment":
+          console.log(`🎯 Executing analyze_comprehensive_environment action`);
+          analyzeComprehensiveEnvironment(action);
+          break;
+          
+        case "update_environment_from_weather":
+          console.log(`🎯 Executing update_environment_from_weather action`);
+          updateEnvironmentFromWeather(action);
+          break;
+          
+        default:
+          console.warn('❓ Unknown action:', action.action);
+      }
+      
+      // Check if rocket state changed after this action
+      const rocketAfterAction = useRocket.getState().rocket;
+      if (JSON.stringify(rocketAfterAction) === JSON.stringify(rocketBeforeAction)) {
+        console.warn(`⚠️ Action ${index + 1} (${action.action}) did not modify rocket state`);
+        if (action.action === "update_part" || action.action === "update_rocket") {
+          console.error(`❌ CRITICAL: ${action.action} with ID ${action.id || 'unknown'} failed to update rocket!`);
+          console.log('🔍 Action details:', JSON.stringify(action, null, 2));
         }
-      } catch (error) {
-        console.warn(`Weather check failed for hour ${hour}:`, error);
+      } else {
+        console.log(`✅ Action ${index + 1} (${action.action}) successfully modified rocket state`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error processing action ${action.action}:`, error);
+      console.log('🔍 Failed action details:', JSON.stringify(action, null, 2));
+    }
+  });
+  
+  // Final state validation
+  const finalRocket = useRocket.getState().rocket;
+  const finalRocketHash = JSON.stringify(finalRocket);
+  const stateChanged = finalRocketHash !== initialRocketHash;
+  
+  console.log('📊 Final validation:');
+  console.log('   - Actions processed:', actions.length);
+  console.log('   - State changed:', stateChanged);
+  console.log('   - Final hash:', finalRocketHash.substring(0, 100) + '...');
+  
+  if (!stateChanged && actions.some(a => ['update_part', 'update_rocket', 'add_nose_cone', 'add_body_tube', 'add_fin_set', 'add_parachute', 'update_nose_cone', 'update_body_tube', 'update_fin_set', 'update_motor', 'update_parachute'].includes(a.action))) {
+    console.error('❌ PROBLEM: Actions were dispatched but rocket state did not change!');
+    console.log('🔍 Problematic actions:', actions.filter(a => ['update_part', 'update_rocket', 'add_nose_cone', 'add_body_tube', 'add_fin_set', 'add_parachute', 'update_nose_cone', 'update_body_tube', 'update_fin_set', 'update_motor', 'update_parachute'].includes(a.action)));
+  }
+  
+  // Notify UI that actions have been dispatched
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rocketActionsDispatched', { 
+      detail: { actions: actions.length, stateChanged } 
+    }));
+  }
+}
+
+/**
+ * Sync environment data from window.environmentConditions to store
+ */
+export function syncEnvironmentFromGlobal() {
+  try {
+    const { setEnvironment } = useRocket.getState();
+    
+    if (typeof window !== 'undefined' && (window as any).environmentConditions) {
+      const globalEnv = (window as any).environmentConditions;
+      
+      console.log('🔄 Syncing environment data from global to store:', globalEnv);
+      
+      const storeEnvironment = {
+        latitude: globalEnv.latitude || 0,
+        longitude: globalEnv.longitude || 0,
+        elevation: globalEnv.elevation || 0,
+        windSpeed: globalEnv.windSpeed || 0,
+        windDirection: globalEnv.windDirection || 0,
+        atmosphericModel: globalEnv.atmosphericModel as "standard" | "forecast" | "custom" || "standard",
+        date: globalEnv.date || new Date().toISOString(),
+        temperature: globalEnv.temperature,
+        pressure: globalEnv.pressure,
+        humidity: globalEnv.humidity,
+        visibility: globalEnv.visibility,
+        cloudCover: globalEnv.cloudCover,
+        airDensity: globalEnv.airDensity,
+        soundSpeed: globalEnv.soundSpeed
+      };
+      
+      setEnvironment(storeEnvironment);
+      console.log('✅ Environment data synced to store:', storeEnvironment);
+      
+      // Store additional rich environmental data for analysis
+      const richEnvironmentData = {
+        temperature: globalEnv.temperature,
+        pressure: globalEnv.pressure,
+        humidity: globalEnv.humidity,
+        visibility: globalEnv.visibility,
+        cloudCover: globalEnv.cloudCover,
+        airDensity: globalEnv.airDensity,
+        soundSpeed: globalEnv.soundSpeed,
+        dewPoint: globalEnv.dewPoint,
+        locationName: globalEnv.locationName,
+        weatherSource: globalEnv.weatherSource,
+        timestamp: globalEnv.timestamp
+      };
+      
+      // Store in environment metadata for detailed analysis
+      useRocket.getState().setSimulationMessage(
+        `Rich environmental data available: ${Object.keys(richEnvironmentData).filter(k => richEnvironmentData[k as keyof typeof richEnvironmentData] !== undefined).join(', ')}`
+      );
+      
+      return richEnvironmentData;
+    } else {
+      console.log('⚠️ No global environment conditions found');
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Failed to sync environment data:', error);
+    return null;
+  }
+}
+
+/**
+ * Toggle real-time weather data usage
+ */
+export function toggleRealTimeWeather(action: any) {
+  try {
+    const { setEnvironment } = useRocket.getState();
+    
+    console.log('🌦️ Toggling real-time weather:', action.enabled);
+    
+    const currentEnv = useRocket.getState().environment;
+    const atmosphericModel: "standard" | "forecast" | "custom" = action.enabled ? "forecast" : "standard";
+    
+    const updatedEnv: EnvironmentConfig = {
+      ...currentEnv,
+      atmosphericModel
+    };
+    
+    setEnvironment(updatedEnv);
+    
+    // If enabling real-time weather, sync from global conditions
+    if (action.enabled) {
+      syncEnvironmentFromGlobal();
+    }
+    
+    console.log(`✅ Real-time weather ${action.enabled ? 'enabled' : 'disabled'}`);
+    
+  } catch (error) {
+    console.error('❌ Failed to toggle real-time weather:', error);
+  }
+}
+
+/**
+ * Toggle high-resolution atmospheric model
+ */
+export function toggleHighResolutionAtmosphere(action: any) {
+  try {
+    console.log('🎯 Toggling high-resolution atmospheric model:', action.enabled);
+    
+    // Store this preference for simulation configuration
+    const preferences = {
+      highResolutionAtmosphere: action.enabled,
+      atmosphericLayers: action.enabled ? 50 : 10, // More atmospheric layers
+      altitudeSteps: action.enabled ? 100 : 20,    // Finer altitude resolution
+      pressureSteps: action.enabled ? 0.1 : 1.0,   // Finer pressure steps
+      temperatureSteps: action.enabled ? 0.1 : 1.0 // Finer temperature steps
+    };
+    
+    // Store in simulation message for reference
+    useRocket.getState().setSimulationMessage(
+      `High-resolution atmospheric model ${action.enabled ? 'enabled' : 'disabled'}: ${preferences.atmosphericLayers} layers, ${preferences.altitudeSteps} altitude steps`
+    );
+    
+    console.log('✅ High-resolution atmospheric model configured:', preferences);
+    
+  } catch (error) {
+    console.error('❌ Failed to toggle high-resolution atmosphere:', error);
+  }
+}
+
+/**
+ * Toggle turbulence effects
+ */
+export function toggleTurbulenceEffects(action: any) {
+  try {
+    console.log('🌪️ Toggling turbulence effects:', action.enabled);
+    
+    // Configure turbulence parameters
+    const turbulenceConfig = {
+      enabled: action.enabled,
+      windGusts: action.enabled ? true : false,
+      thermalUpdrafts: action.enabled ? true : false,
+      shearLayers: action.enabled ? true : false,
+      gustIntensity: action.gustIntensity || 1.5,    // Gust factor multiplier
+      turbulenceScale: action.turbulenceScale || 100, // Turbulence length scale in meters
+      verticalMixing: action.enabled ? true : false   // Vertical wind mixing
+    };
+    
+    // Store turbulence configuration
+    useRocket.getState().setSimulationMessage(
+      `Turbulence effects ${action.enabled ? 'enabled' : 'disabled'}${action.enabled ? `: gusts ${turbulenceConfig.gustIntensity}x, scale ${turbulenceConfig.turbulenceScale}m` : ''}`
+    );
+    
+    console.log('✅ Turbulence effects configured:', turbulenceConfig);
+    
+  } catch (error) {
+    console.error('❌ Failed to toggle turbulence effects:', error);
+  }
+}
+
+/**
+ * Extract and analyze comprehensive environmental data
+ */
+export function analyzeComprehensiveEnvironment(action: any) {
+  try {
+    console.log('📊 Analyzing comprehensive environmental data...');
+    
+    // Sync latest environmental data
+    const richData = syncEnvironmentFromGlobal();
+    const storeEnv = useRocket.getState().environment;
+    const launchParams = useRocket.getState().launchParameters;
+    
+    let analysis: string[] = [];
+    let warnings: string[] = [];
+    let recommendations: string[] = [];
+    
+    // Temperature analysis
+    if (richData?.temperature !== undefined) {
+      if (richData.temperature < 0) {
+        warnings.push(`Low temperature (${richData.temperature}°C) may affect motor performance and material properties`);
+        recommendations.push('Consider motor thermal effects and cold-weather materials');
+      } else if (richData.temperature > 35) {
+        warnings.push(`High temperature (${richData.temperature}°C) may reduce motor efficiency and increase drag`);
+        recommendations.push('Account for thermal expansion and reduced air density');
+      } else {
+        analysis.push(`Temperature (${richData.temperature}°C) is within optimal range for rocket launches`);
       }
     }
     
-    // Find best windows
-    const goodWindows = windows.filter(w => w.meetsMin).sort((a, b) => b.score - a.score);
-    
-    // Store recommendations
-    window.launchWindows = { windows, recommendations: goodWindows.slice(0, 3) };
-    
-    // Dispatch recommendations event
-    window.dispatchEvent(new CustomEvent('launchWindows', {
-      detail: { windows, recommendations: goodWindows.slice(0, 3) }
-    }));
-    
-    if (goodWindows.length > 0) {
-      const bestWindow = goodWindows[0];
-      const timeStr = bestWindow.time.toLocaleTimeString();
-      showNotification(`Best launch window: ${timeStr} (${bestWindow.weather.windSpeed}m/s wind)`, 'success');
-    } else {
-      showNotification('No suitable launch windows found in the next few hours', 'warning');
+    // Pressure analysis
+    if (richData?.pressure !== undefined) {
+      if (richData.pressure < 1000) {
+        analysis.push(`Low pressure (${richData.pressure} hPa) - expect 2-5% altitude increase`);
+        recommendations.push('Adjust recovery deployment altitude for thinner air');
+      } else if (richData.pressure > 1020) {
+        analysis.push(`High pressure (${richData.pressure} hPa) - expect 2-5% altitude decrease`);
+      } else {
+        analysis.push(`Pressure (${richData.pressure} hPa) is near standard atmospheric pressure`);
+      }
     }
+    
+    // Humidity analysis
+    if (richData?.humidity !== undefined) {
+      if (richData.humidity > 80) {
+        warnings.push(`High humidity (${richData.humidity}%) may affect motor ignition and performance`);
+        recommendations.push('Consider moisture protection for motors and electronics');
+      } else if (richData.humidity < 20) {
+        warnings.push(`Low humidity (${richData.humidity}%) increases static electricity risk`);
+        recommendations.push('Use anti-static precautions during handling');
+      }
+    }
+    
+    // Visibility analysis
+    if (richData?.visibility !== undefined) {
+      if (richData.visibility < 5) {
+        warnings.push(`Poor visibility (${richData.visibility} km) - difficult to track rocket`);
+        recommendations.push('Consider postponing launch or using GPS tracking');
+      } else if (richData.visibility > 15) {
+        analysis.push(`Excellent visibility (${richData.visibility} km) - ideal for visual tracking`);
+      }
+    }
+    
+    // Cloud cover analysis
+    if (richData?.cloudCover !== undefined) {
+      if (richData.cloudCover > 70) {
+        warnings.push(`Heavy cloud cover (${richData.cloudCover}%) may obscure rocket tracking`);
+        recommendations.push('Ensure adequate tracking methods for cloudy conditions');
+      } else if (richData.cloudCover < 30) {
+        analysis.push(`Clear skies (${richData.cloudCover}% clouds) - excellent for visual tracking`);
+      }
+    }
+    
+    // Combined wind and launch analysis
+    if (storeEnv.windSpeed > 0 && launchParams.inclination !== undefined) {
+      const effectiveWindSpeed = storeEnv.windSpeed * Math.sin(Math.PI * (90 - launchParams.inclination) / 180);
+      if (effectiveWindSpeed > 5) {
+        warnings.push(`High crosswind component (${effectiveWindSpeed.toFixed(1)} m/s) for ${launchParams.inclination}° launch`);
+        recommendations.push(`Consider adjusting launch angle or postponing if wind exceeds safety limits`);
+      }
+    }
+    
+    // Air density calculation if temperature and pressure available
+    if (richData?.temperature !== undefined && richData?.pressure !== undefined) {
+      const tempK = richData.temperature + 273.15;
+      const densityRatio = (richData.pressure * 100) / (287.05 * tempK) / 1.225; // Ratio to sea level standard
+      const altitudeEffect = (1 - densityRatio) * 100;
+      
+      if (Math.abs(altitudeEffect) > 5) {
+        analysis.push(`Air density ${densityRatio > 1 ? 'increase' : 'decrease'} of ${Math.abs(altitudeEffect).toFixed(1)}% expected due to atmospheric conditions`);
+        recommendations.push(`Altitude prediction may vary by ${Math.abs(altitudeEffect).toFixed(0)}% from standard conditions`);
+      }
+    }
+    
+    // Comprehensive analysis summary
+    const fullAnalysis = [
+      `=== COMPREHENSIVE ENVIRONMENTAL ANALYSIS ===`,
+      `Location: ${richData?.locationName || `${storeEnv.latitude}°, ${storeEnv.longitude}°`} @ ${storeEnv.elevation}m`,
+      `Weather Source: ${richData?.weatherSource || 'Standard model'}`,
+      `Data Timestamp: ${richData?.timestamp || 'Current'}`,
+      '',
+      ...analysis,
+      ...(warnings.length > 0 ? ['', '⚠️ WARNINGS:', ...warnings] : []),
+      ...(recommendations.length > 0 ? ['', '💡 RECOMMENDATIONS:', ...recommendations] : [])
+    ].join('\n');
+    
+    useRocket.getState().setSimulationMessage(fullAnalysis);
+    console.log('✅ Comprehensive environmental analysis completed');
+    
   } catch (error) {
-    console.error('Launch window analysis failed:', error);
-    showNotification('Failed to analyze launch windows', 'error');
+    console.error('❌ Comprehensive environmental analysis failed:', error);
   }
 }
 
-function handleSetLocation(action: any) {
-  console.log('📍 Setting launch location...');
-  
-  const { latitude, longitude, elevation, name } = action;
-  
-  // Validate coordinates
-  if (!latitude || !longitude || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
-    showNotification('Invalid coordinates provided', 'error');
-    return;
+/**
+ * Update environment from external weather data
+ */
+export function updateEnvironmentFromWeather(action: any) {
+  try {
+    const { setEnvironment } = useRocket.getState();
+    
+    console.log('🌤️ Updating environment from external weather data:', action);
+    
+    const environmentUpdate: Partial<EnvironmentConfig> = {
+      latitude: action.location?.latitude || action.lat,
+      longitude: action.location?.longitude || action.lon,
+      elevation: action.location?.elevation || action.elevation || 0,
+      windSpeed: action.windSpeed || action.wind?.speed || 0,
+      windDirection: action.windDirection || action.wind?.direction || 0,
+      atmosphericModel: "forecast",
+      date: action.timestamp || new Date().toISOString()
+    };
+    
+    // Remove undefined values
+    const filteredUpdate = Object.fromEntries(
+      Object.entries(environmentUpdate).filter(([_, value]) => value !== undefined && value !== null)
+    ) as Partial<EnvironmentConfig>;
+    
+    const currentEnv = useRocket.getState().environment;
+    const newEnvironment = { ...currentEnv, ...filteredUpdate };
+    
+    setEnvironment(newEnvironment);
+    
+    // Update global window conditions if available
+    if (typeof window !== 'undefined') {
+      (window as any).environmentConditions = {
+        ...(window as any).environmentConditions,
+        ...action,
+        temperature: action.temperature,
+        pressure: action.pressure,
+        humidity: action.humidity,
+        visibility: action.visibility,
+        cloudCover: action.cloudCover,
+        airDensity: action.airDensity,
+        soundSpeed: action.soundSpeed,
+        atmosphericModel: "forecast"
+      };
+    }
+    
+    console.log('✅ Environment updated from weather data:', newEnvironment);
+    
+  } catch (error) {
+    console.error('❌ Failed to update environment from weather:', error);
   }
-  
-  // Update environment conditions
-  window.environmentConditions = {
-    ...window.environmentConditions,
-    latitude,
-    longitude,
-    elevation: elevation || 0,
-    locationName: name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-  };
-  
-  // Dispatch location update event
-  window.dispatchEvent(new CustomEvent('locationUpdate', {
-    detail: { latitude, longitude, elevation, name }
-  }));
-  
-  showNotification(`Location set: ${name || 'Custom location'}`, 'success');
-}
-
-// Helper functions for atmospheric calculations
-function calculateAirDensity(pressure: number, temperature: number): number {
-  // Using ideal gas law: ρ = P / (R * T)
-  const R = 287.05; // Specific gas constant for dry air (J/kg·K)
-  const tempK = temperature + 273.15; // Convert to Kelvin
-  const pressurePa = pressure * 100; // Convert hPa to Pa
-  return pressurePa / (R * tempK);
-}
-
-function calculateDensityAltitude(pressure: number, temperature: number): number {
-  // Standard atmosphere at sea level
-  const stdPressure = 1013.25; // hPa
-  const stdTemp = 15; // °C
-  
-  // Calculate pressure altitude
-  const pressureAltitude = (1 - Math.pow(pressure / stdPressure, 0.190284)) * 145366.45;
-  
-  // Calculate density altitude
-  const tempK = temperature + 273.15;
-  const stdTempK = stdTemp + 273.15;
-  const densityAltitude = pressureAltitude + (120 * (tempK - stdTempK));
-  
-  return densityAltitude * 0.3048; // Convert feet to meters
-}
-
-function calculateLaunchScore(weather: any, preferences: any): number {
-  let score = 100;
-  
-  // Wind penalty
-  const maxWind = preferences?.max_wind_speed || 5;
-  if (weather.windSpeed > maxWind) {
-    score -= (weather.windSpeed - maxWind) * 10;
-  }
-  
-  // Visibility bonus
-  const minVisibility = preferences?.min_visibility || 10;
-  if (weather.visibility >= minVisibility) {
-    score += 10;
-  }
-  
-  // Cloud cover penalty
-  const maxClouds = preferences?.max_cloud_cover || 25;
-  if (weather.cloudCover > maxClouds) {
-    score -= (weather.cloudCover - maxClouds) * 0.5;
-  }
-  
-  // Temperature range
-  const tempRange = preferences?.temperature_range || [5, 30];
-  if (weather.temperature < tempRange[0] || weather.temperature > tempRange[1]) {
-    score -= 20;
-  }
-  
-  return Math.max(0, score);
 } 

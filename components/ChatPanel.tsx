@@ -406,18 +406,21 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
             
             // Get current rocket state before dispatching
             const rocketBefore = useRocket.getState().rocket;
-            console.log('🚀 Rocket state BEFORE dispatching actions:', JSON.stringify(rocketBefore.parts, null, 2));
+            // Create parts count for logging compatibility
+            const partsBefore = (rocketBefore.nose_cone ? 1 : 0) + rocketBefore.body_tubes.length + rocketBefore.fins.length + rocketBefore.parachutes.length + (rocketBefore.motor ? 1 : 0);
+            console.log('🚀 Rocket state BEFORE dispatching actions - parts count:', partsBefore);
             
             dispatchActions(actions);
             
             // Check rocket state after dispatching
             setTimeout(() => {
               const rocketAfter = useRocket.getState().rocket;
-              console.log('🚀 Rocket state AFTER dispatching actions:', JSON.stringify(rocketAfter.parts, null, 2));
+              const partsAfter = (rocketAfter.nose_cone ? 1 : 0) + rocketAfter.body_tubes.length + rocketAfter.fins.length + rocketAfter.parachutes.length + (rocketAfter.motor ? 1 : 0);
+              console.log('🚀 Rocket state AFTER dispatching actions - parts count:', partsAfter);
               
               // Compare before and after
-              const changed = JSON.stringify(rocketBefore.parts) !== JSON.stringify(rocketAfter.parts);
-              console.log('🔄 Rocket parts changed:', changed);
+              const changed = partsBefore !== partsAfter || JSON.stringify(rocketBefore) !== JSON.stringify(rocketAfter);
+              console.log('🔄 Rocket changed:', changed);
               
               if (!changed) {
                 console.error('❌ PROBLEM: Actions were dispatched but rocket state did not change!');

@@ -52,22 +52,31 @@ app.add_middleware(
 executor = ThreadPoolExecutor(max_workers=4)
 
 # ================================
-# PHYSICAL CONSTANTS
+# PHYSICAL CONSTANTS WITH CENTRALIZED MATERIALS
 # ================================
 
 class PhysicalConstants:
-    """Physical constants in SI units"""
+    """Physical constants in SI units with centralized material properties"""
     STANDARD_GRAVITY = 9.80665  # m/s²
     STANDARD_TEMPERATURE = 288.15  # K
     STANDARD_PRESSURE = 101325.0  # Pa
     AIR_DENSITY_SEA_LEVEL = 1.225  # kg/m³
     
-    # Material properties (kg/m³)
-    DENSITY_FIBERGLASS = 1600.0
-    DENSITY_ALUMINUM = 2700.0
-    DENSITY_CARBON_FIBER = 1600.0
-    DENSITY_PLYWOOD = 650.0
-    DENSITY_APCP = 1815.0  # Ammonium perchlorate composite propellant
+    # Try to use centralized material properties, fallback to local values
+    try:
+        from materials import MATERIALS
+        DENSITY_FIBERGLASS = MATERIALS.DENSITY_FIBERGLASS
+        DENSITY_ALUMINUM = MATERIALS.DENSITY_ALUMINUM
+        DENSITY_CARBON_FIBER = MATERIALS.DENSITY_CARBON_FIBER
+        DENSITY_PLYWOOD = MATERIALS.DENSITY_PLYWOOD
+        DENSITY_APCP = MATERIALS.DENSITY_APCP
+    except ImportError:
+        # Fallback to local constants
+        DENSITY_FIBERGLASS = 1600.0
+        DENSITY_ALUMINUM = 2700.0
+        DENSITY_CARBON_FIBER = 1600.0
+        DENSITY_PLYWOOD = 650.0
+        DENSITY_APCP = 1815.0  # Ammonium perchlorate composite propellant
 
 # ================================
 # UNIT CONVERSION UTILITIES
@@ -670,121 +679,177 @@ class FlexibleSimulationRequestModel(BaseModel):
 # ENHANCED MOTOR DATABASE WITH SI UNITS
 # ================================
 
-MOTOR_DATABASE = {
-    "mini-motor": {
-        "name": "A8-3", "manufacturer": "Estes", "type": "solid",
-        "impulse_class": "A", "total_impulse_n_s": 2.5, "avg_thrust_n": 1.5,
-        "burn_time_s": 1.8, 
-        "dimensions": {"outer_diameter_m": 0.013, "length_m": 0.100},
-        "mass": {"propellant_kg": 0.008, "total_kg": 0.015}, 
-        "isp_s": 150,
-        "grain_config": {
-            "grain_number": 1,
-            "grain_density_kg_m3": 1815,
-            "grain_outer_radius_m": 0.005,
-            "grain_initial_inner_radius_m": 0.002,
-            "grain_initial_height_m": 0.080
+# Import shared motor database
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data'))
+
+try:
+    from motors import MOTOR_DATABASE as SHARED_MOTOR_DATABASE
+    USE_SHARED_MOTORS = True
+except ImportError:
+    USE_SHARED_MOTORS = False
+    print("Warning: Could not import shared motor database, using local copy")
+
+# Use shared database if available, otherwise fallback to local
+if USE_SHARED_MOTORS:
+    # Convert shared database to local format
+    MOTOR_DATABASE = {}
+    for motor_id, motor_spec in SHARED_MOTOR_DATABASE.items():
+        MOTOR_DATABASE[motor_id] = {
+            "name": motor_spec.name,
+            "manufacturer": motor_spec.manufacturer,
+            "type": motor_spec.type,
+            "impulse_class": motor_spec.impulseClass,
+            "total_impulse_n_s": motor_spec.totalImpulse_Ns,
+            "avg_thrust_n": motor_spec.avgThrust_N,
+            "burn_time_s": motor_spec.burnTime_s,
+            "dimensions": {
+                "outer_diameter_m": motor_spec.dimensions.outerDiameter_m,
+                "length_m": motor_spec.dimensions.length_m
+            },
+            "mass": {
+                "propellant_kg": motor_spec.mass.propellant_kg,
+                "total_kg": motor_spec.mass.total_kg
+            },
+            "isp_s": motor_spec.isp_s
         }
-    },
-    "default-motor": {
-        "name": "F32-6", "manufacturer": "Generic", "type": "solid",
-        "impulse_class": "F", "total_impulse_n_s": 80, "avg_thrust_n": 32,
-        "burn_time_s": 2.5,
-        "dimensions": {"outer_diameter_m": 0.029, "length_m": 0.124},
-        "mass": {"propellant_kg": 0.040, "total_kg": 0.070},
-        "isp_s": 200,
-        "grain_config": {
-            "grain_number": 1,
-            "grain_density_kg_m3": 1815,
-            "grain_outer_radius_m": 0.0125,
-            "grain_initial_inner_radius_m": 0.004,
-            "grain_initial_height_m": 0.100
-        }
-    },
-    "high-power": {
-        "name": "H180-7", "manufacturer": "Generic", "type": "solid",
-        "impulse_class": "H", "total_impulse_n_s": 320, "avg_thrust_n": 100,
-        "burn_time_s": 3.2,
-        "dimensions": {"outer_diameter_m": 0.038, "length_m": 0.150},
-        "mass": {"propellant_kg": 0.090, "total_kg": 0.150},
-        "isp_s": 220,
-        "grain_config": {
-            "grain_number": 2,
-            "grain_density_kg_m3": 1815,
-            "grain_outer_radius_m": 0.016,
-            "grain_initial_inner_radius_m": 0.005,
-            "grain_initial_height_m": 0.065
-        }
-    },
-    "super-power": {
-        "name": "I200-8", "manufacturer": "Generic", "type": "solid",
-        "impulse_class": "I", "total_impulse_n_s": 800, "avg_thrust_n": 200,
-        "burn_time_s": 4.0,
-        "dimensions": {"outer_diameter_m": 0.054, "length_m": 0.200},
-        "mass": {"propellant_kg": 0.200, "total_kg": 0.300},
-        "isp_s": 240,
-        "grain_config": {
-            "grain_number": 3,
-            "grain_density_kg_m3": 1815,
-            "grain_outer_radius_m": 0.024,
-            "grain_initial_inner_radius_m": 0.006,
-            "grain_initial_height_m": 0.060
-        }
-    },
-    "small-liquid": {
-        "name": "Liquid-500N", "manufacturer": "Custom", "type": "liquid",
-        "impulse_class": "M", "total_impulse_n_s": 15000, "avg_thrust_n": 500,
-        "burn_time_s": 30,
-        "dimensions": {"outer_diameter_m": 0.075, "length_m": 0.300},
-        "mass": {"propellant_kg": 1.5, "total_kg": 2.3},
-        "isp_s": 300,
-        "propellant_config": {
-            "oxidizer_to_fuel_ratio": 2.33,  # LOX/RP-1
-            "chamber_pressure_pa": 2e6,
-            "nozzle_expansion_ratio": 25
-        }
-    },
-    "medium-liquid": {
-        "name": "Liquid-2000N", "manufacturer": "Custom", "type": "liquid",
-        "impulse_class": "O", "total_impulse_n_s": 90000, "avg_thrust_n": 2000,
-        "burn_time_s": 45,
-        "dimensions": {"outer_diameter_m": 0.100, "length_m": 0.400},
-        "mass": {"propellant_kg": 6.5, "total_kg": 8.5},
-        "isp_s": 320,
-        "propellant_config": {
-            "oxidizer_to_fuel_ratio": 2.33,
-            "chamber_pressure_pa": 3e6,
-            "nozzle_expansion_ratio": 40
-        }
-    },
-    "large-liquid": {
-        "name": "Liquid-8000N", "manufacturer": "Custom", "type": "liquid",
-        "impulse_class": "P", "total_impulse_n_s": 120000, "avg_thrust_n": 8000,
-        "burn_time_s": 15,
-        "dimensions": {"outer_diameter_m": 0.150, "length_m": 0.500},
-        "mass": {"propellant_kg": 8.0, "total_kg": 11.0},
-        "isp_s": 340,
-        "propellant_config": {
-            "oxidizer_to_fuel_ratio": 2.33,
-            "chamber_pressure_pa": 5e6,
-            "nozzle_expansion_ratio": 60
-        }
-    },
-    "hybrid-engine": {
-        "name": "Hybrid-1200N", "manufacturer": "Custom", "type": "hybrid",
-        "impulse_class": "N", "total_impulse_n_s": 24000, "avg_thrust_n": 1200,
-        "burn_time_s": 20,
-        "dimensions": {"outer_diameter_m": 0.090, "length_m": 0.350},
-        "mass": {"propellant_kg": 4.5, "total_kg": 5.7},
-        "isp_s": 280,
-        "hybrid_config": {
-            "grain_density_kg_m3": 920,  # HTPB
-            "oxidizer_mass_kg": 3.6,
-            "fuel_mass_kg": 0.9,
-            "chamber_pressure_pa": 2.5e6
+        
+        # Add optional configs if present
+        if hasattr(motor_spec, 'grainConfig') and motor_spec.grainConfig:
+            MOTOR_DATABASE[motor_id]["grain_config"] = {
+                "grain_number": motor_spec.grainConfig.grainNumber,
+                "grain_density_kg_m3": motor_spec.grainConfig.grainDensity_kg_m3,
+                "grain_outer_radius_m": motor_spec.grainConfig.grainOuterRadius_m,
+                "grain_initial_inner_radius_m": motor_spec.grainConfig.grainInitialInnerRadius_m,
+                "grain_initial_height_m": motor_spec.grainConfig.grainInitialHeight_m
+            }
+            
+        if hasattr(motor_spec, 'propellantConfig') and motor_spec.propellantConfig:
+            MOTOR_DATABASE[motor_id]["propellant_config"] = {
+                "oxidizer_to_fuel_ratio": motor_spec.propellantConfig.oxidizerToFuelRatio,
+                "chamber_pressure_pa": motor_spec.propellantConfig.chamberPressure_pa,
+                "nozzle_expansion_ratio": motor_spec.propellantConfig.nozzleExpansionRatio
+            }
+            
+        if hasattr(motor_spec, 'hybridConfig') and motor_spec.hybridConfig:
+            MOTOR_DATABASE[motor_id]["hybrid_config"] = {
+                "grain_density_kg_m3": motor_spec.hybridConfig.grainDensity_kg_m3,
+                "oxidizer_mass_kg": motor_spec.hybridConfig.oxidizerMass_kg,
+                "fuel_mass_kg": motor_spec.hybridConfig.fuelMass_kg,
+                "chamber_pressure_pa": motor_spec.hybridConfig.chamberPressure_pa
+            }
+
+else:
+    # Keep existing motor database as fallback
+    MOTOR_DATABASE = {
+        "mini-motor": {
+            "name": "A8-3", "manufacturer": "Estes", "type": "solid",
+            "impulse_class": "A", "total_impulse_n_s": 2.5, "avg_thrust_n": 1.5,
+            "burn_time_s": 1.8, 
+            "dimensions": {"outer_diameter_m": 0.013, "length_m": 0.100},
+            "mass": {"propellant_kg": 0.008, "total_kg": 0.015}, 
+            "isp_s": 150
+        },
+        "default-motor": {
+            "name": "F32-6", "manufacturer": "Generic", "type": "solid",
+            "impulse_class": "F", "total_impulse_n_s": 80, "avg_thrust_n": 32,
+            "burn_time_s": 2.5,
+            "dimensions": {"outer_diameter_m": 0.029, "length_m": 0.124},
+            "mass": {"propellant_kg": 0.040, "total_kg": 0.070},
+            "isp_s": 200,
+            "grain_config": {
+                "grain_number": 1,
+                "grain_density_kg_m3": 1815,
+                "grain_outer_radius_m": 0.0125,
+                "grain_initial_inner_radius_m": 0.004,
+                "grain_initial_height_m": 0.100
+            }
+        },
+        "high-power": {
+            "name": "H180-7", "manufacturer": "Generic", "type": "solid",
+            "impulse_class": "H", "total_impulse_n_s": 320, "avg_thrust_n": 100,
+            "burn_time_s": 3.2,
+            "dimensions": {"outer_diameter_m": 0.038, "length_m": 0.150},
+            "mass": {"propellant_kg": 0.090, "total_kg": 0.150},
+            "isp_s": 220,
+            "grain_config": {
+                "grain_number": 2,
+                "grain_density_kg_m3": 1815,
+                "grain_outer_radius_m": 0.016,
+                "grain_initial_inner_radius_m": 0.005,
+                "grain_initial_height_m": 0.065
+            }
+        },
+        "super-power": {
+            "name": "I200-8", "manufacturer": "Generic", "type": "solid",
+            "impulse_class": "I", "total_impulse_n_s": 800, "avg_thrust_n": 200,
+            "burn_time_s": 4.0,
+            "dimensions": {"outer_diameter_m": 0.054, "length_m": 0.200},
+            "mass": {"propellant_kg": 0.200, "total_kg": 0.300},
+            "isp_s": 240,
+            "grain_config": {
+                "grain_number": 3,
+                "grain_density_kg_m3": 1815,
+                "grain_outer_radius_m": 0.024,
+                "grain_initial_inner_radius_m": 0.006,
+                "grain_initial_height_m": 0.060
+            }
+        },
+        "small-liquid": {
+            "name": "Liquid-500N", "manufacturer": "Custom", "type": "liquid",
+            "impulse_class": "M", "total_impulse_n_s": 15000, "avg_thrust_n": 500,
+            "burn_time_s": 30,
+            "dimensions": {"outer_diameter_m": 0.075, "length_m": 0.300},
+            "mass": {"propellant_kg": 1.5, "total_kg": 2.3},
+            "isp_s": 300,
+            "propellant_config": {
+                "oxidizer_to_fuel_ratio": 2.33,  # LOX/RP-1
+                "chamber_pressure_pa": 2e6,
+                "nozzle_expansion_ratio": 25
+            }
+        },
+        "medium-liquid": {
+            "name": "Liquid-2000N", "manufacturer": "Custom", "type": "liquid",
+            "impulse_class": "O", "total_impulse_n_s": 90000, "avg_thrust_n": 2000,
+            "burn_time_s": 45,
+            "dimensions": {"outer_diameter_m": 0.100, "length_m": 0.400},
+            "mass": {"propellant_kg": 6.5, "total_kg": 8.5},
+            "isp_s": 320,
+            "propellant_config": {
+                "oxidizer_to_fuel_ratio": 2.33,
+                "chamber_pressure_pa": 3e6,
+                "nozzle_expansion_ratio": 40
+            }
+        },
+        "large-liquid": {
+            "name": "Liquid-8000N", "manufacturer": "Custom", "type": "liquid",
+            "impulse_class": "P", "total_impulse_n_s": 120000, "avg_thrust_n": 8000,
+            "burn_time_s": 15,
+            "dimensions": {"outer_diameter_m": 0.150, "length_m": 0.500},
+            "mass": {"propellant_kg": 8.0, "total_kg": 11.0},
+            "isp_s": 340,
+            "propellant_config": {
+                "oxidizer_to_fuel_ratio": 2.33,
+                "chamber_pressure_pa": 5e6,
+                "nozzle_expansion_ratio": 60
+            }
+        },
+        "hybrid-engine": {
+            "name": "Hybrid-1200N", "manufacturer": "Custom", "type": "hybrid",
+            "impulse_class": "N", "total_impulse_n_s": 24000, "avg_thrust_n": 1200,
+            "burn_time_s": 20,
+            "dimensions": {"outer_diameter_m": 0.090, "length_m": 0.350},
+            "mass": {"propellant_kg": 4.5, "total_kg": 5.7},
+            "isp_s": 280,
+            "hybrid_config": {
+                "grain_density_kg_m3": 920,  # HTPB
+                "oxidizer_mass_kg": 3.6,
+                "fuel_mass_kg": 0.9,
+                "chamber_pressure_pa": 2.5e6
+            }
         }
     }
-}
 
 # ================================
 # SIMULATION CLASSES

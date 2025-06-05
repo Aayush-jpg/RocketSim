@@ -201,6 +201,40 @@ export default function MonteCarloTab() {
     setIsRunning(true);
     
     try {
+      // Calculate drag coefficient using the same methods as RocketService
+      const calculateNoseDrag = (nose: any): number => {
+        const baseCoeff: { [key: string]: number } = {
+          'ogive': 0.15,
+          'conical': 0.18,
+          'elliptical': 0.12,
+          'parabolic': 0.14
+        };
+        return baseCoeff[nose.shape] || 0.15;
+      };
+
+      const calculateBodyDrag = (bodies: any[]): number => {
+        return 0.02 * bodies.length;
+      };
+
+      const calculateFinDrag = (fins: any[]): number => {
+        let totalDrag = 0;
+        fins.forEach(fin => {
+          const finArea = fin.root_chord_m * fin.span_m * fin.fin_count;
+          totalDrag += 0.01 * finArea;
+        });
+        return totalDrag;
+      };
+
+      const calculateDragCoefficient = (rocket: any): number => {
+        const noseDrag = calculateNoseDrag(rocket.nose_cone);
+        const bodyDrag = calculateBodyDrag(rocket.body_tubes);
+        const finDrag = calculateFinDrag(rocket.fins);
+        
+        return noseDrag + bodyDrag + finDrag;
+      };
+      
+      const rocketCd = calculateDragCoefficient(rocket);
+      
       const variations = [
         {
           parameter: "environment.windSpeed",
@@ -210,7 +244,7 @@ export default function MonteCarloTab() {
         {
           parameter: "rocket.Cd",
           distribution: "normal",
-          parameters: [rocket.Cd, rocket.Cd * 0.1]
+          parameters: [rocketCd, rocketCd * 0.1]
         },
         {
           parameter: "launch.inclination",

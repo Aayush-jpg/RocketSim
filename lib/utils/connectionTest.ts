@@ -120,7 +120,11 @@ export class ConnectionTester {
         details: {
           coreState: hasRequiredState ? '✓' : '✗',
           databaseIntegration: hasDatabaseState ? '✓' : '✗',
-          partsCount: store.rocket?.parts?.length || 0
+          partsCount: (store.rocket?.nose_cone ? 1 : 0) + 
+                     (store.rocket?.body_tubes?.length || 0) + 
+                     (store.rocket?.fins?.length || 0) + 
+                     (store.rocket?.parachutes?.length || 0) + 
+                     (store.rocket?.motor ? 1 : 0)
         }
       });
     } catch (error) {

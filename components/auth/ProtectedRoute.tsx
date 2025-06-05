@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { Rocket } from 'lucide-react';
+import { resetAuthState } from '@/lib/utils/authHelpers';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -23,7 +24,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (loading) {
       const timeout = setTimeout(() => {
         setLoadingTimeout(true);
-      }, 12000); // 12 second timeout
+      }, 8000); // Reduce from 12 seconds to 8 seconds
 
       return () => clearTimeout(timeout);
     } else {
@@ -56,10 +57,12 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
           <p className="text-white text-lg">Connection Timeout</p>
           <p className="text-gray-400 text-sm mt-2">Loading is taking longer than expected</p>
           <button 
-            onClick={() => window.location.reload()} 
+            onClick={() => {
+              resetAuthState();
+            }} 
             className="mt-4 px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 transition-colors"
           >
-            Retry Connection
+            Clear Cache & Retry
           </button>
         </div>
       </div>

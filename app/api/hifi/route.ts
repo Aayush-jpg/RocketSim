@@ -108,19 +108,57 @@ export async function POST(req: NextRequest) {
  * Fallback local simulation for when the RocketPy service is unavailable
  */
 function fallbackSimulation(rocket: Rocket) {
-  // Calculate values based on rocket properties
+  // Calculate values based on rocket component properties
   const baseAltitude = 800;
-  const partFactor = rocket.parts.length * 50;
-  const dragFactor = rocket.Cd * 500;
+  
+  // Count components instead of parts
+  let componentCount = 0;
+  if (rocket.nose_cone) componentCount += 1;
+  componentCount += rocket.body_tubes.length;
+  componentCount += rocket.fins.length;
+  componentCount += rocket.parachutes.length;
+  if (rocket.motor) componentCount += 1;
+  
+  const partFactor = componentCount * 50;
+  
+  // Calculate drag coefficient from components
+  let dragCoefficient = 0.4; // Base drag coefficient
+  
+  // Add nose cone drag contribution
+  if (rocket.nose_cone) {
+    const noseShapes: Record<string, number> = {
+      'ogive': 0.15,
+      'conical': 0.18,
+      'elliptical': 0.12,
+      'parabolic': 0.14
+    };
+    dragCoefficient += noseShapes[rocket.nose_cone.shape] || 0.15;
+  }
+  
+  // Add fin drag contribution
+  const totalFinArea = rocket.fins.reduce((sum, fin) => {
+    const rootChord = fin.root_chord_m || 0.08;
+    const tipChord = fin.tip_chord_m || rootChord;
+    const span = fin.span_m || 0.05;
+    const finCount = fin.fin_count || 3;
+    const finArea = 0.5 * (rootChord + tipChord) * span;
+    return sum + finArea * finCount;
+  }, 0);
+  
+  dragCoefficient += totalFinArea * 2;
+  dragCoefficient = Math.min(Math.max(dragCoefficient, 0.3), 1.0);
+  
+  const dragFactor = dragCoefficient * 500;
   const maxAltitude = baseAltitude + partFactor - dragFactor;
   
   const baseVelocity = 200;
-  const velocityPartFactor = rocket.parts.length * 10;
-  const velocityDragFactor = rocket.Cd * 100;
+  const velocityPartFactor = componentCount * 10;
+  const velocityDragFactor = dragCoefficient * 100;
   const maxVelocity = baseVelocity + velocityPartFactor - velocityDragFactor;
   
-  const finCount = rocket.parts.filter(p => p.type === "fin").length;
-  const stabilityMargin = 1.0 + (finCount * 0.25);
+  // Count total fins instead of filtering parts
+  const finCount = rocket.fins.reduce((sum, fin) => sum + (fin.fin_count || 3), 0);
+  const stabilityMargin = 1.0 + (finCount * 0.05); // More realistic stability calculation
   
   // Generate a thrust curve
   const thrustCurve = generateThrustCurve();

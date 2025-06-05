@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react'
 import IntegratedChatPanel from '@/components/panels/IntegratedChatPanel'
 import { useRocket } from '@/lib/store'
-import { estimateRocketMass, calculateStability } from '@/lib/ai/actions'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { getMotorOrDefault } from '@/lib/data/motors'
 
 // Import analysis components
 import SimulationTab from './pro-mode/SimulationTab'
@@ -16,85 +16,6 @@ import TrajectoryTab from './pro-mode/TrajectoryTab'
 import RecoveryTab from './pro-mode/RecoveryTab'
 import WeatherStatus from '@/components/WeatherStatus'
 import VersionHistoryTab from './pro-mode/VersionHistoryTab'
-
-// Enhanced motor database with more detailed properties
-const MOTORS = {
-  'mini-motor': {
-    thrust: 15, // N
-    burnTime: 1.8, // s
-    isp: 180, // s
-    type: 'solid',
-    propellantMass: 0.010, // kg
-    dryMass: 0.008, // kg
-    totalImpulse: 27, // N·s
-  },
-  'default-motor': {
-    thrust: 32, // N
-    burnTime: 2.4, // s
-    isp: 200, // s
-    type: 'solid',
-    propellantMass: 0.040, // kg
-    dryMass: 0.015, // kg
-    totalImpulse: 76.8, // N·s
-  },
-  'high-power': {
-    thrust: 60, // N
-    burnTime: 3.2, // s
-    isp: 220, // s
-    type: 'solid',
-    propellantMass: 0.090, // kg
-    dryMass: 0.025, // kg
-    totalImpulse: 192, // N·s
-  },
-  'super-power': {
-    thrust: 120, // N
-    burnTime: 4.0, // s
-    isp: 240, // s
-    type: 'solid',
-    propellantMass: 0.200, // kg
-    dryMass: 0.050, // kg
-    totalImpulse: 480, // N·s
-  },
-  'small-liquid': {
-    thrust: 500, // N
-    burnTime: 30, // s
-    isp: 300, // s
-    type: 'liquid',
-    propellantMass: 1.5, // kg
-    dryMass: 0.8, // kg
-    totalImpulse: 15000, // N·s
-    mixtureRatio: 2.1, // O/F ratio
-  },
-  'medium-liquid': {
-    thrust: 2000, // N
-    burnTime: 45, // s
-    isp: 320, // s
-    type: 'liquid',
-    propellantMass: 6.5, // kg
-    dryMass: 2.0, // kg
-    totalImpulse: 90000, // N·s
-    mixtureRatio: 2.3, // O/F ratio
-  },
-  'large-liquid': {
-    thrust: 8000, // N
-    burnTime: 15, // s - More realistic burn time
-    isp: 280, // s - More realistic ISP for liquid propellant
-    type: 'liquid',
-    propellantMass: 8.0, // kg - Reduced propellant mass
-    dryMass: 3.0, // kg - Adjusted dry mass
-    totalImpulse: 120000, // N·s - Adjusted total impulse
-    mixtureRatio: 2.4, // O/F ratio
-  },
-  'hybrid-engine': {
-    thrust: 1200, // N
-    burnTime: 20, // s
-    isp: 280, // s
-    type: 'hybrid',
-    propellantMass: 4.5, // kg
-    dryMass: 1.2, // kg
-    totalImpulse: 24000, // N·s
-  }
-};
 
 // Format numbers to prevent overflow
 function formatNumber(value: number): string {
@@ -127,32 +48,42 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
   // Get rocket and simulation data from store
   const simData = useRocket(state => state.sim);
   const rocket = useRocket(state => state.rocket);
-  const { 
-    monteCarloResult, 
-    stabilityAnalysis, 
-    motorAnalysis, 
-    recoveryPrediction,
-    isSimulating,
-    simulationProgress,
-    lastSimulationType
-  } = useRocket();
+  
+  // Simple mass estimation from components
+  const estimateRocketMass = (rocket: any): number => {
+    let totalMass = 0.5; // Base mass
+    
+    // Count components and estimate mass
+    if (rocket.nose_cone) totalMass += 0.1;
+    totalMass += rocket.body_tubes.length * 0.2;
+    totalMass += rocket.fins.length * 0.05;
+    totalMass += rocket.parachutes.length * 0.03;
+    
+    return totalMass;
+  };
+  
+  // Simple stability calculation
+  const calculateStability = (rocket: any): number => {
+    const finCount = rocket.fins.reduce((sum: number, fin: any) => sum + (fin.fin_count || 3), 0);
+    return 1.0 + finCount * 0.3;
+  };
   
   // Calculate mass using our estimation function
   const mass = estimateRocketMass(rocket);
   
-  // Get motor data based on motorId
-  const motorData = MOTORS[rocket.motorId as keyof typeof MOTORS] || MOTORS['default-motor'];
-  const motorThrust = motorData.thrust;
-  const burnTime = motorData.burnTime;
-  const motorIsp = motorData.isp;
+  // Get motor data from centralized database
+  const motorSpec = getMotorOrDefault(rocket.motor?.motor_database_id || 'default-motor');
+  const motorThrust = motorSpec.avgThrust_N;
+  const burnTime = motorSpec.burnTime_s;
+  const motorIsp = motorSpec.isp_s;
   
   // Calculate thrust-to-weight ratio
   const thrustToWeight = motorThrust / (mass * 9.81);
   
   // Calculate total delta-V using the rocket equation
   const exhaustVelocity = motorIsp * 9.81; // m/s
-  const totalMass = mass + motorData.propellantMass;
-  const dryMass = mass + motorData.dryMass;
+  const totalMass = mass + motorSpec.mass.propellant_kg;
+  const dryMass = mass + (motorSpec.mass.total_kg - motorSpec.mass.propellant_kg);
   const deltaV = exhaustVelocity * Math.log(totalMass / dryMass);
   
   // Calculate estimated performance if no simulation data
@@ -168,13 +99,13 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
     altitude: simData?.maxAltitude || estimatedAltitude,
     velocity: simData?.maxVelocity || estimatedVelocity,
     stability: simData?.stabilityMargin || calculateStability(rocket),
-    dragCoefficient: rocket.Cd,
+    dragCoefficient: 0.4, // Default drag coefficient
     apogee: simData?.maxAltitude || estimatedAltitude,
     burnTime: burnTime,
     thrustToWeight: thrustToWeight,
     deltaV: deltaV,
     recoveryTime: estimatedRecoveryTime,
-    motorId: rocket.motorId,
+    motorId: rocket.motor?.motor_database_id || 'default-motor',
   };
 
   // Auto-expand metrics when simulation data changes

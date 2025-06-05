@@ -56,7 +56,7 @@ export default function MotorTab() {
       setAvailableMotors(result);
       
       // Calculate motor analysis for current motor
-      const currentMotorData = result.motors[rocket.motorId];
+      const currentMotorData = result.motors[rocket.motor.motor_database_id];
       if (currentMotorData) {
         const rocketMass = estimateRocketMass();
         const analysis = {
@@ -96,18 +96,36 @@ export default function MotorTab() {
   const estimateRocketMass = () => {
     let totalMass = 0.05; // Base empty mass in kg
     
-    rocket.parts.forEach((part: any) => {
-      switch (part.type) {
-        case 'nose':
-          totalMass += 0.05 * (part.length / 10);
-          break;
-        case 'body':
-          totalMass += 0.1 * (part.length / 10) * part.Ø;
-          break;
-        case 'fin':
-          totalMass += 0.01 * part.root * part.span;
-          break;
-      }
+    // Nose cone mass
+    if (rocket.nose_cone) {
+      const baseRadius = rocket.nose_cone.base_radius_m || 0.05;
+      const length = rocket.nose_cone.length_m || 0.1;
+      const density = rocket.nose_cone.material_density_kg_m3 || 1600;
+      const volume = Math.PI * Math.pow(baseRadius, 2) * length / 3;
+      totalMass += volume * density;
+    }
+    
+    // Body tubes mass
+    rocket.body_tubes.forEach((body) => {
+      const radius = body.outer_radius_m || 0.05;
+      const length = body.length_m || 0.3;
+      const thickness = body.wall_thickness_m || 0.003;
+      const density = body.material_density_kg_m3 || 1600;
+      const volume = Math.PI * Math.pow(radius, 2) * length * thickness;
+      totalMass += volume * density;
+    });
+    
+    // Fins mass
+    rocket.fins.forEach((fin) => {
+      const rootChord = fin.root_chord_m || 0.08;
+      const tipChord = fin.tip_chord_m || rootChord;
+      const span = fin.span_m || 0.05;
+      const thickness = fin.thickness_m || 0.006;
+      const finCount = fin.fin_count || 3;
+      const density = fin.material_density_kg_m3 || 650;
+      const finArea = 0.5 * (rootChord + tipChord) * span;
+      const volume = finArea * thickness * finCount;
+      totalMass += volume * density;
     });
     
     return totalMass;
@@ -126,7 +144,7 @@ export default function MotorTab() {
     return { rating: "OPTIMAL", color: "text-green-400" };
   };
 
-  const currentMotor = availableMotors?.motors?.[rocket.motorId] || motorAnalysis?.motor;
+  const currentMotor = availableMotors?.motors?.[rocket.motor.motor_database_id] || motorAnalysis?.motor;
   const rocketMass = estimateRocketMass();
   const thrustRating = getThrustRating(motorAnalysis?.thrustToWeight || 0);
 
@@ -247,7 +265,7 @@ export default function MotorTab() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-sm font-medium text-white">Motor Overview</h4>
-                <span className="text-xl font-bold text-orange-400">{rocket.motorId.toUpperCase()}</span>
+                <span className="text-xl font-bold text-orange-400">{rocket.motor.motor_database_id.toUpperCase()}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-xs">
@@ -522,7 +540,7 @@ export default function MotorTab() {
                       transition={{ duration: 0.3, delay: 0.1 }}
                       className={cn(
                         "flex justify-between items-center p-3 rounded-lg text-xs transition-colors",
-                        motorId === rocket.motorId 
+                        motorId === rocket.motor.motor_database_id 
                           ? 'bg-orange-600/20 border border-orange-600/30' 
                           : 'bg-slate-700/50 hover:bg-slate-700/70'
                       )}

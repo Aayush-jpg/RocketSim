@@ -35,20 +35,85 @@ class RocketContextBuilder:
         context_parts.append("=== CURRENT ROCKET CONFIGURATION ===")
         context_parts.append(f"Name: {rocket_data.get('name', 'Unnamed Rocket')}")
         context_parts.append(f"ID: {rocket_data.get('id', 'unknown')}")
-        context_parts.append(f"Units: {rocket_data.get('units', 'metric')}")
-        context_parts.append(f"Motor: {rocket_data.get('motorId', 'none')}")
-        context_parts.append(f"Drag Coefficient (Cd): {rocket_data.get('Cd', 0.5)}")
+        context_parts.append(f"Units: Metric (SI units)")
+        
+        # ✅ NEW: Read motor from component structure
+        motor = rocket_data.get('motor', {})
+        motor_id = motor.get('motor_database_id', 'none')
+        context_parts.append(f"Motor: {motor_id}")
+        
+        # ✅ NEW: Calculate drag coefficient from components (placeholder)
+        context_parts.append(f"Coordinate System: {rocket_data.get('coordinate_system', 'tail_to_nose')}")
         context_parts.append("")
         
-        # Parts breakdown
-        parts = rocket_data.get('parts', [])
-        if parts:
-            context_parts.append("=== ROCKET PARTS ===")
-            for i, part in enumerate(parts, 1):
-                part_info = self._format_part_info(part)
-                context_parts.append(f"{i}. {part_info}")
-            context_parts.append("")
+        # ✅ NEW: Component breakdown instead of parts
+        nose_cone = rocket_data.get('nose_cone')
+        body_tubes = rocket_data.get('body_tubes', [])
+        fins = rocket_data.get('fins', [])
+        parachutes = rocket_data.get('parachutes', [])
         
+        if nose_cone or body_tubes or fins or parachutes or motor_id != 'none':
+            context_parts.append("=== ROCKET COMPONENTS ===")
+            component_index = 1
+            
+            # Nose cone
+            if nose_cone:
+                context_parts.append(f"{component_index}. NOSE CONE:")
+                context_parts.append(f"   Shape: {nose_cone.get('shape', 'unknown')}")
+                context_parts.append(f"   Length: {nose_cone.get('length_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Base Radius: {nose_cone.get('base_radius_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Material Density: {nose_cone.get('material_density_kg_m3', 0):.0f} kg/m³")
+                context_parts.append(f"   Color: {nose_cone.get('color', 'unknown')}")
+                component_index += 1
+            
+            # Body tubes
+            for i, body_tube in enumerate(body_tubes):
+                context_parts.append(f"{component_index}. BODY TUBE {i+1}:")
+                context_parts.append(f"   Length: {body_tube.get('length_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Outer Radius: {body_tube.get('outer_radius_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Wall Thickness: {body_tube.get('wall_thickness_m', 0)*1000:.1f}mm")
+                context_parts.append(f"   Material Density: {body_tube.get('material_density_kg_m3', 0):.0f} kg/m³")
+                context_parts.append(f"   Color: {body_tube.get('color', 'unknown')}")
+                component_index += 1
+            
+            # Fins
+            for i, fin in enumerate(fins):
+                context_parts.append(f"{component_index}. FIN SET {i+1}:")
+                context_parts.append(f"   Fin Count: {fin.get('fin_count', 0)}")
+                context_parts.append(f"   Root Chord: {fin.get('root_chord_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Tip Chord: {fin.get('tip_chord_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Span: {fin.get('span_m', 0)*100:.1f}cm")
+                context_parts.append(f"   Thickness: {fin.get('thickness_m', 0)*1000:.1f}mm")
+                context_parts.append(f"   Material Density: {fin.get('material_density_kg_m3', 0):.0f} kg/m³")
+                context_parts.append(f"   Color: {fin.get('color', 'unknown')}")
+                component_index += 1
+            
+            # Motor
+            if motor_id != 'none':
+                context_parts.append(f"{component_index}. MOTOR:")
+                context_parts.append(f"   Motor ID: {motor_id}")
+                context_parts.append(f"   Position: {motor.get('position_from_tail_m', 0)*100:.1f}cm from tail")
+                component_index += 1
+            
+            # Parachutes
+            for i, parachute in enumerate(parachutes):
+                context_parts.append(f"{component_index}. PARACHUTE {i+1}:")
+                context_parts.append(f"   Name: {parachute.get('name', 'unknown')}")
+                context_parts.append(f"   Cd*S: {parachute.get('cd_s_m2', 0):.1f} m²")
+                trigger = parachute.get('trigger', 'unknown')
+                if isinstance(trigger, (int, float)):
+                    context_parts.append(f"   Trigger: {trigger}m altitude")
+                else:
+                    context_parts.append(f"   Trigger: {trigger}")
+                context_parts.append(f"   Color: {parachute.get('color', 'unknown')}")
+                component_index += 1
+                
+            context_parts.append("")
+        else:
+            context_parts.append("=== ROCKET COMPONENTS ===")
+            context_parts.append("No components configured yet.")
+            context_parts.append("")
+
         # Design analysis
         analysis = self._analyze_design(rocket_data)
         if analysis:
@@ -471,48 +536,95 @@ class RocketContextBuilder:
     def _analyze_design(self, rocket_data: Dict[str, Any]) -> List[str]:
         """Analyze the current rocket design and provide insights."""
         analysis = []
-        parts = rocket_data.get('parts', [])
         
-        # Count parts by type
-        part_counts = {}
+        # ✅ NEW: Read component-based structure instead of old parts array
+        nose_cone = rocket_data.get('nose_cone')
+        body_tubes = rocket_data.get('body_tubes', [])
+        fins = rocket_data.get('fins', [])
+        motor = rocket_data.get('motor', {})
+        parachutes = rocket_data.get('parachutes', [])
+        
+        # Calculate total length from components
         total_length = 0
-        total_mass_estimate = 0  # Basic estimation
+        if nose_cone:
+            total_length += nose_cone.get('length_m', 0) * 100  # Convert to cm
+        for body_tube in body_tubes:
+            total_length += body_tube.get('length_m', 0) * 100  # Convert to cm
         
-        for part in parts:
-            part_type = part.get('type')
-            part_counts[part_type] = part_counts.get(part_type, 0) + 1
-            
-            # Estimate length contribution
-            if part_type in ['nose', 'body']:
-                total_length += part.get('length', 0)
+        # Count components
+        component_counts = {
+            'nose_cone': 1 if nose_cone else 0,
+            'body_tubes': len(body_tubes),
+            'fins': len(fins),
+            'motor': 1 if motor.get('motor_database_id') and motor.get('motor_database_id') != 'none' else 0,
+            'parachutes': len(parachutes)
+        }
         
-        # Basic design checks
-        has_nose = part_counts.get('nose', 0) > 0
-        has_body = part_counts.get('body', 0) > 0
-        has_fins = part_counts.get('fin', 0) > 0
-        motor_id = rocket_data.get('motorId', 'none')
+        # Total component count
+        total_components = sum(component_counts.values())
         
         analysis.append(f"Total estimated length: {total_length:.1f}cm")
-        analysis.append(f"Part counts: {dict(part_counts)}")
+        analysis.append(f"Component counts: {component_counts}")
         
-        # Design recommendations
-        if not has_nose:
-            analysis.append("⚠️  Missing nose cone - aerodynamics will be poor")
-        if not has_body:
-            analysis.append("⚠️  Missing body tube - no recovery system housing")
-        if not has_fins:
-            analysis.append("⚠️  Missing fins - rocket will be unstable")
-        if motor_id == 'none':
-            analysis.append("⚠️  No motor selected - rocket won't fly")
+        # ✅ NEW: Component-based design checks
+        has_nose = bool(nose_cone)
+        has_body = len(body_tubes) > 0
+        has_fins = len(fins) > 0
+        motor_id = motor.get('motor_database_id', 'none')
+        has_motor = motor_id and motor_id != 'none'
+        has_parachutes = len(parachutes) > 0
         
-        # Stability hints
-        if has_fins and has_body:
-            analysis.append("✓ Basic stability components present")
+        # Design validation
+        if total_components > 0:
+            analysis.append("✓ Rocket has components configured")
+            
+            if has_nose:
+                nose_shape = nose_cone.get('shape', 'unknown')
+                nose_length = nose_cone.get('length_m', 0) * 100
+                analysis.append(f"✓ Nose cone: {nose_shape}, {nose_length:.1f}cm long")
+            else:
+                analysis.append("⚠️ Missing nose cone - aerodynamics will be poor")
+                
+            if has_body:
+                total_body_length = sum(bt.get('length_m', 0) for bt in body_tubes) * 100
+                analysis.append(f"✓ Body tubes: {len(body_tubes)} sections, {total_body_length:.1f}cm total")
+            else:
+                analysis.append("⚠️ Missing body tube - no recovery system housing")
+                
+            if has_fins:
+                total_fin_count = sum(fin.get('fin_count', 0) for fin in fins)
+                analysis.append(f"✓ Fins: {len(fins)} fin sets, {total_fin_count} total fins")
+            else:
+                analysis.append("⚠️ Missing fins - rocket will be unstable")
+                
+            if has_motor:
+                analysis.append(f"✓ Motor: {motor_id}")
+            else:
+                analysis.append("⚠️ No motor selected - rocket won't fly")
+                
+            if has_parachutes:
+                analysis.append(f"✓ Recovery: {len(parachutes)} parachute(s)")
+            else:
+                analysis.append("⚠️ No recovery system - rocket will crash")
+        else:
+            analysis.append("❌ No components found - rocket appears empty")
+            analysis.append("💡 Add components to begin rocket design")
         
-        if total_length < 30:
-            analysis.append("💡 Consider longer body for better stability")
-        elif total_length > 100:
-            analysis.append("💡 Very long rocket - ensure structural integrity")
+        # Professional design recommendations
+        if has_nose and has_body and has_fins and has_motor:
+            analysis.append("✅ Complete basic rocket configuration")
+            
+            # Length-to-diameter ratio check
+            if body_tubes:
+                avg_diameter = sum(bt.get('outer_radius_m', 0) for bt in body_tubes) / len(body_tubes) * 200  # Convert to cm diameter
+                if avg_diameter > 0:
+                    length_to_diameter = total_length / avg_diameter
+                    if length_to_diameter < 8:
+                        analysis.append("💡 Consider longer body for better stability (L/D ratio)")
+                    elif length_to_diameter > 15:
+                        analysis.append("💡 Very long rocket - ensure structural integrity")
+                    else:
+                        analysis.append("✓ Good length-to-diameter ratio")
         
         return analysis
     

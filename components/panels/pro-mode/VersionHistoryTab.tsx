@@ -73,7 +73,7 @@ export default function VersionHistoryTab() {
         </h4>
         <p className="text-sm text-blue-200">{rocket.name}</p>
         <p className="text-xs text-blue-300 mt-1">
-          {rocket.parts.length} parts • {rocket.motorId} • {isNewProject ? 'New project' : 'Saved project'}
+          {(rocket.nose_cone ? 1 : 0) + rocket.body_tubes.length + rocket.fins.length + rocket.parachutes.length + (rocket.motor ? 1 : 0)} parts • {rocket.motor.motor_database_id} • {isNewProject ? 'New project' : 'Saved project'}
         </p>
       </div>
 

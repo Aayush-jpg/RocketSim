@@ -58,18 +58,37 @@ export default function RecoveryTab() {
 
     // Estimate rocket mass
     let rocketMass = 0.5; // Base mass in kg
-    rocket.parts.forEach((part: any) => {
-      switch (part.type) {
-        case 'nose':
-          rocketMass += 0.05 * (part.length / 10);
-          break;
-        case 'body':
-          rocketMass += 0.1 * (part.length / 10) * part.Ø;
-          break;
-        case 'fin':
-          rocketMass += 0.01 * part.root * part.span;
-          break;
-      }
+    
+    // Nose cone mass
+    if (rocket.nose_cone) {
+      const baseRadius = rocket.nose_cone.base_radius_m || 0.05;
+      const length = rocket.nose_cone.length_m || 0.1;
+      const density = rocket.nose_cone.material_density_kg_m3 || 1600;
+      const volume = Math.PI * Math.pow(baseRadius, 2) * length / 3;
+      rocketMass += volume * density;
+    }
+    
+    // Body tubes mass
+    rocket.body_tubes.forEach((body) => {
+      const radius = body.outer_radius_m || 0.05;
+      const length = body.length_m || 0.3;
+      const thickness = body.wall_thickness_m || 0.003;
+      const density = body.material_density_kg_m3 || 1600;
+      const volume = Math.PI * Math.pow(radius, 2) * length * thickness;
+      rocketMass += volume * density;
+    });
+    
+    // Fins mass
+    rocket.fins.forEach((fin) => {
+      const rootChord = fin.root_chord_m || 0.08;
+      const tipChord = fin.tip_chord_m || rootChord;
+      const span = fin.span_m || 0.05;
+      const thickness = fin.thickness_m || 0.006;
+      const finCount = fin.fin_count || 3;
+      const density = fin.material_density_kg_m3 || 650;
+      const finArea = 0.5 * (rootChord + tipChord) * span;
+      const volume = finArea * thickness * finCount;
+      rocketMass += volume * density;
     });
 
     // Parachute calculations

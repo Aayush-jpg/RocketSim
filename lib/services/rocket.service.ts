@@ -13,6 +13,12 @@
  * - **Vector Database**: Store and query design embeddings using PostgreSQL's pgvector extension
  * - **Smart Categorization**: Automatic tag extraction and classification of rocket designs
  * 
+ * **Component-Based Architecture:**
+ * - **Professional Design**: Works with SI units and material properties
+ * - **Engineering Precision**: Component-level calculations for mass, drag, stability
+ * - **Material Analysis**: Considers density, thickness, surface roughness
+ * - **Advanced Physics**: Professional-grade simulation preparation
+ * 
  * **Search Capabilities:**
  * - **Similarity Search**: Find rockets with similar design characteristics using vector embeddings
  * - **Text Search**: Traditional keyword-based search with fuzzy matching
@@ -36,7 +42,7 @@
  * - **Similarity Calculations**: Perform vector math via `/api/similarity` endpoint
  * - **Security**: All OpenAI API keys handled server-side for security
  * 
- * @version 1.0.0
+ * @version 3.0.0 - Component-based architecture only
  * @author ROCKETv1 Team
  * @see {@link app/api/embeddings/route.ts} for embedding generation API
  * @see {@link app/api/similarity/route.ts} for vector similarity calculations
@@ -45,71 +51,159 @@
 
 import { supabase, supabaseAdmin } from '@/lib/database/supabase';
 import type { Rocket, NewRocket, UpdateRocket } from '@/lib/database/supabase';
-import { Rocket as StoreRocket, Part } from '@/types/rocket';
+import { Rocket as StoreRocket } from '@/types/rocket';
 import { cache } from '@/lib/cache';
 
 export class RocketService {
   /**
-   * Convert store rocket format to database format
+   * Convert component rocket format to database format
    */
   private storeToDatabase(storeRocket: StoreRocket, userId: string): NewRocket {
     return {
       user_id: userId,
       name: storeRocket.name,
-      parts: storeRocket.parts as any, // JSONB accepts any serializable data
-      motor_id: storeRocket.motorId,
-      drag_coefficient: storeRocket.Cd, // Keep as number
-      units: storeRocket.units,
+      parts: {
+        nose_cone: storeRocket.nose_cone,
+        body_tubes: storeRocket.body_tubes,
+        fins: storeRocket.fins,
+        motor: storeRocket.motor,
+        parachutes: storeRocket.parachutes,
+        coordinate_system: storeRocket.coordinate_system,
+        rail_guides_position_m: storeRocket.rail_guides_position_m
+      } as any,
+      motor_id: storeRocket.motor.motor_database_id,
+      drag_coefficient: this.calculateDragCoefficient(storeRocket),
+      units: 'metric', // Always metric for component-based rockets
       is_public: false,
       tags: this.extractTags(storeRocket)
     };
   }
 
   /**
-   * Convert database rocket format to store format
+   * Convert database rocket format to component format
    */
   private databaseToStore(dbRocket: Rocket): StoreRocket {
+    const parts = dbRocket.parts as any;
+    
     return {
       id: dbRocket.id,
       name: dbRocket.name,
-      parts: dbRocket.parts as unknown as Part[], // Type assertion needed due to JSONB
-      motorId: dbRocket.motor_id || 'default-motor',
-      Cd: typeof dbRocket.drag_coefficient === 'number' 
-        ? dbRocket.drag_coefficient 
-        : parseFloat(String(dbRocket.drag_coefficient) || '0.35'),
-      units: (dbRocket.units as 'metric' | 'imperial') || 'metric'
+      nose_cone: parts.nose_cone,
+      body_tubes: parts.body_tubes || [],
+      fins: parts.fins || [],
+      motor: parts.motor,
+      parachutes: parts.parachutes || [],
+      coordinate_system: parts.coordinate_system || "tail_to_nose",
+      rail_guides_position_m: parts.rail_guides_position_m
     };
   }
 
   /**
-   * Extract tags from rocket for search and categorization
+   * Calculate drag coefficient from component properties
+   */
+  private calculateDragCoefficient(rocket: StoreRocket): number {
+    const noseDrag = this.calculateNoseDrag(rocket.nose_cone);
+    const bodyDrag = this.calculateBodyDrag(rocket.body_tubes);
+    const finDrag = this.calculateFinDrag(rocket.fins);
+    
+    return noseDrag + bodyDrag + finDrag;
+  }
+
+  private calculateNoseDrag(nose: any): number {
+    const baseCoeff: { [key: string]: number } = {
+      'ogive': 0.15,
+      'conical': 0.18,
+      'elliptical': 0.12,
+      'parabolic': 0.14
+    };
+    return baseCoeff[nose.shape] || 0.15;
+  }
+
+  private calculateBodyDrag(bodies: any[]): number {
+    return 0.02 * bodies.length;
+  }
+
+  private calculateFinDrag(fins: any[]): number {
+    let totalDrag = 0;
+    fins.forEach(fin => {
+      const finArea = fin.root_chord_m * fin.span_m * fin.fin_count;
+      totalDrag += 0.01 * finArea;
+    });
+    return totalDrag;
+  }
+
+  /**
+   * Extract tags from component rocket for search and categorization
    */
   private extractTags(rocket: StoreRocket): string[] {
     const tags: string[] = [];
     
-    // Add part type tags
-    const partTypes = Array.from(new Set(rocket.parts.map((p: Part) => p.type)));
-    tags.push(...partTypes);
+    // Add component types
+    tags.push('nose_cone', 'body_tube', 'motor');
+    if (rocket.fins.length > 0) tags.push('fins');
+    if (rocket.parachutes.length > 0) tags.push('parachute');
     
     // Add size category
-    const totalLength = rocket.parts
-      .filter((p: Part) => ['nose', 'body'].includes(p.type))
-      .reduce((sum: number, p: Part) => {
-        const part = p as any; // Type assertion for part-specific properties
-        return sum + (part.length || 0);
-      }, 0);
+    const totalLength = rocket.nose_cone.length_m + 
+      rocket.body_tubes.reduce((sum, body) => sum + body.length_m, 0);
     
-    if (totalLength < 30) tags.push('small');
-    else if (totalLength < 60) tags.push('medium');
+    if (totalLength < 0.5) tags.push('small');
+    else if (totalLength < 1.2) tags.push('medium');
     else tags.push('large');
     
     // Add motor class
-    if (rocket.motorId) {
-      const motorClass = rocket.motorId.charAt(0);
+    if (rocket.motor.motor_database_id && rocket.motor.motor_database_id !== 'default-motor') {
+      const motorClass = rocket.motor.motor_database_id.charAt(0);
       tags.push(`motor-${motorClass}`);
     }
     
+    // Add material types
+    const materials = new Set<string>();
+    if (rocket.nose_cone.material_density_kg_m3 === 1600) materials.add('fiberglass');
+    if (rocket.nose_cone.material_density_kg_m3 === 2700) materials.add('aluminum');
+    if (rocket.nose_cone.material_density_kg_m3 === 650) materials.add('plywood');
+    
+    rocket.fins.forEach(fin => {
+      if (fin.material_density_kg_m3 === 650) materials.add('plywood');
+      if (fin.material_density_kg_m3 === 1600) materials.add('fiberglass');
+    });
+    
+    tags.push(...Array.from(materials));
+    
     return tags;
+  }
+
+  /**
+   * Generate text description of rocket for embedding
+   */
+  private generateRocketDescription(rocket: StoreRocket): string {
+    let description = `Component rocket "${rocket.name}". `;
+    
+    // Describe nose cone
+    description += `${rocket.nose_cone.shape} nose cone ${(rocket.nose_cone.length_m * 100).toFixed(1)}cm long, `;
+    const baseRadius = rocket.nose_cone.base_radius_m || 0.05; // Default radius if undefined
+    description += `${(baseRadius * 200).toFixed(1)}cm diameter. `;
+    
+    // Describe body tubes
+    if (rocket.body_tubes.length > 0) {
+      const totalLength = rocket.body_tubes.reduce((sum, body) => sum + body.length_m, 0);
+      const avgRadius = rocket.body_tubes.reduce((sum, body) => sum + body.outer_radius_m, 0) / rocket.body_tubes.length;
+      description += `Body length ${(totalLength * 100).toFixed(1)}cm, `;
+      description += `diameter ${(avgRadius * 200).toFixed(1)}cm. `;
+    }
+    
+    // Describe fins
+    if (rocket.fins.length > 0) {
+      const fin = rocket.fins[0];
+      description += `${fin.fin_count} fins, `;
+      description += `root ${(fin.root_chord_m * 100).toFixed(1)}cm, `;
+      description += `span ${(fin.span_m * 100).toFixed(1)}cm. `;
+    }
+    
+    description += `Motor: ${rocket.motor.motor_database_id}. `;
+    description += `Materials: ${this.extractTags(rocket).filter(t => ['fiberglass', 'aluminum', 'plywood'].includes(t)).join(', ')}.`;
+    
+    return description;
   }
 
   /**
@@ -138,38 +232,6 @@ export class RocketService {
       console.error('Failed to generate rocket embedding:', error);
       return new Array(1536).fill(0); // Return zero vector as fallback
     }
-  }
-
-  /**
-   * Generate text description of rocket for embedding
-   */
-  private generateRocketDescription(rocket: StoreRocket): string {
-    const parts = rocket.parts;
-    const noseParts = parts.filter((p: Part) => p.type === 'nose');
-    const bodyParts = parts.filter((p: Part) => p.type === 'body');
-    const finParts = parts.filter((p: Part) => p.type === 'fin');
-    
-    let description = `Rocket "${rocket.name}" with ${parts.length} parts. `;
-    
-    if (noseParts.length > 0) {
-      const nose = noseParts[0] as any;
-      description += `${nose.shape || 'standard'} nose cone ${nose.length || 0}cm long. `;
-    }
-    
-    if (bodyParts.length > 0) {
-      const body = bodyParts[0] as any;
-      description += `Body tube ${body.length || 0}cm long, ${body.Ø || body.diameter || 0}cm diameter. `;
-    }
-    
-    if (finParts.length > 0) {
-      const fin = finParts[0] as any;
-      description += `Fins with ${fin.root || 0}cm root, ${fin.span || 0}cm span. `;
-    }
-    
-    description += `Motor: ${rocket.motorId}. Drag coefficient: ${rocket.Cd}. `;
-    description += `Units: ${rocket.units}. Tags: ${this.extractTags(rocket).join(', ')}.`;
-    
-    return description;
   }
 
   /**
@@ -437,7 +499,7 @@ export class RocketService {
   }
 
   /**
-   * Basic similarity calculation without AI embeddings (fallback)
+   * Calculate similarity between two rockets using basic comparison
    */
   private calculateBasicSimilarity(rocket1: StoreRocket, rocket2: StoreRocket): number {
     let score = 0;
@@ -445,32 +507,29 @@ export class RocketService {
     
     // Motor similarity
     maxScore += 20;
-    if (rocket1.motorId === rocket2.motorId) score += 20;
-    else if (rocket1.motorId[0] === rocket2.motorId[0]) score += 10; // Same class
+    if (rocket1.motor.motor_database_id === rocket2.motor.motor_database_id) score += 20;
+    else if (rocket1.motor.motor_database_id[0] === rocket2.motor.motor_database_id[0]) score += 10; // Same class
     
-    // Parts count similarity
+    // Component count similarity
     maxScore += 15;
-    const partsDiff = Math.abs(rocket1.parts.length - rocket2.parts.length);
-    score += Math.max(0, 15 - partsDiff * 3);
-    
-    // Units similarity
-    maxScore += 10;
-    if (rocket1.units === rocket2.units) score += 10;
+    const componentsDiff = Math.abs(rocket1.body_tubes.length - rocket2.body_tubes.length);
+    score += Math.max(0, 15 - componentsDiff * 3);
     
     // Drag coefficient similarity
     maxScore += 15;
-    const cdDiff = Math.abs(rocket1.Cd - rocket2.Cd);
+    const cdDiff = Math.abs(this.calculateDragCoefficient(rocket1) - this.calculateDragCoefficient(rocket2));
     score += Math.max(0, 15 - cdDiff * 30);
     
-    // Part types similarity
+    // Component types similarity
     maxScore += 40;
-    const types1 = new Set(rocket1.parts.map((p: Part) => p.type));
-    const types2 = new Set(rocket2.parts.map((p: Part) => p.type));
-    const intersection = new Set(Array.from(types1).filter(x => types2.has(x)));
-    const union = new Set([...Array.from(types1), ...Array.from(types2)]);
-    score += (intersection.size / union.size) * 40;
+    const tags1 = new Set(this.extractTags(rocket1));
+    const tags2 = new Set(this.extractTags(rocket2));
+    const intersection = new Set(Array.from(tags1).filter(x => tags2.has(x)));
+    const union = new Set([...Array.from(tags1), ...Array.from(tags2)]);
+    const similarity = intersection.size / union.size;
+    score += similarity * 40;
     
-    return maxScore > 0 ? score / maxScore : 0;
+    return score / maxScore;
   }
 
   /**
@@ -520,14 +579,8 @@ export class RocketService {
   }[]> {
     try {
       // Generate embedding for the search query
-      const queryEmbedding = await this.generateRocketEmbedding({
-        id: '',
-        name: query,
-        parts: [],
-        motorId: 'A',
-        Cd: 0.35,
-        units: 'metric'
-      } as StoreRocket);
+      const queryRocket = this.createQueryRocket(query);
+      const queryEmbedding = await this.generateRocketEmbedding(queryRocket);
       
       // Get rockets with embeddings
       const { data, error } = await supabase
@@ -782,6 +835,35 @@ export class RocketService {
         }
       };
     }
+  }
+
+  /**
+   * Create a minimal rocket for query comparison
+   */
+  private createQueryRocket(query: string): StoreRocket {
+    return {
+      id: '',
+      name: query,
+      nose_cone: {
+        id: 'query-nose',
+        shape: 'ogive',
+        length_m: 0.1,
+        base_radius_m: 0.05,
+        wall_thickness_m: 0.002,
+        material_density_kg_m3: 1600.0,
+        surface_roughness_m: 1e-5,
+        color: '#FFFFFF'
+      },
+      body_tubes: [],
+      fins: [],
+      motor: {
+        id: 'query-motor',
+        motor_database_id: 'A',
+        position_from_tail_m: 0.0
+      },
+      parachutes: [],
+      coordinate_system: 'tail_to_nose'
+    };
   }
 }
 
