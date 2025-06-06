@@ -5,6 +5,18 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Create users table (CRITICAL MISSING TABLE)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    preferences JSONB DEFAULT '{}',
+    experience_level TEXT DEFAULT 'beginner',
+    subscription_tier TEXT DEFAULT 'free'
+);
+
 -- Create projects table (top-level entity)
 CREATE TABLE IF NOT EXISTS public.projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -195,6 +207,9 @@ CREATE TABLE IF NOT EXISTS public.design_templates (
 );
 
 -- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
+CREATE INDEX IF NOT EXISTS idx_users_created_at ON public.users(created_at);
+
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON public.projects(user_id);
 CREATE INDEX IF NOT EXISTS idx_projects_created_at ON public.projects(created_at);
 CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON public.projects(updated_at);
@@ -294,6 +309,7 @@ LEFT JOIN (
 ) analysis_stats ON p.id = analysis_stats.project_id;
 
 -- Enable Row Level Security
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rockets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
@@ -420,6 +436,13 @@ CREATE POLICY "Users can update own design templates" ON public.design_templates
 
 CREATE POLICY "Users can delete own design templates" ON public.design_templates
     FOR DELETE USING (auth.uid() = created_by);
+
+-- Create RLS policies for users
+CREATE POLICY "Users can view their own profile" ON public.users
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile" ON public.users
+    FOR UPDATE USING (auth.uid() = id);
 
 -- Create trigger to update project updated_at when rockets change
 CREATE OR REPLACE FUNCTION update_project_timestamp()
@@ -922,6 +945,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create update triggers for timestamps  
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_rockets_updated_at BEFORE UPDATE ON public.rockets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
