@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS public.simulations (
     max_velocity REAL,
     max_acceleration REAL,
     apogee_time REAL,
+    flight_time REAL,
     landing_velocity REAL,
     drift_distance REAL,
     stability_margin REAL,

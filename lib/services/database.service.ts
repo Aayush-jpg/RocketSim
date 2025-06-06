@@ -296,6 +296,7 @@ export class DatabaseService {
         max_velocity: result.maxVelocity || null,
         max_acceleration: result.maxAcceleration || null,
         apogee_time: result.apogeeTime || null,
+        flight_time: result.flightTime || null,
         landing_velocity: result.landingVelocity || null,
         drift_distance: result.driftDistance || null,
         stability_margin: result.stabilityMargin || null,
