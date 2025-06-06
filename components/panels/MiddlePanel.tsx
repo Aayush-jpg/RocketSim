@@ -137,12 +137,21 @@ function RocketModel({
   // Get rocket from store
   const rocket = useRocket(state => state.rocket)
   
-  // Access components directly - much cleaner approach!
+  // Get component-specific properties 
   const nosePart = rocket.nose_cone;
   const bodyPart = rocket.body_tubes[0]; // Use first body tube
-  const finParts = rocket.fins;
   const enginePart = rocket.motor;
-  const parachuteParts = rocket.parachutes;
+  const finParts = rocket.fins || [];
+  const parachuteParts = rocket.parachutes || [];
+  
+  // Get fin cant angle from component data
+  const finCantAngle = finParts[0]?.cant_angle_deg || 0;
+  const finCount = finParts[0]?.fin_count || 3;
+  
+  // Calculate visual scaling factors
+  const visualScaleFactor = 4; // Scale up for better 3D visualization
+  const rawBodyRadius = bodyPart?.outer_radius_m || 0.05;
+  const bodyRadius = Math.max(rawBodyRadius * visualScaleFactor, 0.15); // Reasonable minimum for visibility
   
   // Calculate component count for re-render tracking
   const componentCount = (nosePart ? 1 : 0) + rocket.body_tubes.length + rocket.fins.length + rocket.parachutes.length + (enginePart ? 1 : 0);
@@ -230,10 +239,7 @@ function RocketModel({
   console.log("RocketModel: bodyPart from store:", bodyPart);
   console.log("RocketModel: bodyPart outer_radius_m:", bodyPart?.outer_radius_m);
 
-  // Get dimensions directly from components - FIXED SCALING!
-  const bodyRadius = Math.max(bodyPart?.outer_radius_m || 0.05, 0.3); // Ensure minimum visible thickness
-  console.log("RocketModel: calculated bodyRadius for scene:", bodyRadius);
-  
+ 
   // ✅ FIXED: Realistic rocket proportions like real rockets
   const bodyLengthScaled = bodyPart?.length_m ? bodyPart.length_m * 4 : 8; // Taller for realistic proportions
   const noseLengthScaled = nosePart?.length_m ? nosePart.length_m * 3 : 2; // Longer, more aerodynamic nose
@@ -455,7 +461,7 @@ function RocketModel({
           args={[bodyRadius, bodyRadius, upperBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color="#F8F8FF" 
+          color={bodyPart?.color || "#F8F8FF"} 
           metalness={0.1} 
           roughness={0.3} 
           emissive={getEmissive('airframe')}
@@ -470,7 +476,7 @@ function RocketModel({
           args={[bodyRadius, bodyRadius, lowerBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color="#F8F8FF" 
+          color={bodyPart?.color || "#F8F8FF"}
           metalness={0.1} 
           roughness={0.3} 
           emissive={getEmissive('airframe')}
@@ -507,7 +513,7 @@ function RocketModel({
           />
         )}
         <meshStandardMaterial 
-          color="#2C3E50" 
+          color={nosePart?.color || "#2C3E50"} 
           metalness={0.3} 
           roughness={0.4} 
           emissive={getEmissive('nosecone')}
@@ -549,15 +555,15 @@ function RocketModel({
       </group>
       
       {/* Realistic aerodynamic fins */}
-      {[0, 1, 2, 3].map((i) => (
+      {Array.from({ length: finCount }, (_, i) => (
         <mesh 
           key={i}
           position={[
-            Math.sin(i * Math.PI / 2) * (bodyRadius + finSpanScaled/3), 
+            Math.sin(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3), 
             finCenterY, 
-            Math.cos(i * Math.PI / 2) * (bodyRadius + finSpanScaled/3)
+            Math.cos(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3)
           ]}
-          rotation={[0, i * Math.PI / 2, 0]}
+          rotation={[0, i * (2 * Math.PI) / finCount + (finCantAngle * Math.PI / 180), 0]}
           name="fins"
         >
           <boxGeometry 
@@ -565,7 +571,7 @@ function RocketModel({
             args={[0.05, finRootScaled, finSpanScaled]} 
           />
           <meshStandardMaterial 
-            color="#696969" 
+            color={finParts[0]?.color || "#696969"} 
             metalness={0.4} 
             roughness={0.3} 
             emissive={getEmissive('fins')}

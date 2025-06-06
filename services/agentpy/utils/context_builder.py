@@ -113,7 +113,7 @@ class RocketContextBuilder:
             context_parts.append("=== ROCKET COMPONENTS ===")
             context_parts.append("No components configured yet.")
             context_parts.append("")
-
+        
         # Design analysis
         analysis = self._analyze_design(rocket_data)
         if analysis:
@@ -601,7 +601,7 @@ class RocketContextBuilder:
                 analysis.append(f"✓ Motor: {motor_id}")
             else:
                 analysis.append("⚠️ No motor selected - rocket won't fly")
-                
+        
             if has_parachutes:
                 analysis.append(f"✓ Recovery: {len(parachutes)} parachute(s)")
             else:

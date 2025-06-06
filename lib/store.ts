@@ -3,16 +3,16 @@ import {
   Rocket, 
   SimulationResult, 
   EnvironmentConfig, 
-  LaunchParameters, 
-  MonteCarloResult, 
-  StabilityAnalysis, 
-  MotorAnalysis, 
-  RecoveryPrediction 
+  LaunchParameters,
+  MonteCarloResult,
+  StabilityAnalysis,
+  MotorAnalysis,
+  RecoveryPrediction
 } from '@/types/rocket';
 import { 
   databaseService, 
-  saveRocketToDb,
-  saveSimulationToDb,
+  saveRocketToDb, 
+  saveSimulationToDb, 
   getCurrentSessionId, 
   saveChatToDb,
   createNewRocket,
@@ -185,7 +185,7 @@ export const useRocket = create<RocketState>()((set, get) => ({
         // This is a new rocket - only save if it has a proper name and isn't a temporary rocket
         if (currentRocket.name && !currentRocket.name.includes('Default') && !currentRocket.id.includes('local-')) {
           console.log('💾 Saving new rocket:', currentRocket.name);
-          get().saveCurrentRocket();
+        get().saveCurrentRocket();
         } else {
           console.log('⏭️ Skipping auto-save for temporary/default rocket');
         }
@@ -261,11 +261,11 @@ export const useRocket = create<RocketState>()((set, get) => ({
       } else {
         // Save as new rocket
         console.log('💾 Saving new rocket:', state.rocket.name);
-        const saved = await saveRocketToDb(state.rocket);
-        if (saved) {
-          console.log('Rocket saved to database successfully');
-          // Update saved rockets list
-          get().loadUserRockets();
+      const saved = await saveRocketToDb(state.rocket);
+      if (saved) {
+        console.log('Rocket saved to database successfully');
+        // Update saved rockets list
+        get().loadUserRockets();
         }
       }
     } catch (error) {

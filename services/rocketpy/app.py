@@ -749,7 +749,7 @@ else:
             "burn_time_s": 1.8, 
             "dimensions": {"outer_diameter_m": 0.013, "length_m": 0.100},
             "mass": {"propellant_kg": 0.008, "total_kg": 0.015}, 
-            "isp_s": 150
+                "isp_s": 150
         },
         "default-motor": {
             "name": "F32-6", "manufacturer": "Generic", "type": "solid",

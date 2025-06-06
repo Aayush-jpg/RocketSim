@@ -156,7 +156,7 @@ export class DatabaseService {
     
     if (totalLength < 0.5) tags.push('small');
     else if (totalLength < 1.2) tags.push('medium');
-    else tags.push('large');
+      else tags.push('large');
     
     // Add motor class
     if (rocket.motor.motor_database_id && rocket.motor.motor_database_id !== 'default-motor') {
@@ -524,9 +524,9 @@ export class DatabaseService {
         // Update last activity with timeout
         try {
           const updatePromise = supabase
-            .from('user_sessions')
-            .update({ last_activity: new Date().toISOString() })
-            .eq('id', existingSession.id);
+          .from('user_sessions')
+          .update({ last_activity: new Date().toISOString() })
+          .eq('id', existingSession.id);
           
           const updateTimeout = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Update timeout')), 2000)

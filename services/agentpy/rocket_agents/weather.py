@@ -81,6 +81,5 @@ weather_agent = Agent(
         recommend_launch_window,
         set_location
     ],
-    handoff_description="Handles weather analysis and launch condition assessment",
     model="gpt-4o-mini"
 ) 

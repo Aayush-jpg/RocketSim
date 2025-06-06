@@ -29,7 +29,10 @@ from rocket_agents import (
 )
 
 # Import all the tools
-from tools.design_tools import add_part, update_part, update_rocket, altitude_design_tool
+from tools.design_tools import (
+    update_nose_cone, update_body_tube, update_fins, update_motor, update_parachute, 
+    update_rocket_properties, altitude_design_tool
+)
 from tools.sim_tools import run_simulation
 
 # Get API key from environment
@@ -262,16 +265,20 @@ Decision Tree:
     - If for **metrics/analysis** (e.g., "is my rocket stable?", "calculate CoG"), delegate to `metrics_agent_tool`.
 
 2.  Direct Modification (Simple & Confident)?
-    - If the request is a very simple, direct modification (e.g., "change motor to X", "set fin span to Y for fin 'finset1'") AND you are highly confident and know the part ID (from the provided `CURRENT_ROCKET_JSON`), you MAY use the direct tools (`add_part`, `update_part`, `update_rocket`) yourself.
+    - If the request is a very simple, direct modification (e.g., "change motor to X", "update nose cone length", "modify fin dimensions") AND you are highly confident, you MAY use the component-based tools directly. Use `update_nose_cone`, `update_body_tube`, `update_fins`, `update_motor`, `update_parachute` as appropriate for specific components.
 
 3.  Complex Request or Follow-up?
     - If the request is complex, involves multiple steps, or is a follow-up to your previous suggestions, reason through the steps. If design changes are needed, delegate those specific changes to `design_agent_tool` (specifying the part and desired change, referencing the `CURRENT_ROCKET_JSON`) or use direct tools if extremely simple and you have all necessary info like IDs from the `CURRENT_ROCKET_JSON`.
 
 Available Tools (for you or to instruct design_agent_tool):
-- `add_part(type: str, props: PartProps)`
-- `update_part(id: str, props: PartProps)`
-- `update_rocket(props: RocketProps)`
-- `run_simulation(fidelity: Literal["quick", "hifi"])`
+- `update_nose_cone(props: ComponentProps)` - Update nose cone with shape, length_m, base_radius_m, etc.
+- `update_body_tube(props: ComponentProps, index: int)` - Update body tube at specific index
+- `update_fins(props: ComponentProps, index: int)` - Update fin set at specific index
+- `update_motor(props: ComponentProps)` - Update motor with motor_database_id, position, etc.
+- `update_parachute(props: ComponentProps, index: int)` - Update parachute at specific index
+- `update_rocket_properties(props: RocketProps)` - Update rocket-level properties
+- `run_simulation(fidelity: Literal["quick", "hifi"])` - Run simulation
+- `altitude_design_tool(target_altitude: float, rocket_data: Dict)` - Design for specific altitude
 
 **CRITICAL: Ensuring Changes are Actioned and Reported**
 - When you use a direct tool, its JSON output IS the action.
@@ -292,7 +299,7 @@ If the user asks you to "teach me what you did" or "explain the changes", summar
 master_agent = Agent(
     name="Rocket‑Cursor AI",
     instructions=MASTER_AGENT_INSTRUCTIONS,
-    tools=[add_part, update_part, update_rocket, run_simulation, altitude_design_tool],
+    tools=[update_nose_cone, update_body_tube, update_fins, update_motor, update_parachute, update_rocket_properties, run_simulation, altitude_design_tool],
     model="gpt-4o-mini",
 )
 
@@ -455,15 +462,14 @@ async def reason(req: ChatRequest):
                         design_needs_sim = True
                         design_needs_metrics = True
                     
-                    # Substantial body/nose/fin changes
-                    elif action.get('action') == 'update_part':
-                        props = action.get('props', {})
-                        if any(k in props for k in ['length', 'Ø', 'baseØ', 'root', 'span', 'sweep', 'shape']):
-                            design_needs_sim = True
-                            design_needs_metrics = True
+                    # Substantial component changes
+                    elif action.get('action') in ['update_nose_cone', 'update_body_tube', 'update_fins', 'update_motor', 'update_parachute']:
+                        # Any component modification needs simulation and metrics follow-up
+                        design_needs_sim = True
+                        design_needs_metrics = True
                     
-                    # Adding new parts
-                    elif action.get('action') == 'add_part':
+                    # Rocket-level changes
+                    elif action.get('action') == 'update_rocket_properties':
                         design_needs_sim = True
                         design_needs_metrics = True
                 
@@ -556,20 +562,33 @@ async def reason(req: ChatRequest):
         if all_actions:
             action_summary = "\n\n### Actions Performed\n\n"
             for action in all_actions:
-                if action.get('action') == 'update_part':
-                    part_id = action.get('id')
+                if action.get('action') == 'update_nose_cone':
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
-                    action_summary += f"- Updated **{part_id}** with {prop_list}\n"
-                elif action.get('action') == 'add_part':
-                    part_type = action.get('type')
+                    action_summary += f"- Updated **nose cone** with {prop_list}\n"
+                elif action.get('action') == 'update_body_tube':
+                    index = action.get('index', 0)
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
-                    action_summary += f"- Added new **{part_type}** with {prop_list}\n"
-                elif action.get('action') == 'update_rocket':
+                    action_summary += f"- Updated **body tube {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_fins':
+                    index = action.get('index', 0)
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **fin set {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_motor':
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **motor** with {prop_list}\n"
+                elif action.get('action') == 'update_parachute':
+                    index = action.get('index', 0)
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **parachute {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_rocket_properties':
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()]) 
-                    action_summary += f"- Updated **rocket** with {prop_list}\n"
+                    action_summary += f"- Updated **rocket properties** with {prop_list}\n"
                 elif action.get('action') == 'run_sim':
                     fidelity = action.get('fidelity', 'quick')
                     action_summary += f"- Ran **{fidelity} simulation**\n"
@@ -714,20 +733,33 @@ async def reason_with_agent(req: AgentRequest):
             # Add styled action summary
             action_summary = "\n\n### Actions Performed\n\n"
             for action in actions:
-                if action.get('action') == 'update_part':
-                    part_id = action.get('id')
+                if action.get('action') == 'update_nose_cone':
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
-                    action_summary += f"- Updated **{part_id}** with {prop_list}\n"
-                elif action.get('action') == 'add_part':
-                    part_type = action.get('type')
+                    action_summary += f"- Updated **nose cone** with {prop_list}\n"
+                elif action.get('action') == 'update_body_tube':
+                    index = action.get('index', 0)
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
-                    action_summary += f"- Added new **{part_type}** with {prop_list}\n"
-                elif action.get('action') == 'update_rocket':
+                    action_summary += f"- Updated **body tube {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_fins':
+                    index = action.get('index', 0)
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **fin set {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_motor':
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **motor** with {prop_list}\n"
+                elif action.get('action') == 'update_parachute':
+                    index = action.get('index', 0)
+                    props = action.get('props', {})
+                    prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()])
+                    action_summary += f"- Updated **parachute {index}** with {prop_list}\n"
+                elif action.get('action') == 'update_rocket_properties':
                     props = action.get('props', {})
                     prop_list = ", ".join([f"**{k}**: {v}" for k, v in props.items()]) 
-                    action_summary += f"- Updated **rocket** with {prop_list}\n"
+                    action_summary += f"- Updated **rocket properties** with {prop_list}\n"
                 elif action.get('action') == 'run_sim':
                     fidelity = action.get('fidelity', 'quick')
                     action_summary += f"- Ran **{fidelity} simulation**\n"

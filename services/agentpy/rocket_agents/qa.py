@@ -76,6 +76,5 @@ You do NOT need to call any tools or make design changes. Your entire output sho
 qa_agent = Agent(
     name="QAAgent",
     instructions=QA_AGENT_INSTRUCTIONS,
-    handoff_description="Provides educational information and analyzes current rocket performance",
     model="gpt-4o-mini"
 ) 

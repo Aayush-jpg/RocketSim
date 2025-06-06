@@ -21,6 +21,5 @@ sim_agent = Agent(
     name="SimAgent",
     instructions=SIM_AGENT_INSTRUCTIONS,
     tools=[run_simulation],
-    handoff_description="Handles rocket simulation requests",
     model="gpt-4o-mini"
 ) 

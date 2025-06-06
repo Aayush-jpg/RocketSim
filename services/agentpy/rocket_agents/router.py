@@ -65,6 +65,5 @@ ABSOLUTELY DO NOT output any other text, explanation, JSON, or tool calls. Your 
 router_agent = Agent(
     name="RouterAgent",
     instructions=ROUTER_AGENT_INSTRUCTIONS,
-    handoff_description="Determines which specialized agent should handle a request",
     model="gpt-4o-mini"
 ) 
