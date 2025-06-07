@@ -37,7 +37,9 @@ import {
   Folder,
   FolderOpen,
   Rocket,
-  MoreHorizontal
+  MoreHorizontal,
+  AlertTriangle,
+  Check
 } from "lucide-react"
 import { cleanupOrphanedSessions, deleteProject } from '@/lib/services/database.service'
 import { useAuth } from "@/lib/auth/AuthContext"
@@ -46,6 +48,7 @@ interface LeftPanelProps {
   isCollapsed: boolean
   onCollapse: () => void
   onProjectClick?: (projectId: string) => void
+  width?: number
 }
 
 interface NewProjectDialogProps {
@@ -92,19 +95,58 @@ function NewProjectDialog({ open, onOpenChange, onCreateProject }: NewProjectDia
             <label className="text-sm font-medium">Template</label>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { key: 'basic', label: 'Basic', desc: 'Simple design' },
-                { key: 'advanced', label: 'Advanced', desc: 'Enhanced features' },
-                { key: 'sport', label: 'Sport', desc: 'High performance' }
+                { 
+                  key: 'basic', 
+                  label: 'Basic', 
+                  desc: 'Simple design',
+                  icon: '🚀'
+                },
+                { 
+                  key: 'advanced', 
+                  label: 'Advanced', 
+                  desc: 'Enhanced features',
+                  icon: '⚡'
+                },
+                { 
+                  key: 'sport', 
+                  label: 'Sport', 
+                  desc: 'High performance',
+                  icon: '🏆'
+                }
               ].map((t) => (
-                <Button
+                <div
                   key={t.key}
-                  variant={template === t.key ? "default" : "outline"}
-                  className="h-auto flex-col p-3"
+                  className={cn(
+                    "relative cursor-pointer rounded-lg border-2 p-3 transition-all hover:shadow-md",
+                    template === t.key 
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" 
+                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                  )}
                   onClick={() => setTemplate(t.key as typeof template)}
                 >
-                  <span className="font-medium">{t.label}</span>
-                  <span className="text-xs opacity-70">{t.desc}</span>
-                </Button>
+                  {/* Selected indicator */}
+                  {template === t.key && (
+                    <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-blue-500 flex items-center justify-center">
+                      <Check className="h-3 w-3 text-white" />
+                    </div>
+                  )}
+                  
+                  <div className="text-center space-y-1">
+                    <div className="text-lg">{t.icon}</div>
+                    <div className={cn(
+                      "font-medium text-sm",
+                      template === t.key ? "text-blue-700 dark:text-blue-300" : "text-gray-900 dark:text-gray-100"
+                    )}>
+                      {t.label}
+                    </div>
+                    <div className={cn(
+                      "text-xs",
+                      template === t.key ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"
+                    )}>
+                      {t.desc}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -159,7 +201,86 @@ function formatTimeAgo(dateString: string): string {
   return `${diffDays}d ago`
 }
 
-export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: LeftPanelProps) {
+// Delete Confirmation Dialog Component
+interface DeleteConfirmationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  projectName: string;
+}
+
+function DeleteConfirmationDialog({ 
+  open, 
+  onOpenChange, 
+  onConfirm, 
+  projectName 
+}: DeleteConfirmationDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px] bg-gradient-to-b from-gray-900 to-black text-white border border-red-500/20">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-full bg-red-500/20">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+            </div>
+            <DialogTitle className="text-red-400">Delete Project</DialogTitle>
+          </div>
+          <DialogDescription className="text-gray-300 pt-2">
+            Are you sure you want to delete <span className="font-semibold text-white">"{projectName}"</span>?
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="py-4">
+          <div className="bg-red-950/30 border border-red-500/20 rounded-lg p-4">
+            <p className="text-sm text-red-200 mb-3 font-medium">This will permanently delete:</p>
+            <ul className="text-sm text-gray-300 space-y-1">
+              <li className="flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                All rocket designs in this project
+              </li>
+              <li className="flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                All conversation history
+              </li>
+              <li className="flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                All simulation data
+              </li>
+              <li className="flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                All version history
+              </li>
+            </ul>
+            <p className="text-red-200 text-sm mt-3 font-medium">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)}
+            className="border-gray-600 text-gray-300 hover:bg-gray-800"
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive"
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
+            className="bg-red-600 hover:bg-red-700 border-red-500"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Project
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick, width }: LeftPanelProps) {
   const { user } = useAuth()
   const { 
     isDatabaseConnected, 
@@ -172,8 +293,14 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
     createAndLoadNewProject
   } = useRocket()
   
-  const [newProjectDialog, setNewProjectDialog] = useState(false)
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Determine if panel is narrow based on width
+  const isNarrow = width && width < 300;
+  const isVeryNarrow = width && width < 250;
 
   // Load panel data when component mounts and database connects
   useEffect(() => {
@@ -217,6 +344,7 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
   const handleCreateProject = async (name: string, template: 'basic' | 'advanced' | 'sport') => {
     await createAndLoadNewProject(name, template)
     await loadUserProjects() // Refresh to show new project in list
+    setIsNewProjectOpen(false)
   }
 
   const handleLoadProject = (project: Project) => {
@@ -234,27 +362,22 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
     const project = savedProjects.find(p => p.id === projectId);
     const projectName = project?.name || 'this project';
     
-    // Show confirmation dialog
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${projectName}"?\n\n` +
-      `This will permanently delete:\n` +
-      `• All rocket designs in this project\n` +
-      `• All conversation history\n` +
-      `• All simulation data\n` +
-      `• All version history\n\n` +
-      `This action cannot be undone.`
-    );
-    
-    if (!confirmed) return;
+    // Open custom delete confirmation dialog
+    setProjectToDelete({ id: projectId, name: projectName });
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
     
     try {
-      console.log('🗑️ Deleting project:', projectId, projectName);
+      console.log('🗑️ Deleting project:', projectToDelete.id, projectToDelete.name);
       
       // Check if we're deleting the currently active project
-      const isDeletingCurrentProject = currentProject?.id === projectId;
+      const isDeletingCurrentProject = currentProject?.id === projectToDelete.id;
       
       // Delete the project from database
-      const success = await deleteProject(projectId);
+      const success = await deleteProject(projectToDelete.id);
       
       if (success) {
         console.log('✅ Project deleted successfully');
@@ -270,18 +393,15 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
         await loadUserProjects();
         
         // Show success message
-        console.log(`Project "${projectName}" has been deleted.`);
+        console.log(`Project "${projectToDelete.name}" has been deleted.`);
       } else {
         throw new Error('Failed to delete project');
       }
     } catch (error) {
       console.error('❌ Error deleting project:', error);
-      
-      // Show error message to user
-      window.alert(
-        `Failed to delete project "${projectName}".\n\n` +
-        `Please try again. If the problem persists, contact support.`
-      );
+      // For now, just log the error - could add a toast notification here
+    } finally {
+      setProjectToDelete(null);
     }
   };
 
@@ -332,68 +452,79 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
           <Card 
             key={project.id}
             className={cn(
-              "p-3 cursor-pointer transition-all hover:shadow-md",
+              "cursor-pointer transition-all hover:shadow-md",
+              isVeryNarrow ? "p-2" : isNarrow ? "p-2.5" : "p-3",
               currentProject?.id === project.id ? "border-blue-500 bg-blue-50/50" : "hover:border-blue-200"
             )}
             onClick={() => handleLoadProject(project)}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-medium text-sm truncate">{project.name}</h3>
-                  <Badge variant={getBadgeVariant(project.simulation_count || 0)} className="text-xs">
-                    {getProjectStatus(project.simulation_count || 0)}
-                  </Badge>
+                <div className={`flex items-center gap-2 ${isVeryNarrow ? 'mb-0.5' : 'mb-1'}`}>
+                  <h3 className={`font-medium truncate ${isVeryNarrow ? 'text-xs' : isNarrow ? 'text-xs' : 'text-sm'}`}>
+                    {project.name}
+                  </h3>
+                  {!isVeryNarrow && (
+                    <Badge variant={getBadgeVariant(project.simulation_count || 0)} className="text-xs">
+                      {getProjectStatus(project.simulation_count || 0)}
+                    </Badge>
+                  )}
                 </div>
                 
-                {project.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                {project.description && !isVeryNarrow && (
+                  <p className={`text-muted-foreground line-clamp-2 mb-2 ${isNarrow ? 'text-xs' : 'text-xs'}`}>
                     {project.description}
                   </p>
                 )}
                 
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className={`flex items-center gap-3 text-muted-foreground ${isVeryNarrow ? 'text-xs' : 'text-xs'}`}>
                   <div className="flex items-center gap-1">
                     <Rocket className="h-3 w-3" />
                     <span>{project.rocket_count || 0}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <MessageSquare className="h-3 w-3" />
-                    <span>{project.message_count || 0}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span>Updated {formatTimeAgo(project.updated_at)}</span>
-                  </div>
+                  {!isVeryNarrow && (
+                    <div className="flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      <span>{project.message_count || 0}</span>
+                    </div>
+                  )}
+                  {!isNarrow && (
+                    <div className="flex items-center gap-1">
+                      <span>Updated {formatTimeAgo(project.updated_at)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               
               {/* Project actions menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    <MoreHorizontal className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation();
-                    handleLoadProject(project);
-                  }}>
-                    <FileText className="h-3 w-3 mr-2" />
-                    Open Project
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={(e) => {
+              {!isVeryNarrow && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                      <MoreHorizontal className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteProject(project.id);
-                    }}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-3 w-3 mr-2" />
-                    Delete Project
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      handleLoadProject(project);
+                    }}>
+                      <FileText className="h-3 w-3 mr-2" />
+                      Open Project
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteProject(project.id);
+                      }}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="h-3 w-3 mr-2" />
+                      Delete Project
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </Card>
         ))}
@@ -451,11 +582,13 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
   }
 
   return (
-    <div className="w-80 h-full bg-black border-r border-white/5 flex flex-col">
+    <div className="w-80 h-full bg-black border-r border-white/5 flex flex-col" style={{ width: width || 320 }}>
       {/* Header */}
-      <div className="p-6 border-b border-white/5">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-white">ROCKETv1</h1>
+      <div className={`border-b border-white/5 ${isVeryNarrow ? 'p-3' : isNarrow ? 'p-4' : 'p-6'}`}>
+        <div className={`flex items-center justify-between ${isVeryNarrow ? 'mb-3' : isNarrow ? 'mb-4' : 'mb-6'}`}>
+          <h1 className={`font-semibold text-white ${isVeryNarrow ? 'text-sm truncate' : isNarrow ? 'text-lg truncate' : 'text-xl'}`}>
+            {isVeryNarrow ? 'R.v1' : isNarrow ? 'ROCKET' : 'ROCKETv1'}
+          </h1>
           <Button variant="ghost" size="sm" onClick={onCollapse} className="p-2">
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -470,7 +603,7 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
               className="flex-1"
             >
               <Folder className="w-4 h-4 mr-2" />
-              Projects
+              {isVeryNarrow ? '' : 'Projects'}
             </Button>
           </div>
           
@@ -478,16 +611,16 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
             variant="ghost" 
             size="sm" 
             className="text-xs"
-            onClick={() => setNewProjectDialog(true)}
+            onClick={() => setIsNewProjectOpen(true)}
           >
             <Plus className="w-4 h-4 mr-1" />
-            New
+            {isNarrow ? '' : 'New'}
           </Button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className={`flex-1 overflow-y-auto ${isVeryNarrow ? 'p-3' : isNarrow ? 'p-4' : 'p-6'}`}>
         {!isDatabaseConnected ? (
           <div className="text-center text-gray-400 py-8">
             <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -505,15 +638,23 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
       </div>
 
       {/* Footer */}
-      <div className="p-6 border-t border-white/5">
+      <div className={`border-t border-white/5 ${isVeryNarrow ? 'p-3' : isNarrow ? 'p-4' : 'p-6'}`}>
         <UserProfile />
       </div>
 
       {/* New Project Dialog */}
       <NewProjectDialog 
-        open={newProjectDialog}
-        onOpenChange={setNewProjectDialog}
+        open={isNewProjectOpen}
+        onOpenChange={setIsNewProjectOpen}
         onCreateProject={handleCreateProject}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog 
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={confirmDeleteProject}
+        projectName={projectToDelete?.name || 'this project'}
       />
     </div>
   )

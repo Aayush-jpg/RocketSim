@@ -15,7 +15,7 @@ const RightPanel = dynamic(() => import('@/components/panels/RightPanel'))
 export default function RocketSim() {
   const { user, userSession } = useAuth();
   
-  // Panel sizing state (default widths in percentages)
+  // Panel sizing state (responsive defaults based on screen size)
   const [leftPanelWidth, setLeftPanelWidth] = useState(20)
   const [rightPanelWidth, setRightPanelWidth] = useState(25)
   
@@ -23,28 +23,50 @@ export default function RocketSim() {
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   
-  // Calculate middle panel width based on collapsed states
-  const middlePanelWidth = useMemo(() => {
-    if (isLeftPanelCollapsed && isRightPanelCollapsed) {
-      return 100; // Full width when both panels are collapsed
-    } else if (isLeftPanelCollapsed) {
-      return 100 - rightPanelWidth; // Only right panel visible
-    } else if (isRightPanelCollapsed) {
-      return 100 - leftPanelWidth; // Only left panel visible
-    } else {
-      return 100 - leftPanelWidth - rightPanelWidth; // Both panels visible
-    }
-  }, [isLeftPanelCollapsed, isRightPanelCollapsed, leftPanelWidth, rightPanelWidth]);
+  // Window size state for responsive calculations
+  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   
-  // Handle resize of panels
+  // Responsive width calculations
+  const getResponsiveConstraints = () => {
+    const screenWidth = windowSize.width || (typeof window !== 'undefined' ? window.innerWidth : 1024);
+    if (screenWidth < 768) { // Mobile
+      return { minLeft: 280, maxLeft: 320, minRight: 280, maxRight: 320 };
+    } else if (screenWidth < 1024) { // Tablet
+      return { minLeft: 300, maxLeft: 400, minRight: 350, maxRight: 400 };
+    } else { // Desktop
+      return { minLeft: 320, maxLeft: 480, minRight: 400, maxRight: 550 };
+    }
+  };
+  
+  // Calculate middle panel width based on collapsed states and fixed panel sizes
+  const middlePanelWidth = useMemo(() => {
+    const constraints = getResponsiveConstraints();
+    const leftWidth = isLeftPanelCollapsed ? 64 : constraints.minLeft; // 64px when collapsed, minLeft when expanded
+    const rightWidth = isRightPanelCollapsed ? 60 : constraints.minRight; // 60px when collapsed, minRight when expanded
+    
+    const screenWidth = windowSize.width || (typeof window !== 'undefined' ? window.innerWidth : 1024);
+    const availableWidth = screenWidth - leftWidth - rightWidth;
+    return Math.max(300, availableWidth); // Ensure minimum 300px for middle panel
+  }, [isLeftPanelCollapsed, isRightPanelCollapsed, windowSize]);
+  
+  // Handle resize of panels with responsive constraints
   const handleLeftDividerDrag = (delta: number) => {
-    const newLeftWidth = Math.max(10, Math.min(30, leftPanelWidth + delta))
-    setLeftPanelWidth(newLeftWidth)
+    const constraints = getResponsiveConstraints();
+    const currentWidthPx = isLeftPanelCollapsed ? 64 : constraints.minLeft;
+    const deltaPercent = (delta / (windowSize.width || 1024)) * 100;
+    const newWidthPx = Math.max(constraints.minLeft, Math.min(constraints.maxLeft, currentWidthPx + delta));
+    
+    // Update the actual left panel width constraint
+    setLeftPanelWidth(newWidthPx);
   }
   
   const handleRightDividerDrag = (delta: number) => {
-    const newRightWidth = Math.max(20, Math.min(40, rightPanelWidth - delta))
-    setRightPanelWidth(newRightWidth)
+    const constraints = getResponsiveConstraints();
+    const currentWidthPx = isRightPanelCollapsed ? 60 : constraints.minRight;
+    const newWidthPx = Math.max(constraints.minRight, Math.min(constraints.maxRight, currentWidthPx - delta));
+    
+    // Update the actual right panel width constraint  
+    setRightPanelWidth(newWidthPx);
   }
   
   // Implement divider drag functionality
@@ -52,13 +74,10 @@ export default function RocketSim() {
     e.preventDefault();
     
     const startX = e.clientX;
-    const startLeftWidth = leftPanelWidth;
     
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const deltaPercent = (deltaX / window.innerWidth) * 100;
-      const newWidth = Math.max(10, Math.min(30, startLeftWidth + deltaPercent));
-      setLeftPanelWidth(newWidth);
+      handleLeftDividerDrag(deltaX);
     };
     
     const handleMouseUp = () => {
@@ -74,13 +93,10 @@ export default function RocketSim() {
     e.preventDefault();
     
     const startX = e.clientX;
-    const startRightWidth = rightPanelWidth;
     
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const deltaPercent = (deltaX / window.innerWidth) * 100;
-      const newWidth = Math.max(20, Math.min(40, startRightWidth - deltaPercent));
-      setRightPanelWidth(newWidth);
+      handleRightDividerDrag(deltaX);
     };
     
     const handleMouseUp = () => {
@@ -154,6 +170,25 @@ export default function RocketSim() {
   const [loadChatSessionId, setLoadChatSessionId] = useState<string | null>(null); // Add state for loading specific chat sessions
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null); // Add state for project-specific conversations
 
+  // Handle window resize for responsive layout
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    // Set initial size
+    handleResize();
+
+    // Add resize listener
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Handle chat session loading
   const handleChatSessionClick = (sessionId: string) => {
     setLoadChatSessionId(sessionId);
@@ -189,15 +224,16 @@ export default function RocketSim() {
         {/* Left Panel */}
         {!isLeftPanelCollapsed && (
           <motion.div
-            className="h-full relative"
-            initial={{ width: `${leftPanelWidth}%` }}
-            animate={{ width: `${leftPanelWidth}%` }}
+            className="h-full relative flex-shrink-0"
+            initial={{ width: getResponsiveConstraints().minLeft }}
+            animate={{ width: leftPanelWidth > 64 ? leftPanelWidth : getResponsiveConstraints().minLeft }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
           >
             <LeftPanel 
               isCollapsed={isLeftPanelCollapsed} 
               onCollapse={toggleLeftPanel}
               onProjectClick={handleProjectClick}
+              width={leftPanelWidth > 64 ? leftPanelWidth : getResponsiveConstraints().minLeft}
             />
             
             {/* Tooltip for left panel */}
@@ -212,15 +248,16 @@ export default function RocketSim() {
         {/* Collapsed Left Panel - Show minimal expand button */}
         {isLeftPanelCollapsed && (
           <motion.div
-            className="h-full relative w-16"
-            initial={{ width: '64px' }}
-            animate={{ width: '64px' }}
+            className="h-full relative flex-shrink-0"
+            initial={{ width: 64 }}
+            animate={{ width: 64 }}
             transition={{ duration: 0.3, ease: "easeInOut" }}
           >
             <LeftPanel 
               isCollapsed={isLeftPanelCollapsed} 
               onCollapse={toggleLeftPanel}
               onProjectClick={handleProjectClick}
+              width={64}
             />
           </motion.div>
         )}
@@ -228,7 +265,7 @@ export default function RocketSim() {
         {/* Left Panel Divider - only show when not collapsed */}
         {!isLeftPanelCollapsed && (
           <div 
-            className="panel-divider-v relative z-10 cursor-col-resize"
+            className="panel-divider-v relative z-10 cursor-col-resize flex-shrink-0 w-1"
             onMouseDown={startLeftDividerDrag}
           >
             <div className="absolute inset-0 w-3 -translate-x-1/2 hover:bg-cyan-500 hover:bg-opacity-20" />
@@ -237,16 +274,77 @@ export default function RocketSim() {
         
         {/* Middle Panel - 3D Visualization */}
         <motion.div
-          className="h-full relative"
-          initial={{ width: `${middlePanelWidth}%` }}
-          animate={{ width: `${middlePanelWidth}%` }}
-          transition={{ duration: 0.3, ease: "easeInOut" }}
+          className="h-full relative flex-1 min-w-0"
+          style={{ minWidth: 300 }}
         >
           <MiddlePanel 
-            isMobile={false} 
-            isSmallDesktop={middlePanelWidth < 40} 
+            isMobile={windowSize.width < 768} 
+            isSmallDesktop={middlePanelWidth < 500} 
             isFullScreen={isLeftPanelCollapsed && isRightPanelCollapsed}
           />
+          
+          {/* Mobile Panel Toggle Buttons */}
+          {windowSize.width < 768 && (
+            <>
+              {/* Left Panel Toggle - show when collapsed */}
+              {isLeftPanelCollapsed && (
+                <motion.button
+                  className="absolute top-4 left-4 z-[100] p-3 rounded-full bg-black/80 backdrop-blur-sm text-white shadow-lg hover:bg-black/90 transition-all border border-white/20"
+                  onClick={toggleLeftPanel}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12h18"></path>
+                    <path d="M3 6h18"></path>
+                    <path d="M3 18h18"></path>
+                  </svg>
+                </motion.button>
+              )}
+
+              {/* Right Panel Toggle - show when collapsed - Black & White theme */}
+              {isRightPanelCollapsed && (
+                <motion.button
+                  className="absolute top-4 right-4 z-[100] p-4 rounded-full bg-black/80 backdrop-blur-sm text-white shadow-lg hover:bg-black/90 transition-all border border-white/20 touch-manipulation"
+                  onClick={toggleRightPanel}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.3, type: "spring", stiffness: 300, damping: 25 }}
+                  style={{ minWidth: '56px', minHeight: '56px' }}
+                >
+                  <div className="flex flex-col items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                    </svg>
+                    <div className="w-1 h-1 bg-white rounded-full animate-pulse mt-1"></div>
+                  </div>
+                </motion.button>
+              )}
+            </>
+          )}
+          
+          {/* Additional prominent mobile chat FAB - Black & White theme */}
+          {windowSize.width < 768 && isRightPanelCollapsed && (
+            <motion.button
+              className="absolute bottom-24 right-4 z-[100] p-4 rounded-full bg-white/10 backdrop-blur-xl text-white shadow-xl hover:bg-white/20 transition-all border border-white/30 touch-manipulation"
+              onClick={toggleRightPanel}
+              initial={{ opacity: 0, y: 20, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.8 }}
+              transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 25, delay: 0.1 }}
+              style={{ minWidth: '64px', minHeight: '64px' }}
+            >
+              <div className="flex flex-col items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+                <div className="text-xs font-medium mt-1">AI</div>
+              </div>
+            </motion.button>
+          )}
           
           {/* Tooltip for middle panel full screen */}
           {showTooltips && (
@@ -259,7 +357,7 @@ export default function RocketSim() {
         {/* Right Panel Divider - only show when not collapsed */}
         {!isRightPanelCollapsed && (
           <div 
-            className="panel-divider-v relative z-10 cursor-col-resize"
+            className="panel-divider-v relative z-10 cursor-col-resize flex-shrink-0 w-1"
             onMouseDown={startRightDividerDrag}
           >
             <div className="absolute inset-0 w-3 -translate-x-1/2 hover:bg-cyan-500 hover:bg-opacity-20" />
@@ -268,15 +366,12 @@ export default function RocketSim() {
         
         {/* Right Panel - Chat & Metrics */}
         <motion.div
-          className="h-full relative"
-          initial={{ width: `${rightPanelWidth}%` }}
+          className="h-full relative flex-shrink-0"
+          initial={{ width: isRightPanelCollapsed ? 60 : getResponsiveConstraints().minRight }}
           animate={{ 
-            width: isRightPanelCollapsed ? '60px' : `${rightPanelWidth}%`
+            width: isRightPanelCollapsed ? 60 : (rightPanelWidth > 60 ? rightPanelWidth : getResponsiveConstraints().minRight)
           }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
-          style={{ 
-            minWidth: isRightPanelCollapsed ? '60px' : '350px'
-          }}
         >
           <RightPanel 
             onCollapse={toggleRightPanel}

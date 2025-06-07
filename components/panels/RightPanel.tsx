@@ -122,6 +122,9 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
   
   // Event listeners for advanced simulation events
   useEffect(() => {
+    // Safety check for window object and proper cleanup
+    if (typeof window === 'undefined') return;
+    
     const handleTrajectoryAnalysis = (event: CustomEvent) => {
       console.log('📈 Trajectory analysis event:', event.detail);
       setActiveAnalysis('trajectory');
@@ -151,20 +154,32 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
       setActiveAnalysis(null);
     };
 
-    window.addEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
-    window.addEventListener('monteCarloComplete', handleMonteCarloComplete as EventListener);
-    window.addEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
-    window.addEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
-    window.addEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
-    window.addEventListener('closeAnalysis', handleCloseAnalysis);
+    // Add event listeners with proper error handling
+    try {
+      window.addEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
+      window.addEventListener('monteCarloComplete', handleMonteCarloComplete as EventListener);
+      window.addEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
+      window.addEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
+      window.addEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
+      window.addEventListener('closeAnalysis', handleCloseAnalysis);
+    } catch (error) {
+      console.warn('Failed to add event listeners:', error);
+    }
 
+    // Cleanup function with safety checks
     return () => {
-      window.removeEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
-      window.removeEventListener('monteCarloComplete', handleMonteCarloComplete as EventListener);
-      window.removeEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
-      window.removeEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
-      window.removeEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
-      window.removeEventListener('closeAnalysis', handleCloseAnalysis);
+      if (typeof window === 'undefined') return;
+      
+      try {
+        window.removeEventListener('trajectoryAnalysis', handleTrajectoryAnalysis as EventListener);
+        window.removeEventListener('monteCarloComplete', handleMonteCarloComplete as EventListener);
+        window.removeEventListener('stabilityAnalysis', handleStabilityAnalysis as EventListener);
+        window.removeEventListener('motorAnalysis', handleMotorAnalysis as EventListener);
+        window.removeEventListener('recoveryPrediction', handleRecoveryPrediction as EventListener);
+        window.removeEventListener('closeAnalysis', handleCloseAnalysis);
+      } catch (error) {
+        console.warn('Failed to remove event listeners:', error);
+      }
     };
   }, []);
 
@@ -198,6 +213,88 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
   // TODO: Replace with backend API calls for precise calculations
   const componentCount = (rocket.body_tubes?.length || 0) + (rocket.fins?.length || 0) + (rocket.parachutes?.length || 0) + 1 // +1 for nose cone
   const complexity = componentCount > 5 ? 'Advanced' : componentCount > 3 ? 'Intermediate' : 'Simple'
+
+  // Handle collapsed state
+  if (isCollapsed) {
+    return (
+      <div className="w-full h-full flex flex-col bg-black border-l border-white/10">
+        {/* Collapsed Header - Larger clickable area for mobile */}
+        <div className="p-2 border-b border-white/5">
+          <button
+            onClick={onCollapse}
+            className="w-full h-16 flex items-center justify-center text-white hover:bg-white/10 rounded-lg transition-colors group touch-manipulation"
+            title="Expand AI Assistant"
+          >
+            <div className="flex flex-col items-center space-y-1">
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="transform group-hover:scale-110 transition-transform"
+              >
+                <path d="M15 18l-6-6 6-6"></path>
+              </svg>
+              <div className="w-6 h-0.5 bg-white/60 rounded"></div>
+            </div>
+          </button>
+        </div>
+        
+        {/* Vertical AI Icon */}
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 py-4">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="18" 
+              height="18" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="white" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4-4 4-4h12a2 2 0 0 1 2 2z"></path>
+              <path d="M11 9l3 3-3 3"></path>
+            </svg>
+          </div>
+          
+          {/* Vertical Analysis Icons */}
+          <div className="flex flex-col space-y-3">
+            {analysisTypes.slice(0, 4).map((analysis, index) => (
+              <div
+                key={analysis.id}
+                className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-sm opacity-60 border border-white/10"
+                title={analysis.label}
+              >
+                {analysis.icon}
+              </div>
+            ))}
+          </div>
+          
+          {/* Status Indicator */}
+          <div className="flex flex-col items-center space-y-2">
+            <div className={`w-3 h-3 rounded-full ${
+              simData?.maxAltitude ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
+            } shadow-lg`} />
+            <div className="text-xs text-gray-400 -rotate-90 whitespace-nowrap">
+              {simData?.maxAltitude ? 'Active' : 'Ready'}
+            </div>
+          </div>
+        </div>
+        
+        {/* Bottom visual indicator for expand */}
+        <div className="p-2 flex justify-center">
+          <div className="w-8 h-1 bg-white/20 rounded-full"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full flex flex-col relative bg-black min-w-0">

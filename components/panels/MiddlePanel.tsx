@@ -353,6 +353,9 @@ function RocketModel({
 
   // Listen for mouse movement events
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     const handleMouseMove = (e: CustomEvent) => {
       if (e.detail && typeof e.detail.x === 'number' && typeof e.detail.y === 'number') {
         mouse.current.x = e.detail.x
@@ -360,12 +363,21 @@ function RocketModel({
       }
     }
     
-    if (typeof window !== 'undefined') {
+    try {
       window.addEventListener('rocketMouseMove' as any, handleMouseMove)
       
       return () => {
-        window.removeEventListener('rocketMouseMove' as any, handleMouseMove)
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('rocketMouseMove' as any, handleMouseMove)
+          } catch (error) {
+            console.warn('Failed to remove rocketMouseMove listener:', error);
+          }
+        }
       }
+    } catch (error) {
+      console.warn('Failed to add rocketMouseMove listener:', error);
+      return () => {}; // Return empty cleanup function
     }
   }, []) // Removed dependency array to prevent re-renders
 
@@ -464,7 +476,7 @@ function RocketModel({
           args={[bodyRadius, bodyRadius, upperBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color={bodyPart?.color || "#F8F8FF"} 
+          color={bodyPart?.color || "#FFFFFF"} 
           metalness={0.1} 
           roughness={0.3} 
           emissive={getEmissive('airframe')}
@@ -479,7 +491,7 @@ function RocketModel({
           args={[bodyRadius, bodyRadius, lowerBodyLength, 32]} 
         />
         <meshStandardMaterial 
-          color={bodyPart?.color || "#F8F8FF"}
+          color={bodyPart?.color || "#FFFFFF"}
           metalness={0.1} 
           roughness={0.3} 
           emissive={getEmissive('airframe')}
@@ -516,7 +528,7 @@ function RocketModel({
           />
         )}
         <meshStandardMaterial 
-          color={nosePart?.color || "#2C3E50"} 
+          color={nosePart?.color || "#FFFFFF"} 
           metalness={0.3} 
           roughness={0.4} 
           emissive={getEmissive('nosecone')}
@@ -574,7 +586,7 @@ function RocketModel({
             args={[0.05, finRootScaled, finSpanScaled]} 
           />
           <meshStandardMaterial 
-            color={finParts[0]?.color || "#696969"} 
+            color={finParts[0]?.color || "#2C3E50"} 
             metalness={0.4} 
             roughness={0.3} 
             emissive={getEmissive('fins')}
@@ -589,7 +601,7 @@ function RocketModel({
         <mesh position={[0, 0.1, 0]}>
           <cylinderGeometry args={[bodyRadius, bodyRadius * 0.95, 0.4, 32]} />
           <meshStandardMaterial 
-            color="#708090" 
+            color="#C0C0C0" 
             metalness={0.8} 
             roughness={0.2} 
             emissive={getEmissive('engine')}
@@ -601,7 +613,7 @@ function RocketModel({
         <mesh position={[0, -0.25, 0]}>
           <coneGeometry args={[bodyRadius * 0.9, 0.6, 32, 1, true]} />
           <meshStandardMaterial 
-            color="#2F4F4F" 
+            color="#A9A9A9" 
             metalness={0.9} 
             roughness={0.1}
             emissive={getEmissive('engine')}
@@ -620,7 +632,7 @@ function RocketModel({
       <mesh position={[0, parachuteCenterY, 0]} name="parachute">
         <cylinderGeometry args={[0.2, 0.2, 0.3, 16]} />
         <meshStandardMaterial 
-          color={parachuteParts[0]?.color || "#DD2222"} 
+          color={parachuteParts[0]?.color || "#E74C3C"} 
           metalness={0.2} 
           roughness={0.5}
           emissive={getEmissive('parachute')}
@@ -655,9 +667,9 @@ function DynamicCamera({
   
   // Camera positions are now more dramatically different for each view
   const initialPositions = useRef<{[key: string]: THREE.Vector3}>({
-    top: new THREE.Vector3(0, 15, 0),      // Directly above
-    side: new THREE.Vector3(15, 0, 0),     // Pure side view
-    perspective: new THREE.Vector3(10, 10, 10)  // Isometric view
+    top: new THREE.Vector3(0, 10, 0),      // Closer - was 15, now 10
+    side: new THREE.Vector3(8, 0, 0),      // Closer - was 15, now 8  
+    perspective: new THREE.Vector3(6, 6, 6)  // Much closer - was 10,10,10, now 6,6,6
   });
   
   // Camera up vectors for each view to properly orient the camera
@@ -678,9 +690,9 @@ function DynamicCamera({
     if (ref.current) {
       // Define positions for each view
       const positions = {
-        top: [0, 15, 0],          // Directly above
-        side: [15, 0, 0],         // Pure side view
-        perspective: [10, 10, 10]  // Isometric view
+        top: [0, 10, 0],        // Closer - was 15, now 10
+        side: [8, 0, 0],        // Closer - was 15, now 8
+        perspective: [6, 6, 6], // Much closer - was 10,10,10, now 6,6,6
       };
       
       const position = positions[view];
@@ -810,12 +822,12 @@ function DynamicCamera({
   
   // Camera positions by view type
   const cameraPositions = {
-    top: [0, 15, 0],
-    side: [15, 0, 0],
-    perspective: [10, 10, 10],
+    top: [0, 10, 0],     // Closer - was 15, now 10
+    side: [8, 0, 0],     // Closer - was 15, now 8
+    perspective: [6, 6, 6],  // Much closer - was 10,10,10, now 6,6,6
   } as const;
   
-  return <PerspectiveCamera ref={ref} makeDefault position={cameraPositions[view]} fov={50} />;
+  return <PerspectiveCamera ref={ref} makeDefault position={cameraPositions[view]} fov={35} />;
 }
 
 // Global tracking of rocket position for debugging - emergency backup
@@ -824,6 +836,9 @@ let globalRocketY = -2.8; // Updated global reference
 // Add mouse event handler at the top level
 function MousePositionHandler() {
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     const handleMouseMove = (event: MouseEvent) => {
       if (!event || typeof window === 'undefined') return;
       
@@ -832,18 +847,31 @@ function MousePositionHandler() {
       const y = -(event.clientY / window.innerHeight) * 2 + 1
       
       // Set mouse position for raycasting in RocketModel
-      window.dispatchEvent(new CustomEvent('rocketMouseMove', { 
-        detail: { x, y } 
-      }))
+      try {
+        window.dispatchEvent(new CustomEvent('rocketMouseMove', { 
+          detail: { x, y } 
+        }))
+      } catch (error) {
+        console.warn('Failed to dispatch rocketMouseMove event:', error);
+      }
     }
     
-    // Add event listener with proper cleanup
-    if (typeof window !== 'undefined') {
+    // Add event listener with proper error handling
+    try {
       window.addEventListener('mousemove', handleMouseMove)
       
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove)
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('mousemove', handleMouseMove)
+          } catch (error) {
+            console.warn('Failed to remove mousemove listener:', error);
+          }
+        }
       }
+    } catch (error) {
+      console.warn('Failed to add mousemove listener:', error);
+      return () => {}; // Return empty cleanup function
     }
   }, []) // Empty dependency array - only setup once
   
@@ -959,6 +987,9 @@ function ViewportControls({
   
   // Listen for camera/rocket rotation changes to update compass
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     // Function to handle rotation updates
     const handleRocketRotation = (e: CustomEvent) => {
       if (e && e.detail && typeof e.detail.rotation === 'number') {
@@ -967,14 +998,23 @@ function ViewportControls({
     };
     
     // Listen for custom rocket rotation events with proper checks
-    if (typeof window !== 'undefined') {
+    try {
       window.addEventListener('rocketRotation' as any, handleRocketRotation);
       
       return () => {
-        window.removeEventListener('rocketRotation' as any, handleRocketRotation);
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('rocketRotation' as any, handleRocketRotation);
+          } catch (error) {
+            console.warn('Failed to remove rocketRotation listener:', error);
+          }
+        }
       };
+    } catch (error) {
+      console.warn('Failed to add rocketRotation listener:', error);
+      return () => {}; // Return empty cleanup function
     }
-  }, []); // Empty dependency array to prevent re-renders
+  }, []);
 
   return (
     <div className="absolute top-8 right-10 z-50 flex flex-col items-center pointer-events-auto">
@@ -1591,6 +1631,9 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   
   // FORCE RE-RENDER: Listen for action dispatcher events
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     const handleActionDispatch = (e: CustomEvent) => {
       console.log('🚀 MiddlePanel: Action dispatch event received, forcing re-render');
       setForceRenderKey(prev => {
@@ -1600,9 +1643,20 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
       });
     };
     
-    if (typeof window !== 'undefined') {
+    try {
       window.addEventListener('rocketActionsDispatched' as any, handleActionDispatch);
-      return () => window.removeEventListener('rocketActionsDispatched' as any, handleActionDispatch);
+      return () => {
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('rocketActionsDispatched' as any, handleActionDispatch);
+          } catch (error) {
+            console.warn('Failed to remove rocketActionsDispatched listener:', error);
+          }
+        }
+      };
+    } catch (error) {
+      console.warn('Failed to add rocketActionsDispatched listener:', error);
+      return () => {}; // Return empty cleanup function
     }
   }, []);
   
@@ -1743,36 +1797,66 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   
   // Listen for component highlight events
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     const handleHighlight = (e: CustomEvent) => {
       if (e && e.detail !== undefined) {
         setSelectedPart(e.detail)
       }
     }
     
-    if (typeof window !== 'undefined') {
+    try {
       window.addEventListener('highlightComponent' as any, handleHighlight)
-      return () => window.removeEventListener('highlightComponent' as any, handleHighlight)
+      return () => {
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('highlightComponent' as any, handleHighlight)
+          } catch (error) {
+            console.warn('Failed to remove highlightComponent listener:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to add highlightComponent listener:', error);
+      return () => {}; // Return empty cleanup function
     }
   }, []) // Empty dependency array to prevent re-renders
 
   // Listen for nose cone click events to reset camera view
   useEffect(() => {
+    // Safety check for window object
+    if (typeof window === 'undefined') return;
+    
     const handleResetCameraView = () => {
       setView('perspective')
       // Reset compass when camera view is reset
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('rocketRotation', { 
-          detail: { rotation: 0 } 
-        }))
+        try {
+          window.dispatchEvent(new CustomEvent('rocketRotation', { 
+            detail: { rotation: 0 } 
+          }))
+        } catch (error) {
+          console.warn('Failed to dispatch rocketRotation event:', error);
+        }
       }
     }
     
-    if (typeof window !== 'undefined') {
+    try {
       window.addEventListener('resetCameraView', handleResetCameraView as EventListener)
       
       return () => {
-        window.removeEventListener('resetCameraView', handleResetCameraView as EventListener)
+        if (typeof window !== 'undefined') {
+          try {
+            window.removeEventListener('resetCameraView', handleResetCameraView as EventListener)
+          } catch (error) {
+            console.warn('Failed to remove resetCameraView listener:', error);
+          }
+        }
       }
+    } catch (error) {
+      console.warn('Failed to add resetCameraView listener:', error);
+      return () => {}; // Return empty cleanup function
     }
   }, []) // Empty dependency array to prevent re-renders
   
@@ -1792,14 +1876,14 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   return (
     <div 
       ref={containerRef}
-      className="flex-1 min-w-0 h-full overflow-hidden relative"
+      className="flex-1 min-w-0 h-full overflow-hidden relative bg-gradient-to-b from-gray-900 to-black"
     >
       {/* Canvas first - responsive size */}
       <div className="absolute inset-0 w-full h-full overflow-hidden">
         <Canvas 
           shadows
           key={`canvas-${containerSize.width}-${containerSize.height}`}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', background: 'transparent' }}
         >
           {/* Add global mouse position handler */}
           <MousePositionHandler />
@@ -1814,17 +1898,17 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
           <OrbitControls 
             enableDamping={true}
             dampingFactor={0.2}
-            minDistance={2} 
-            maxDistance={100}
+            minDistance={1.5} 
+            maxDistance={50}
             rotateSpeed={0.8}
             target={[position[0], position[1], position[2]]}
           />
 
           {/* Scene lighting */}
-          <ambientLight intensity={0.25} /> 
+          <ambientLight intensity={0.35} /> 
           <directionalLight 
             position={[8, 10, 5]} 
-            intensity={0.7} 
+            intensity={0.8} 
             castShadow 
             shadow-mapSize={[1024, 1024]}
             shadow-camera-far={50}
@@ -1833,14 +1917,14 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
             shadow-camera-top={10}
             shadow-camera-bottom={-10}
           />
-          <directionalLight position={[-6, 3, -5]} intensity={0.25} />
+          <directionalLight position={[-6, 3, -5]} intensity={0.3} />
           <spotLight 
             position={[0, -2, 10]} 
-            intensity={0.4} 
+            intensity={0.5} 
             angle={0.6} 
             penumbra={0.5} 
             distance={20}
-            color="#5eead4"
+            color="#94a3b8"
           />
           
           {/* Launch light - adjusted to match ground position */}
@@ -1854,16 +1938,16 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
             />
           )}
           
-          <Environment preset="night" />
+          {/* Remove Environment preset for custom gradient background */}
           {/* Fixed contact shadows at exactly ground level */}
           <ContactShadows 
             position={[0, GROUND_Y + 0.01, 0]} 
-            opacity={0.4} 
+            opacity={0.5} 
             scale={15} 
             blur={2.5} 
             far={5} 
             resolution={512}
-            color="#001133"
+            color="#1f2937"
             frames={1} // Render once and cache for better performance
           />
           
@@ -1876,8 +1960,8 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
             sectionThickness={1} 
             fadeDistance={30} 
             fadeStrength={1.5}
-            cellColor="#00eaff" 
-            sectionColor="#ec4899"
+            cellColor="#475569" 
+            sectionColor="#06b6d4"
             position={[0, GROUND_Y, 0]}
           />
           <Suspense fallback={null}>

@@ -38,34 +38,34 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
       nose_cone: {
         id: crypto.randomUUID(),
         shape: "ogive",
-        length_m: 0.25,
-        base_radius_m: 0.035,
+        length_m: 0.35,
+        base_radius_m: 0.055,
         wall_thickness_m: 0.002,
         material_density_kg_m3: MATERIALS.DENSITY_FIBERGLASS,
         surface_roughness_m: 1e-5,
-        color: "#FF6B35"
+        color: "#FFFFFF"
       },
       body_tubes: [{
         id: crypto.randomUUID(),
-        outer_radius_m: 0.035,
-        length_m: 0.50,
+        outer_radius_m: 0.055,
+        length_m: 0.70,
         wall_thickness_m: 0.003,
         material_density_kg_m3: MATERIALS.DENSITY_FIBERGLASS,
         surface_roughness_m: 1e-5,
-        color: "#3498DB"
+        color: "#FFFFFF"
       }],
       fins: [{
         id: crypto.randomUUID(),
         fin_count: 3,
-        root_chord_m: 0.12,
-        tip_chord_m: 0.06,
-        span_m: 0.08,
-        sweep_length_m: 0.04,
+        root_chord_m: 0.16,
+        tip_chord_m: 0.08,
+        span_m: 0.12,
+        sweep_length_m: 0.06,
         thickness_m: 0.006,
         material_density_kg_m3: MATERIALS.DENSITY_PLYWOOD,
         airfoil: "symmetric",
         cant_angle_deg: 0.0,
-        color: "#2C3E50"
+        color: "#D3D3D3"
       }],
       motor: {
         id: "motor",
@@ -75,7 +75,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
       parachutes: [{
         id: crypto.randomUUID(),
         name: "Recovery Parachute",
-        cd_s_m2: 1.2,
+        cd_s_m2: 1.8,
         trigger: "apogee",
         sampling_rate_hz: 105.0,
         lag_s: 1.5,
