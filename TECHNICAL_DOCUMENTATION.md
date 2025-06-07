@@ -23,6 +23,7 @@ This document provides comprehensive technical documentation for the ROCKETv1 pl
 - ✅ **Improved system architecture and maintainability**
 - ✅ **Removed unreliable cost estimation** (costs vary by suppliers, materials, location)
 - ✅ **Consolidated duplicate template systems** (removed design-templates.ts duplication)
+- ✅ **Fixed PostgreSQL ambiguous column reference** in create_rocket_version function
 
 ### **Architecture Decision: Frontend Estimates → Backend Precision**
 
@@ -130,6 +131,36 @@ const saveMessage = async (msg: string, targetProjectId?: string) => {
 - Consolidated useEffect hooks to prevent timing conflicts
 - Added dependency optimization
 - Implemented proper cleanup mechanisms
+
+### **Issue**: PostgreSQL Ambiguous Column Reference in create_rocket_version
+**Root Cause**: The `create_rocket_version` function had an ambiguous reference to `version_number` that could refer to either the function's return table column or the `rocket_versions` table column.
+
+**Error Message**:
+```
+column reference "version_number" is ambiguous
+It could refer to either a PL/pgSQL variable or a table column.
+```
+
+**Technical Solution**:
+```sql
+-- BEFORE (Ambiguous):
+SELECT COALESCE(MAX(version_number), 0) + 1 
+INTO v_next_version
+FROM public.rocket_versions 
+WHERE rocket_id = p_rocket_id;
+
+-- AFTER (Fixed with table alias):
+SELECT COALESCE(MAX(rv.version_number), 0) + 1 
+INTO v_next_version
+FROM public.rocket_versions rv
+WHERE rv.rocket_id = p_rocket_id;
+```
+
+**Implementation Details**:
+- Added table alias `rv` to fully qualify column references
+- Prevents PostgreSQL parser confusion between function return columns and table columns
+- Applied via migration `20250607160341_fix_ambiguous_version_number.sql`
+- Maintains all existing functionality while resolving database errors
 
 ---
 
