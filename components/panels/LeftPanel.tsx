@@ -181,13 +181,38 @@ export default function LeftPanel({ isCollapsed, onCollapse, onProjectClick }: L
     console.log('🔍 LeftPanel useEffect: savedProjects length:', savedProjects.length);
     console.log('🔍 LeftPanel useEffect: isLoadingMore:', projectPagination.isLoadingMore);
     
+    let isMounted = true; // Track if component is still mounted
+    let debounceTimeout: NodeJS.Timeout | null = null;
+    
+    const debouncedLoadProjects = () => {
+      // Clear any existing timeout
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+      
+      // Debounce the load call to prevent rapid successive calls
+      debounceTimeout = setTimeout(() => {
+        if (isMounted && isDatabaseConnected) {
+          console.log('🔍 LeftPanel useEffect: Database connected, calling loadUserProjects()');
+          loadUserProjects();
+        }
+        debounceTimeout = null;
+      }, 300); // 300ms debounce
+    };
+    
     if (isDatabaseConnected) {
-      console.log('🔍 LeftPanel useEffect: Database connected, calling loadUserProjects()');
-      loadUserProjects();
+      debouncedLoadProjects();
     } else {
       console.log('🔍 LeftPanel useEffect: Database not connected, skipping project load');
     }
-  }, [isDatabaseConnected, loadUserProjects])
+    
+    return () => {
+      isMounted = false;
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+    };
+  }, [isDatabaseConnected]) // Remove loadUserProjects from dependencies to prevent infinite loops
 
   const handleCreateProject = async (name: string, template: 'basic' | 'advanced' | 'sport') => {
     await createAndLoadNewProject(name, template)

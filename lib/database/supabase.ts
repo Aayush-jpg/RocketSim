@@ -264,6 +264,56 @@ export interface Database {
           created_at?: string | null
         }
       }
+      rocket_versions: {
+        Row: {
+          id: string
+          user_id: string | null
+          rocket_id: string | null
+          project_id: string | null
+          version_number: number
+          name: string
+          description: string | null
+          parts: Json
+          motor_id: string | null
+          drag_coefficient: number | null
+          units: string | null
+          created_by_action: string | null
+          is_current: boolean | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          rocket_id?: string | null
+          project_id?: string | null
+          version_number: number
+          name: string
+          description?: string | null
+          parts: Json
+          motor_id?: string | null
+          drag_coefficient?: number | null
+          units?: string | null
+          created_by_action?: string | null
+          is_current?: boolean | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          rocket_id?: string | null
+          project_id?: string | null
+          version_number?: number
+          name?: string
+          description?: string | null
+          parts?: Json
+          motor_id?: string | null
+          drag_coefficient?: number | null
+          units?: string | null
+          created_by_action?: string | null
+          is_current?: boolean | null
+          created_at?: string | null
+        }
+      }
       analysis_results: {
         Row: {
           id: string
@@ -297,59 +347,6 @@ export interface Database {
           parameters?: Json | null
           created_at?: string | null
           computation_time?: number | null
-        }
-      }
-      motors: {
-        Row: {
-          id: string
-          manufacturer: string
-          name: string
-          impulse_class: string
-          total_impulse: number | null
-          burn_time: number | null
-          average_thrust: number | null
-          max_thrust: number | null
-          propellant_mass: number | null
-          total_mass: number | null
-          diameter: number | null
-          length: number | null
-          thrust_curve: Json | null
-          specifications: Json | null
-          created_at: string | null
-        }
-        Insert: {
-          id: string
-          manufacturer: string
-          name: string
-          impulse_class: string
-          total_impulse?: number | null
-          burn_time?: number | null
-          average_thrust?: number | null
-          max_thrust?: number | null
-          propellant_mass?: number | null
-          total_mass?: number | null
-          diameter?: number | null
-          length?: number | null
-          thrust_curve?: Json | null
-          specifications?: Json | null
-          created_at?: string | null
-        }
-        Update: {
-          id?: string
-          manufacturer?: string
-          name?: string
-          impulse_class?: string
-          total_impulse?: number | null
-          burn_time?: number | null
-          average_thrust?: number | null
-          max_thrust?: number | null
-          propellant_mass?: number | null
-          total_mass?: number | null
-          diameter?: number | null
-          length?: number | null
-          thrust_curve?: Json | null
-          specifications?: Json | null
-          created_at?: string | null
         }
       }
       weather_cache: {
@@ -410,6 +407,129 @@ export interface Database {
           elevation?: number
           wind_model?: Json
           atmospheric_model?: Json
+          created_at?: string | null
+        }
+      }
+      motors: {
+        Row: {
+          id: string
+          manufacturer: string
+          name: string
+          impulse_class: string
+          total_impulse: number | null
+          burn_time: number | null
+          average_thrust: number | null
+          max_thrust: number | null
+          propellant_mass: number | null
+          total_mass: number | null
+          diameter: number | null
+          length: number | null
+          thrust_curve: Json | null
+          specifications: Json | null
+          created_at: string | null
+        }
+        Insert: {
+          id: string
+          manufacturer: string
+          name: string
+          impulse_class: string
+          total_impulse?: number | null
+          burn_time?: number | null
+          average_thrust?: number | null
+          max_thrust?: number | null
+          propellant_mass?: number | null
+          total_mass?: number | null
+          diameter?: number | null
+          length?: number | null
+          thrust_curve?: Json | null
+          specifications?: Json | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          manufacturer?: string
+          name?: string
+          impulse_class?: string
+          total_impulse?: number | null
+          burn_time?: number | null
+          average_thrust?: number | null
+          max_thrust?: number | null
+          propellant_mass?: number | null
+          total_mass?: number | null
+          diameter?: number | null
+          length?: number | null
+          thrust_curve?: Json | null
+          specifications?: Json | null
+          created_at?: string | null
+        }
+      }
+      performance_metrics: {
+        Row: {
+          id: string
+          user_id: string | null
+          rocket_id: string | null
+          metric_type: string
+          value: number
+          metadata: Json | null
+          recorded_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          rocket_id?: string | null
+          metric_type: string
+          value: number
+          metadata?: Json | null
+          recorded_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          rocket_id?: string | null
+          metric_type?: string
+          value?: number
+          metadata?: Json | null
+          recorded_at?: string | null
+        }
+      }
+      design_templates: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          difficulty_level: string | null
+          rocket_config: Json
+          created_by: string | null
+          usage_count: number | null
+          rating: number | null
+          tags: string[] | null
+          is_featured: boolean | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          difficulty_level?: string | null
+          rocket_config: Json
+          created_by?: string | null
+          usage_count?: number | null
+          rating?: number | null
+          tags?: string[] | null
+          is_featured?: boolean | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          difficulty_level?: string | null
+          rocket_config?: Json
+          created_by?: string | null
+          usage_count?: number | null
+          rating?: number | null
+          tags?: string[] | null
+          is_featured?: boolean | null
           created_at?: string | null
         }
       }
@@ -488,8 +608,21 @@ export type NewAnalysisResult = Inserts<'analysis_results'>;
 export type User = Tables<'users'>;
 export type UserSession = Tables<'user_sessions'>;
 
+export type RocketVersion = Tables<'rocket_versions'>;
+export type NewRocketVersion = Inserts<'rocket_versions'>;
+export type UpdateRocketVersion = Updates<'rocket_versions'>;
+
+export type PerformanceMetric = Tables<'performance_metrics'>;
+export type NewPerformanceMetric = Inserts<'performance_metrics'>;
+export type UpdatePerformanceMetric = Updates<'performance_metrics'>;
+
+export type DesignTemplate = Tables<'design_templates'>;
+export type NewDesignTemplate = Inserts<'design_templates'>;
+export type UpdateDesignTemplate = Updates<'design_templates'>;
+
 export type Motor = Tables<'motors'>;
 export type WeatherCache = Tables<'weather_cache'>;
+export type EnvironmentConfig = Tables<'environment_configs'>;
 
 // Auth helpers
 export const getCurrentUser = async () => {

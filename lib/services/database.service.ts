@@ -66,6 +66,7 @@ export class DatabaseService {
   private convertRocketToDb(rocket: Rocket): Omit<NewRocket, 'user_id'> {
     return {
       name: rocket.name,
+      project_id: rocket.project_id || null,
       parts: {
         nose_cone: rocket.nose_cone,
         body_tubes: rocket.body_tubes,
@@ -91,6 +92,7 @@ export class DatabaseService {
     
     return {
       id: dbRocket.id,
+      project_id: dbRocket.project_id || undefined,
       name: dbRocket.name,
       nose_cone: parts.nose_cone,
       body_tubes: parts.body_tubes || [],
@@ -1031,9 +1033,10 @@ export class DatabaseService {
         .update({ is_current: false })
         .eq('rocket_id', rocketId);
 
-      // Save new version
+      // CRITICAL FIX: Include project_id in version data
       const versionData = {
         rocket_id: rocketId,
+        project_id: rocket.project_id || null, // Include project_id from rocket
         version_number: nextVersion,
         name: `${rocket.name} v${nextVersion}`,
         description: description || `Version ${nextVersion}`,
@@ -1319,18 +1322,36 @@ export class DatabaseService {
       const user = await getCurrentUser();
       if (!user) return [];
 
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging queries (5 second timeout)
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Chat history query timeout')), 5000)
+      );
+
+      const queryPromise = supabase
         .from('chat_messages')
-        .select('*')
+        .select('id, role, content, context_data, created_at')
         .eq('user_id', user.id)
         .eq('project_id', projectId)
         .order('created_at', { ascending: true })
         .limit(limit);
 
-      if (error) throw error;
+      console.log('📞 Starting chat history query for project:', projectId);
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+
+      if (error) {
+        console.error('❌ Chat history query error:', error);
+        throw error;
+      }
+
+      console.log('✅ Chat history loaded successfully:', data?.length || 0, 'messages');
       return data || [];
-    } catch (error) {
-      console.error('Error fetching chat history by project:', error);
+    } catch (error: any) {
+      if (error?.message === 'Chat history query timeout') {
+        console.error('⏱️ Chat history query timed out after 5 seconds');
+      } else {
+        console.error('❌ Error fetching chat history by project:', error);
+      }
       return [];
     }
   }
@@ -1390,26 +1411,41 @@ export class DatabaseService {
       const user = await getCurrentUser();
       if (!user) return false;
 
+      console.log('🔍 saveChatToDb called with:');
+      console.log('   - projectId:', projectId);
+      console.log('   - rocketId:', rocketId);
+      console.log('   - userId:', user.id);
+      console.log('   - messages count:', messages.length);
+
       const sessionId = await this.getCurrentSession();
+      console.log('   - sessionId:', sessionId);
       
       const chatMessages = messages.map(msg => ({
         user_id: user.id,
         session_id: sessionId,
-        project_id: projectId,
+        project_id: projectId, // CRITICAL: This should NOT be null
         rocket_id: rocketId || null,
         role: msg.role,
         content: msg.content,
         context_data: msg.agent ? { agent: msg.agent } : null
       }));
 
+      console.log('🔍 Chat messages to insert:', chatMessages);
+      console.log('🔍 First message project_id:', chatMessages[0]?.project_id);
+
       const { error } = await supabase
         .from('chat_messages')
         .insert(chatMessages);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Database insert error:', error);
+        throw error;
+      }
+      
+      console.log('✅ Messages inserted successfully');
       return true;
     } catch (error) {
-      console.error('Error saving chat to database:', error);
+      console.error('❌ Error saving chat to database:', error);
       return false;
     }
   }

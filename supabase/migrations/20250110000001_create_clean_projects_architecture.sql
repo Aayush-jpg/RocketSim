@@ -956,4 +956,17 @@ CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Success message
-SELECT 'Clean project architecture created successfully!' as message; 
+SELECT 'Clean project architecture created successfully!' as message;
+
+-- Optional: Seed motors table with predefined motors (UNCOMMENT IF DESIRED)
+/*
+INSERT INTO public.motors (id, manufacturer, name, impulse_class, total_impulse, burn_time, average_thrust, max_thrust, propellant_mass, total_mass, diameter, length, thrust_curve, specifications) VALUES
+('mini-motor', 'Estes', 'A8-3', 'A', 2.5, 1.8, 1.5, 1.95, 0.008, 0.015, 0.013, 0.100, NULL, '{"type": "solid"}'),
+('default-motor', 'Generic', 'F32-6', 'F', 80, 2.5, 32, 41.6, 0.040, 0.070, 0.029, 0.124, NULL, '{"type": "solid"}'),
+('high-power', 'Generic', 'H180-7', 'H', 320, 3.2, 100, 130, 0.090, 0.150, 0.038, 0.150, NULL, '{"type": "solid"}'),
+('super-power', 'Generic', 'I200-8', 'I', 800, 4.0, 200, 260, 0.200, 0.300, 0.054, 0.200, NULL, '{"type": "solid"}'),
+('small-liquid', 'Custom', 'Liquid-500N', 'M', 15000, 30, 500, 650, 1.5, 2.3, 0.075, 0.300, NULL, '{"type": "liquid"}'),
+('medium-liquid', 'Custom', 'Liquid-2000N', 'O', 90000, 45, 2000, 2600, 6.5, 8.5, 0.100, 0.400, NULL, '{"type": "liquid"}'),
+('large-liquid', 'Custom', 'Liquid-8000N', 'P', 120000, 15, 8000, 10400, 8.0, 11.0, 0.150, 0.500, NULL, '{"type": "liquid"}'),
+('hybrid-engine', 'Custom', 'Hybrid-1200N', 'N', 24000, 20, 1200, 1560, 4.5, 5.7, 0.090, 0.350, NULL, '{"type": "hybrid"}');
+*/ 

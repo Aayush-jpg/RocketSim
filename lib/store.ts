@@ -540,20 +540,26 @@ export const useRocket = create<RocketState>()((set, get) => ({
     const state = get();
     if (!state.isDatabaseConnected) return;
     
-    // Check if current rocket is saved in database
-    const isRocketInDatabase = state.savedRockets.some(r => r.id === state.rocket.id);
-    if (!isRocketInDatabase) {
+    // Check if current rocket has a valid database ID
+    // For project rockets, we don't need to check savedRockets since they come from database
+    const hasValidRocketId = state.rocket.id && !state.rocket.id.includes('local-') && !state.rocket.id.includes('temp-');
+    
+    if (!hasValidRocketId) {
       // This is a new/unsaved rocket, clear version history
+      console.log('🔧 loadRocketVersions: Rocket has no valid database ID, clearing versions');
       set({ rocketVersions: [], isLoadingVersions: false });
       return;
     }
     
+    console.log('🔧 loadRocketVersions: Loading versions for rocket ID:', state.rocket.id);
     set({ isLoadingVersions: true });
+    
     try {
       const versions = await getRocketVersions(state.rocket.id);
+      console.log('🔧 loadRocketVersions: Found', versions.length, 'versions');
       set({ rocketVersions: versions, isLoadingVersions: false });
     } catch (error) {
-      console.error('Failed to load rocket versions:', error);
+      console.error('❌ loadRocketVersions: Failed to load rocket versions:', error);
       set({ rocketVersions: [], isLoadingVersions: false });
     }
   },
@@ -613,6 +619,8 @@ export const useRocket = create<RocketState>()((set, get) => ({
     if (!state.isDatabaseConnected) return;
     
     try {
+      console.log('🚀 loadProject: Loading project ID:', projectId);
+      
       // Check if project is already in savedProjects
       let project = state.savedProjects.find(p => p.id === projectId);
       
@@ -628,22 +636,60 @@ export const useRocket = create<RocketState>()((set, get) => ({
       }
       
       if (project) {
+        console.log('🚀 loadProject: Found project:', project.name);
+        
+        // CRITICAL FIX: Set currentProject IMMEDIATELY to prevent race conditions
         set({ currentProject: project });
+        console.log('✅ loadProject: currentProject set synchronously');
         
         // Load latest rocket from this project
         const latestRocket = await getLatestProjectRocket(projectId);
+        console.log('🚀 loadProject: Latest rocket from DB:', latestRocket);
+        
         if (latestRocket) {
           // Use loadRocketById to get the properly converted rocket
           const rocket = await loadRocketById(latestRocket.id);
           if (rocket) {
-            set({ rocket });
+            // CRITICAL FIX: Ensure project_id is set on the rocket
+            rocket.project_id = projectId;
+            console.log('🚀 loadProject: Setting rocket with project_id:', projectId);
+            
+            // Add rocket to savedRockets array if not already there
+            const existingRocketIndex = state.savedRockets.findIndex(r => r.id === rocket.id);
+            let updatedSavedRockets = [...state.savedRockets];
+            if (existingRocketIndex >= 0) {
+              updatedSavedRockets[existingRocketIndex] = rocket;
+            } else {
+              updatedSavedRockets.unshift(rocket); // Add to beginning of list
+            }
+            
+            set({ 
+              rocket,
+              savedRockets: updatedSavedRockets
+            });
+            
+            // Clear and reload version history for this rocket
+            get().clearRocketVersions();
+            get().loadRocketVersions();
+            
+            console.log('✅ loadProject: Successfully loaded project rocket with ID:', rocket.id);
+          } else {
+            console.warn('⚠️ loadProject: Failed to convert rocket from database');
           }
+        } else {
+          console.log('⚠️ loadProject: No rockets found in project, keeping current rocket');
+          // If no rockets in project, clear current rocket's project association
+          const currentRocket = { ...state.rocket };
+          currentRocket.project_id = undefined;
+          set({ rocket: currentRocket });
         }
         
-        console.log('Loaded project:', project.name);
+        console.log('✅ loadProject: Project loaded successfully:', project.name);
+      } else {
+        console.error('❌ loadProject: Project not found:', projectId);
       }
     } catch (error) {
-      console.error('Failed to load project:', error);
+      console.error('❌ loadProject: Failed to load project:', error);
     }
   },
 
@@ -762,11 +808,45 @@ export const useRocket = create<RocketState>()((set, get) => ({
 
 // Initialize database connection when store is created (with better error handling)
 if (typeof window !== 'undefined') {
-  // Increase delay from 1000ms to 2000ms to wait for auth to fully settle
-  setTimeout(() => {
-    const state = useRocket.getState();
-    if (!state.initializationAttempted) {
-      state.initializeDatabase();
+  let initTimeout: NodeJS.Timeout | null = null;
+  
+  // Watch for auth state changes to reinitialize database if needed
+  const checkAuth = () => {
+    // Clear any existing timeout to prevent duplicate initialization
+    if (initTimeout) {
+      clearTimeout(initTimeout);
+      initTimeout = null;
     }
-  }, 2000); // Wait 2 seconds for auth to settle
+    
+    const delay = 2000; // Wait 2 seconds for auth to settle
+    initTimeout = setTimeout(() => {
+      const state = useRocket.getState();
+      if (!state.initializationAttempted) {
+        console.log('🔌 Initializing database after auth settled');
+        state.initializeDatabase();
+      }
+      initTimeout = null;
+    }, delay);
+  };
+  
+  // Initial check
+  checkAuth();
+  
+  // Listen for auth state changes (but debounce to prevent multiple initializations)
+  let authDebounceTimeout: NodeJS.Timeout | null = null;
+  const authStateChangeHandler = () => {
+    if (authDebounceTimeout) {
+      clearTimeout(authDebounceTimeout);
+    }
+    authDebounceTimeout = setTimeout(checkAuth, 500);
+  };
+  
+  // Attach to window for potential auth state change notifications
+  (window as any).__rocketAuthChanged = authStateChangeHandler;
+  
+  // Cleanup on window unload
+  window.addEventListener('beforeunload', () => {
+    if (initTimeout) clearTimeout(initTimeout);
+    if (authDebounceTimeout) clearTimeout(authDebounceTimeout);
+  });
 } 

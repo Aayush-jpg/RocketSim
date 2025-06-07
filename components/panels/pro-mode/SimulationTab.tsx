@@ -67,30 +67,56 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
     
     // For enhanced simulations, show incremental progress
     let progressInterval: NodeJS.Timeout | null = null;
+    let isCancelled = false; // Track if simulation was cancelled
+    
+    // Cleanup function to ensure interval is always cleared
+    const cleanupProgress = () => {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
+    };
+    
+    // Set up cleanup on component unmount or navigation away
+    const handleBeforeUnload = () => {
+      isCancelled = true;
+      cleanupProgress();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
     
     if (fidelity === "enhanced" || fidelity === "professional") {
-      // Show incremental progress while waiting for the enhanced simulation
       let progress = 0;
-      let progressStep = fidelity === "professional" ? 0.005 : 0.05; // Even slower progress for professional
-      let maxProgress = fidelity === "professional" ? 99 : 95; // Allow professional to reach 99%
+      let stageMessage = "";
+      const startTime = Date.now();
       
-      // Professional simulations need different progress stages
+      // Professional mode stages
       const professionalStages = [
-        { progress: 20, message: "Setting up atmospheric model..." },
-        { progress: 30, message: "Creating enhanced rocket model..." },
-        { progress: 40, message: "Calculating aerodynamic coefficients..." },
-        { progress: 50, message: "Setting up numerical integrator..." },
-        { progress: 60, message: "Running high-precision trajectory..." },
-        { progress: 70, message: "Performing stability analysis..." },
-        { progress: 85, message: "Analyzing trajectory data..." },
-        { progress: 95, message: "Finalizing simulation results..." },
+        { progress: 10, message: "Initializing flight computer..." },
+        { progress: 25, message: "Computing aerodynamic properties..." },
+        { progress: 40, message: "Analyzing stability derivatives..." },
+        { progress: 55, message: "Simulating atmospheric conditions..." },
+        { progress: 70, message: "Running trajectory optimization..." },
+        { progress: 85, message: "Computing recovery system deployment..." },
+        { progress: 95, message: "Finalizing flight analysis..." }
       ];
       
       let currentStageIndex = 0;
-      let stageStartTime = Date.now();
-      let stageMessage = "";
+      let stageStartTime = startTime;
       
+      // Set up progress interval with proper bounds checking
       progressInterval = setInterval(() => {
+        // Early exit if cancelled
+        if (isCancelled) {
+          cleanupProgress();
+          return;
+        }
+        
+        const progressStep = fidelity === "professional" ? 0.8 : 1.2;
+        const maxProgress = fidelity === "professional" ? 95 : 90;
+        
         // For professional mode, use staged progress
         if (fidelity === "professional") {
           const now = Date.now();
@@ -118,14 +144,19 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
             stageMessage = currentStage.message;
           }
           
-          // Store message for display
-          useRocket.getState().setSimulationMessage(stageMessage);
+          // Store message for display (with null check)
+          if (!isCancelled) {
+            useRocket.getState().setSimulationMessage(stageMessage);
+          }
         } else {
           // For enhanced, use simpler progression
           progress += (100 - progress) * progressStep;
         }
         
-        useRocket.getState().setSimulationProgress(Math.min(maxProgress, progress));
+        // Update progress (with null check)
+        if (!isCancelled) {
+          useRocket.getState().setSimulationProgress(Math.min(maxProgress, progress));
+        }
       }, 500);
     } else {
       // For standard simulation, set a fixed progress
@@ -157,10 +188,8 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
         }),
       });
 
-      // Clear progress interval
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
+      // Clear progress interval on response
+      cleanupProgress();
 
       if (!response.ok) {
         throw new Error(`Simulation failed: ${response.statusText}`);
@@ -168,42 +197,56 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
 
       const result = await response.json();
       
-      // Complete progress
-      useRocket.getState().setSimulationProgress(100);
-      
-      // Update state
-      useRocket.getState().setSim(result);
-      useRocket.getState().setLastSimulationType(fidelity);
-      
-      // Dispatch event for UI updates
-      window.dispatchEvent(new CustomEvent('simulationComplete', { 
-        detail: { result, fidelity } 
-      }));
+      // Don't update state if cancelled
+      if (!isCancelled) {
+        // Complete progress
+        useRocket.getState().setSimulationProgress(100);
+        
+        // Update state
+        useRocket.getState().setSim(result);
+        useRocket.getState().setLastSimulationType(fidelity);
+        
+        // Dispatch event for UI updates
+        window.dispatchEvent(new CustomEvent('simulationComplete', { 
+          detail: { result, fidelity } 
+        }));
+      }
       
     } catch (error) {
       console.error('Simulation failed:', error);
       
-      // Clear progress interval
-      if (progressInterval) {
-        clearInterval(progressInterval);
+      // Clear progress interval on error
+      cleanupProgress();
+      
+      if (!isCancelled) {
+        // Reset progress
+        useRocket.getState().setSimulationProgress(0);
+        
+        // Show error notification
+        window.dispatchEvent(new CustomEvent('notification', {
+          detail: { 
+            message: `Simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+            type: 'error' 
+          }
+        }));
       }
-      
-      // Reset progress
-      useRocket.getState().setSimulationProgress(0);
-      
-      // Show error notification
-      window.dispatchEvent(new CustomEvent('notification', {
-        detail: { 
-          message: `Simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 
-          type: 'error' 
-        }
-      }));
     } finally {
-      if (progressInterval) {
-        clearInterval(progressInterval);
+      // Ensure cleanup happens in all cases
+      cleanupProgress();
+      
+      // Remove event listener
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
       }
-      setIsRunningSimulation(false);
-      useRocket.getState().setSimulating(false);
+      
+      // Only update state if not cancelled
+      if (!isCancelled) {
+        setIsRunningSimulation(false);
+        useRocket.getState().setSimulating(false);
+      }
+      
+      // Mark as cancelled to prevent any further updates
+      isCancelled = true;
     }
   };
 

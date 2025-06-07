@@ -5,7 +5,7 @@ import { useRocket } from '@/lib/store'
 import { dispatchActions } from '@/lib/ai/actions'
 import { useAuth } from '@/lib/auth/AuthContext'
 import { chatService } from '@/lib/services/chat.service'
-import { getChatHistoryByProject } from '@/lib/services/database.service'
+import { getChatHistoryByProject, saveChatToDb } from '@/lib/services/database.service'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
@@ -38,6 +38,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
 
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [lastUsedAgent, setLastUsedAgent] = useState<string>('master');
   const [currentlyRunningAgent, setCurrentlyRunningAgent] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -147,9 +148,19 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     if (!user) return;
     
     console.log('🚀 Loading project chat history for project ID:', projectId);
+    setIsLoadingHistory(true);
+    
+    // Show loading state immediately
+    setMessages([
+      {
+        role: 'assistant',
+        content: '⏳ Loading your project chat history... This may take a few seconds.',
+        agent: 'system'
+      }
+    ]);
     
     try {
-      // Use the new project-based chat history function
+      // Use the new project-based chat history function with timeout
       const history = await getChatHistoryByProject(projectId, 100);
       console.log('🚀 Found', history.length, 'messages for project', projectId);
       
@@ -162,7 +173,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
         setMessages([
           {
             role: 'assistant',
-            content: `Welcome back to your project! Your conversation history has been restored.`,
+            content: `✅ Welcome back to your project! Found ${history.length} messages in your conversation history.`,
             agent: 'system'
           },
           ...formattedHistory
@@ -172,7 +183,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
         setMessages([
           {
             role: 'assistant',
-            content: 'Welcome to your new project! Let\'s start designing your rocket.',
+            content: 'Welcome to your new project! Let\'s start designing your rocket. 🚀',
             agent: 'system'
           }
         ]);
@@ -182,10 +193,12 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
       setMessages([
         {
           role: 'assistant',
-          content: 'Welcome to this project! How can I help you with your rocket design?',
+          content: '⚠️ There was an issue loading your chat history, but we can start fresh! How can I help you with your rocket design?',
           agent: 'master'
         }
       ]);
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
   
@@ -193,32 +206,80 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
   const saveMessage = async (message: ChatMessage, context?: any) => {
     if (!user) return;
     
-    // Use the loaded session if viewing a different session, otherwise use current session
-    const targetSessionId = loadSessionId || userSession?.session_id;
-    if (!targetSessionId) return;
+    // CRITICAL DEBUG: Log current project and rocket state
+    console.log('🔍 DEBUG saveMessage called with:');
+    console.log('   - currentProject:', currentProject);
+    console.log('   - currentProject.id:', currentProject?.id);
+    console.log('   - user:', user?.id);
+    console.log('   - message role:', message.role);
+    console.log('   - message content length:', message.content?.length);
     
-    // Get current rocket ID - prioritize projectId if we're in project mode
-    const currentRocketId = projectId || context?.rocketId || useRocket.getState().rocket?.id;
+    // Get current rocket state
+    const rocketState = useRocket.getState();
+    const currentRocketId = context?.rocketId || rocketState.rocket?.id;
     
-    console.log('💾 Saving message with rocket ID:', currentRocketId, 'session:', targetSessionId);
+    // CRITICAL FIX: Handle race condition where no project is loaded yet
+    let targetProjectId = currentProject?.id;
+    
+    if (!targetProjectId) {
+      console.log('⚠️ No current project detected, attempting fallback...');
+      
+      // FALLBACK 1: Check if rocket has project_id
+      if (rocketState.rocket?.project_id) {
+        targetProjectId = rocketState.rocket.project_id;
+        console.log('📋 Using project_id from rocket:', targetProjectId);
+      } else {
+        // FALLBACK 2: Auto-create a project for this conversation
+        console.log('🏗️ Auto-creating project for orphaned conversation...');
+        try {
+          const { createProject } = await import('@/lib/services/database.service');
+          const newProject = await createProject('Chat Session', 'Conversation started without a project');
+          
+          if (newProject) {
+            targetProjectId = newProject.id;
+            // Update the store with the new project
+            useRocket.setState({ 
+              currentProject: newProject as any,
+              rocket: { 
+                ...rocketState.rocket, 
+                project_id: newProject.id 
+              }
+            });
+            console.log('✅ Auto-created project:', targetProjectId);
+          }
+        } catch (error) {
+          console.error('❌ Failed to auto-create project:', error);
+        }
+      }
+    }
+    
+    if (!targetProjectId) {
+      console.log('❌ Still no project available, skipping chat message save');
+      console.log('   - currentProject object:', JSON.stringify(currentProject, null, 2));
+      return;
+    }
+    
+    console.log('💾 Saving message to project:', targetProjectId, 'rocket:', currentRocketId);
     
     try {
-      await chatService.saveChatMessage({
-        userId: user.id,
-        sessionId: targetSessionId,
-        rocketId: currentRocketId, // Use the current rocket ID
-        role: message.role,
-        content: message.content,
-        contextData: {
-          agent: message.agent,
-          timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-          projectId: projectId, // Also store projectId in context
-          ...context
-        }
-      });
+      // Use the new project-based chat saving function
+      const success = await saveChatToDb(
+        [{
+          role: message.role,
+          content: message.content,
+          agent: message.agent
+        }],
+        targetProjectId,
+        currentRocketId
+      );
+      
+      if (success) {
+        console.log('✅ Message saved successfully to project');
+      } else {
+        console.error('❌ Failed to save message to project');
+      }
     } catch (error) {
-      console.error('Error saving message:', error);
+      console.error('❌ Error saving message to project:', error);
     }
   };
   

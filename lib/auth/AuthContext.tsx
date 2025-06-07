@@ -32,6 +32,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Timeout references for cleanup
+    let authTimeoutRef: NodeJS.Timeout | null = null;
+    let safetyTimeoutRef: NodeJS.Timeout | null = null;
+    let initSessionTimeoutRef: NodeJS.Timeout | null = null;
+    let onChangeTimeoutRef: NodeJS.Timeout | null = null;
+    
     // Check for previous auth timeout issues and auto-recover
     autoRecoverFromAuthTimeout();
     
@@ -41,10 +47,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Get initial session with timeout protection
     const getInitialSession = async () => {
       try {
-        // Reduce timeout from 8000ms to 5000ms (5 seconds)
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Auth initialization timeout')), 5000)
-        );
+        // Create timeout with reference for cleanup
+        authTimeoutRef = setTimeout(() => {
+          throw new Error('Auth initialization timeout');
+        }, 5000);
+        
+        const timeoutPromise = new Promise((_, reject) => {
+          authTimeoutRef = setTimeout(() => reject(new Error('Auth initialization timeout')), 5000);
+        });
         
         const sessionPromise = supabase.auth.getSession();
         
@@ -52,6 +62,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           sessionPromise,
           timeoutPromise
         ]) as any;
+        
+        // Clear timeout on success
+        if (authTimeoutRef) {
+          clearTimeout(authTimeoutRef);
+          authTimeoutRef = null;
+        }
         
         if (error) {
           console.error('Error getting session:', error);
@@ -61,11 +77,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           // Only initialize user session after a brief delay to avoid race conditions
           if (initialSession?.user) {
-            setTimeout(() => initializeUserSession(initialSession.user), 500);
+            initSessionTimeoutRef = setTimeout(() => {
+              if (!initialSession?.user) return; // Double-check user still exists
+              initializeUserSession(initialSession.user);
+            }, 500);
           }
         }
       } catch (error) {
         console.error('Session initialization error:', error);
+        // Clear timeout on error
+        if (authTimeoutRef) {
+          clearTimeout(authTimeoutRef);
+          authTimeoutRef = null;
+        }
         // Set to not loading even on error to prevent infinite loading
         setSession(null);
         setUser(null);
@@ -84,26 +108,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSession(session);
       setUser(session?.user ?? null);
       
+      // Clear any existing timeout before setting new one
+      if (onChangeTimeoutRef) {
+        clearTimeout(onChangeTimeoutRef);
+        onChangeTimeoutRef = null;
+      }
+      
       if (session?.user) {
         // Add delay to prevent race conditions with user record creation
-        setTimeout(() => initializeUserSession(session.user), 300);
+        onChangeTimeoutRef = setTimeout(() => {
+          if (!session?.user) return; // Double-check user still exists
+          initializeUserSession(session.user);
+        }, 300);
       } else {
         setUserSession(null);
       }
       
       // Always ensure loading is false after auth state change
       setLoading(false);
+      
+      // Notify store of auth change (for database initialization)
+      if (typeof window !== 'undefined' && (window as any).__rocketAuthChanged) {
+        (window as any).__rocketAuthChanged();
+      }
     });
 
-    // Reduce safety timeout from 10000ms to 6000ms (6 seconds)
-    const safetyTimeout = setTimeout(() => {
+    // Safety timeout with reference for cleanup
+    safetyTimeoutRef = setTimeout(() => {
       console.warn('Auth loading timeout - forcing loading to false');
       setLoading(false);
     }, 6000);
 
     return () => {
+      // Clean up all timeouts
+      if (authTimeoutRef) clearTimeout(authTimeoutRef);
+      if (safetyTimeoutRef) clearTimeout(safetyTimeoutRef);
+      if (initSessionTimeoutRef) clearTimeout(initSessionTimeoutRef);
+      if (onChangeTimeoutRef) clearTimeout(onChangeTimeoutRef);
+      
+      // Unsubscribe from auth changes
       subscription.unsubscribe();
-      clearTimeout(safetyTimeout);
     };
   }, []);
 
