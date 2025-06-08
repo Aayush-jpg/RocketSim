@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { MOTOR_DATABASE } from "@/lib/data/motors";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // Ensure dynamic behavior for API routes
 
 export async function GET(req: NextRequest) {
   try {

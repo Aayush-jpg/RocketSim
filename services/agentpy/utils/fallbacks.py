@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 JSON_PATTERN = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}'
 
 # Import needed for design_rocket_for_altitude call - UPDATED for component structure
-from physics.aerodynamics import calculate_rocket_mass_components  # Will need to update this function
+from physics.aerodynamics import calculate_rocket_mass  # Updated to use renamed function
 from physics.propulsion import PROPULSION_SYSTEMS, select_engine_for_altitude
 from physics.trajectory import physics_based_rocket_design
 
@@ -214,7 +214,7 @@ async def design_rocket_for_altitude(rocket_data: dict, target_altitude: float) 
         # UPDATED: Get motor from component structure
         current_motor_id = rocket_data.get("motor", {}).get("motor_database_id", "default-motor")
         current_engine_spec = PROPULSION_SYSTEMS.get(current_motor_id, PROPULSION_SYSTEMS['default-motor'])
-        rocket_dry_mass = calculate_rocket_mass_components(rocket_data)
+        rocket_dry_mass = calculate_rocket_mass(rocket_data)
         
         # Select appropriate engine based on altitude target
         selected_engine_id = select_engine_for_altitude(target_altitude, rocket_dry_mass)

@@ -55,6 +55,57 @@ executor = ThreadPoolExecutor(max_workers=4)
 # PHYSICAL CONSTANTS WITH CENTRALIZED MATERIALS
 # ================================
 
+# Load materials from shared JSON file - single source of truth
+def load_material_database():
+    """Load material database from shared JSON file"""
+    try:
+        materials_path = os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data', 'materials.json')
+        with open(materials_path, 'r') as f:
+            material_data = json.load(f)
+        
+        print(f"✅ Successfully loaded {len(material_data)} materials from shared JSON")
+        return material_data
+        
+    except Exception as e:
+        print(f"❌ Failed to load materials from JSON: {e}")
+        print("🔄 Using minimal fallback material database")
+        # Minimal fallback - only essential materials
+        return {
+            "fiberglass": {
+                "id": "fiberglass",
+                "name": "Fiberglass (G10/FR4)",
+                "category": "composite",
+                "density_kg_m3": 1600.0,
+                "surfaceRoughness_m": 0.00001,
+                "availability": "common",
+                "description": "Standard fiberglass composite",
+                "applications": ["nose_cones", "body_tubes", "fin_root_sections"]
+            },
+            "aluminum_6061": {
+                "id": "aluminum_6061", 
+                "name": "Aluminum 6061-T6",
+                "category": "metal",
+                "density_kg_m3": 2700.0,
+                "surfaceRoughness_m": 0.000002,
+                "availability": "common",
+                "description": "Standard aluminum alloy",
+                "applications": ["motor_casings", "structural_components"]
+            },
+            "birch_plywood": {
+                "id": "birch_plywood",
+                "name": "Baltic Birch Plywood", 
+                "category": "wood",
+                "density_kg_m3": 650.0,
+                "surfaceRoughness_m": 0.00005,
+                "availability": "common",
+                "description": "High-quality plywood",
+                "applications": ["fins", "internal_structures"]
+            }
+        }
+
+# Load the material database at startup
+MATERIAL_DATABASE = load_material_database()
+
 class PhysicalConstants:
     """Physical constants in SI units with centralized material properties"""
     STANDARD_GRAVITY = 9.80665  # m/s²
@@ -62,21 +113,27 @@ class PhysicalConstants:
     STANDARD_PRESSURE = 101325.0  # Pa
     AIR_DENSITY_SEA_LEVEL = 1.225  # kg/m³
     
-    # Try to use centralized material properties, fallback to local values
-    try:
-        from materials import MATERIALS
-        DENSITY_FIBERGLASS = MATERIALS.DENSITY_FIBERGLASS
-        DENSITY_ALUMINUM = MATERIALS.DENSITY_ALUMINUM
-        DENSITY_CARBON_FIBER = MATERIALS.DENSITY_CARBON_FIBER
-        DENSITY_PLYWOOD = MATERIALS.DENSITY_PLYWOOD
-        DENSITY_APCP = MATERIALS.DENSITY_APCP
-    except ImportError:
-        # Fallback to local constants
-        DENSITY_FIBERGLASS = 1600.0
-        DENSITY_ALUMINUM = 2700.0
-        DENSITY_CARBON_FIBER = 1600.0
-        DENSITY_PLYWOOD = 650.0
-        DENSITY_APCP = 1815.0  # Ammonium perchlorate composite propellant
+    # Use centralized material properties from JSON
+    DENSITY_FIBERGLASS = MATERIAL_DATABASE.get("fiberglass", {}).get("density_kg_m3", 1600.0)
+    DENSITY_ALUMINUM = MATERIAL_DATABASE.get("aluminum_6061", {}).get("density_kg_m3", 2700.0) 
+    DENSITY_CARBON_FIBER = MATERIAL_DATABASE.get("carbon_fiber", {}).get("density_kg_m3", 1500.0)
+    DENSITY_PLYWOOD = MATERIAL_DATABASE.get("birch_plywood", {}).get("density_kg_m3", 650.0)
+    DENSITY_ABS = MATERIAL_DATABASE.get("abs", {}).get("density_kg_m3", 1050.0)
+    DENSITY_APCP = MATERIAL_DATABASE.get("apcp", {}).get("density_kg_m3", 1815.0)
+
+def get_material_density(material_id: str) -> float:
+    """Get material density by ID from JSON database"""
+    material = MATERIAL_DATABASE.get(material_id)
+    if material and "density_kg_m3" in material:
+        return material["density_kg_m3"]
+    
+    # Emergency fallback if material not found
+    print(f"⚠️ Material '{material_id}' not found, using fiberglass default")
+    return MATERIAL_DATABASE.get("fiberglass", {}).get("density_kg_m3", 1600.0)
+
+def get_material_properties(material_id: str) -> dict:
+    """Get complete material properties by ID"""
+    return MATERIAL_DATABASE.get(material_id, MATERIAL_DATABASE.get("fiberglass", {}))
 
 # ================================
 # UNIT CONVERSION UTILITIES
@@ -222,10 +279,81 @@ class LaunchParametersModel(BaseModel):
 # ================================
 
 class SimulationRequestModel(BaseModel):
+    """Standard simulation request model"""
     rocket: RocketModel
     environment: Optional[EnvironmentModel] = None
     launchParameters: Optional[LaunchParametersModel] = None
     simulationType: Optional[Literal["standard", "hifi", "monte_carlo"]] = "standard"
+
+async def parse_simulation_request(request: Request) -> SimulationRequestModel:
+    """Parse simulation request with component-based rocket model"""
+    try:
+        # Get raw JSON
+        body = await request.json()
+        print(f"🔍 DEBUG: Received request body with keys: {list(body.keys())}")
+        
+        # Extract rocket data
+        rocket_data = body.get('rocket')
+        if rocket_data is None:
+            raise HTTPException(status_code=400, detail="Missing 'rocket' field")
+        
+        print(f"🔍 DEBUG: Rocket data keys: {list(rocket_data.keys()) if isinstance(rocket_data, dict) else type(rocket_data)}")
+        
+        # Parse rocket as component-based model
+        try:
+            rocket_model = RocketModel(**rocket_data)
+            print(f"✅ DEBUG: Successfully parsed as component-based RocketModel")
+        except Exception as e:
+            print(f"❌ DEBUG: Failed to parse as RocketModel: {e}")
+            # Try to provide helpful error message
+            if isinstance(rocket_data, dict):
+                has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
+                has_parts = 'parts' in rocket_data
+                if has_parts and not has_components:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Legacy parts-based format is no longer supported. Please use component-based format with nose_cone, body_tubes, fins, motor, and parachutes fields."
+                    )
+            raise HTTPException(status_code=400, detail=f"Invalid rocket format: {e}")
+        
+        # Parse environment
+        environment = None
+        if 'environment' in body and body['environment']:
+            try:
+                environment = EnvironmentModel(**body['environment'])
+            except Exception as e:
+                print(f"❌ DEBUG: Failed to parse environment: {e}")
+                # Use defaults if environment parsing fails
+                environment = EnvironmentModel()
+        
+        # Parse launch parameters
+        launch_params = None
+        if 'launchParameters' in body and body['launchParameters']:
+            try:
+                launch_params = LaunchParametersModel(**body['launchParameters'])
+            except Exception as e:
+                print(f"❌ DEBUG: Failed to parse launch parameters: {e}")
+                # Use defaults if launch parameters parsing fails
+                launch_params = LaunchParametersModel()
+        
+        simulation_type = body.get('simulationType', 'standard')
+        
+        # Create the request object
+        request_obj = SimulationRequestModel(
+            rocket=rocket_model,
+            environment=environment,
+            launchParameters=launch_params,
+            simulationType=simulation_type
+        )
+        
+        print(f"✅ DEBUG: Successfully created SimulationRequestModel")
+        return request_obj
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ DEBUG: Unexpected error in parse_simulation_request: {e}")
+        raise HTTPException(status_code=400, detail=f"Request parsing error: {e}")
 
 class ParameterVariation(BaseModel):
     parameter: str
@@ -291,565 +419,92 @@ class MotorSpec(BaseModel):
     dimensions: Dict[str, float]
     weight: Dict[str, float]
 
-# ================================
-# LEGACY COMPATIBILITY LAYER
-# ================================
 
-class LegacyPartModel(BaseModel):
-    """Legacy part model for backwards compatibility"""
-    id: str
-    type: Literal["nose", "body", "fin", "parachute", "engine"]  # ✅ Added "engine" type
-    color: Optional[str] = "white"
-    # Legacy part properties (will be converted to new component format)
-    length: Optional[float] = None  # cm
-    diameter: Optional[float] = None  # cm 
-    thickness: Optional[float] = None  # mm
-    shape: Optional[str] = None
-    root: Optional[float] = None  # cm
-    span: Optional[float] = None  # cm
-    tip: Optional[float] = None  # cm
-    sweep: Optional[float] = None  # cm
-    cd_s: Optional[float] = None  # parachute drag
-    trigger: Optional[Union[str, float]] = None  # parachute trigger
-    
-    # ✅ Additional field names used by the front-end with proper Unicode handling
-    base_diameter_o: Optional[float] = Field(None, alias="baseØ", description="nose cone base diameter in cm")
-    body_diameter_o: Optional[float] = Field(None, alias="Ø", description="body diameter in cm")
-    thrust: Optional[float] = None  # engine thrust in N
-    Isp: Optional[float] = None  # engine specific impulse in s
-    
-    # ✅ Add properties to access the aliased fields directly
-    @property
-    def baseØ(self) -> Optional[float]:
-        return self.base_diameter_o
-    
-    @property 
-    def Ø(self) -> Optional[float]:
-        return self.body_diameter_o
-    
-    class Config:
-        allow_population_by_field_name = True
-        allow_population_by_alias = True
 
-class LegacyRocketModel(BaseModel):
-    """Legacy rocket model with parts array for backwards compatibility"""
-    id: str
-    name: str
-    parts: List[LegacyPartModel]
-    motorId: str
-    Cd: float = 0.5
-    units: Literal["metric", "imperial"] = "metric"
 
-class ModelConverter:
-    """Converts between legacy and new rocket model formats"""
-    
-    @staticmethod
-    def legacy_to_component(legacy: LegacyRocketModel) -> RocketModel:
-        """Convert legacy parts-based model to new component-based model"""
-        
-        # Extract components by type
-        nose_parts = [p for p in legacy.parts if p.type == "nose"]
-        body_parts = [p for p in legacy.parts if p.type == "body"]  
-        fin_parts = [p for p in legacy.parts if p.type == "fin"]
-        parachute_parts = [p for p in legacy.parts if p.type == "parachute"]
-        engine_parts = [p for p in legacy.parts if p.type == "engine"]  # ✅ Handle engine parts
-        
-        # Convert nose cone (take first one)
-        if nose_parts:
-            nose_part = nose_parts[0]
-            # ✅ Handle both diameter and baseØ field names using properties
-            base_diameter = nose_part.diameter or nose_part.baseØ or 20  # cm
-            nose_cone = NoseComponentModel(
-                id=nose_part.id,
-                shape=nose_part.shape or "ogive",
-                length_m=(nose_part.length or 15) / 100,  # cm to m
-                base_radius_m=base_diameter / 200,  # cm to m, diameter to radius
-                wall_thickness_m=(nose_part.thickness or 2) / 1000,  # mm to m
-                material_density_kg_m3=PhysicalConstants.DENSITY_FIBERGLASS
-            )
-        else:
-            # Create default nose cone
-            nose_cone = NoseComponentModel(
-                id="default_nose",
-                shape="ogive",
-                length_m=0.15,
-                wall_thickness_m=0.002,
-                material_density_kg_m3=PhysicalConstants.DENSITY_FIBERGLASS
-            )
-        
-        # Convert body tubes
-        body_tubes = []
-        for body_part in body_parts:
-            # ✅ Handle both diameter and Ø field names using properties
-            diameter = body_part.diameter or body_part.Ø or 20  # cm
-            body_tube = BodyComponentModel(
-                id=body_part.id,
-                outer_radius_m=diameter / 200,  # cm to m, diameter to radius
-                length_m=(body_part.length or 40) / 100,  # cm to m
-                wall_thickness_m=(body_part.thickness or 3) / 1000,  # mm to m
-                material_density_kg_m3=PhysicalConstants.DENSITY_FIBERGLASS
-            )
-            body_tubes.append(body_tube)
-        
-        # Create default body tube if none exist
-        if not body_tubes:
-            body_tubes.append(BodyComponentModel(
-                id="default_body",
-                outer_radius_m=0.05,  # 5cm radius = 10cm diameter
-                length_m=0.40,  # 40cm length
-                wall_thickness_m=0.003,
-                material_density_kg_m3=PhysicalConstants.DENSITY_FIBERGLASS
-            ))
-        
-        # Convert fins
-        fins = []
-        for fin_part in fin_parts:
-            fin = FinComponentModel(
-                id=fin_part.id,
-                fin_count=3,  # Default to 3 fins
-                root_chord_m=(fin_part.root or 8) / 100,  # cm to m
-                tip_chord_m=(fin_part.tip or fin_part.root * 0.5 if fin_part.root else 4) / 100,  # cm to m
-                span_m=(fin_part.span or 6) / 100,  # cm to m
-                sweep_length_m=(fin_part.sweep or 2) / 100,  # cm to m
-                thickness_m=0.006,  # 6mm default
-                material_density_kg_m3=PhysicalConstants.DENSITY_PLYWOOD
-            )
-            fins.append(fin)
-        
-        # Create default fins if none exist
-        if not fins:
-            fins.append(FinComponentModel(
-                id="default_fins",
-                fin_count=3,
-                root_chord_m=0.08,
-                tip_chord_m=0.04,
-                span_m=0.06,
-                sweep_length_m=0.02,
-                thickness_m=0.006,
-                material_density_kg_m3=PhysicalConstants.DENSITY_PLYWOOD
-            ))
-        
-        # Convert parachutes
-        parachutes = []
-        for i, chute_part in enumerate(parachute_parts):
-            parachute = ParachuteComponentModel(
-                id=chute_part.id,
-                name=f"Parachute {i+1}",
-                cd_s_m2=chute_part.cd_s or 1.0,  # Default 1.0 m²
-                trigger=chute_part.trigger or "apogee",
-                lag_s=1.5,
-                position_from_tail_m=0.0  # Default position
-            )
-            parachutes.append(parachute)
-        
-        # Create default parachute if none exist
-        if not parachutes:
-            parachutes.append(ParachuteComponentModel(
-                id="default_parachute",
-                name="Default Parachute",
-                cd_s_m2=1.0,
-                trigger="apogee",
-                lag_s=1.5,
-                position_from_tail_m=0.0
-            ))
-        
-        # ✅ Convert motor - handle both engine parts and legacy motorId
-        motor_id = legacy.motorId
-        if engine_parts:
-            # If there's an engine part, we could potentially use its properties
-            # but for now, we'll still use the legacy motorId
-            pass
-        
-        motor = MotorComponentModel(
-            id="motor",
-            motor_database_id=motor_id,
-            position_from_tail_m=0.0
-        )
-        
-        # Create new component-based rocket
-        return RocketModel(
-            id=legacy.id,
-            name=legacy.name,
-            nose_cone=nose_cone,
-            body_tubes=body_tubes,
-            fins=fins,
-            motor=motor,
-            parachutes=parachutes,
-            coordinate_system="tail_to_nose"
-        )
-    
-    @staticmethod
-    def component_to_legacy(component: RocketModel) -> LegacyRocketModel:
-        """Convert new component-based model to legacy parts-based model"""
-        
-        parts = []
-        
-        # Convert nose cone
-        if component.nose_cone:
-            nose_part_data = {
-                "id": component.nose_cone.id,
-                "type": "nose",
-                "color": "white",
-                "length": component.nose_cone.length_m * 100,  # m to cm
-                "thickness": component.nose_cone.wall_thickness_m * 1000,  # m to mm
-                "shape": component.nose_cone.shape
-            }
-            # ✅ Set baseØ field using the alias
-            if component.nose_cone.base_radius_m:
-                nose_part_data["baseØ"] = component.nose_cone.base_radius_m * 200  # radius to diameter, m to cm
-            
-            parts.append(LegacyPartModel(**nose_part_data))
-        
-        # Convert body tubes
-        for body_tube in component.body_tubes:
-            body_part_data = {
-                "id": body_tube.id,
-                "type": "body", 
-                "color": "white",
-                "length": body_tube.length_m * 100,  # m to cm
-                "thickness": body_tube.wall_thickness_m * 1000  # m to mm
-            }
-            # ✅ Set Ø field using the alias
-            body_part_data["Ø"] = body_tube.outer_radius_m * 200  # radius to diameter, m to cm
-            
-            parts.append(LegacyPartModel(**body_part_data))
-        
-        # Convert fins
-        for fin in component.fins:
-            parts.append(LegacyPartModel(
-                id=fin.id,
-                type="fin",
-                color="white", 
-                root=fin.root_chord_m * 100,  # m to cm
-                tip=fin.tip_chord_m * 100,  # m to cm
-                span=fin.span_m * 100,  # m to cm
-                sweep=fin.sweep_length_m * 100  # m to cm
-            ))
-        
-        # Convert parachutes
-        for parachute in component.parachutes:
-            parts.append(LegacyPartModel(
-                id=parachute.id,
-                type="parachute",
-                color="white",
-                cd_s=parachute.cd_s_m2,
-                trigger=parachute.trigger
-            ))
-        
-        # ✅ Add engine part for compatibility with front-end expectations
-        parts.append(LegacyPartModel(
-            id="engine",
-            type="engine",
-            color="#0066FF",
-            thrust=32,  # Default values since we don't store these in the component model
-            Isp=200
-        ))
-        
-        return LegacyRocketModel(
-            id=component.id,
-            name=component.name,
-            parts=parts,
-            motorId=component.motor.motor_database_id,
-            Cd=0.5,  # Default drag coefficient
-            units="metric"
-        )
-
-# ================================
-# CUSTOM REQUEST DEPENDENCY
-# ================================
-
-async def parse_flexible_simulation_request(request: Request) -> "FlexibleSimulationRequestModel":
-    """Custom dependency to parse simulation requests with legacy compatibility"""
-    try:
-        # Get raw JSON
-        body = await request.json()
-        print(f"🔍 DEBUG: Received request body with keys: {list(body.keys())}")
-        
-        # Extract rocket data
-        rocket_data = body.get('rocket')
-        if rocket_data is None:
-            raise HTTPException(status_code=400, detail="Missing 'rocket' field")
-        
-        print(f"🔍 DEBUG: Rocket data keys: {list(rocket_data.keys()) if isinstance(rocket_data, dict) else type(rocket_data)}")
-        
-        # Determine format and parse rocket
-        parsed_rocket = None
-        if isinstance(rocket_data, dict):
-            has_parts = 'parts' in rocket_data
-            has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
-            
-            print(f"🔍 DEBUG: has_parts={has_parts}, has_components={has_components}")
-            
-            if has_parts and not has_components:
-                # Legacy format
-                print(f"🔍 DEBUG: Parsing as legacy format...")
-                try:
-                    parsed_rocket = LegacyRocketModel(**rocket_data)
-                    print(f"✅ DEBUG: Successfully parsed as LegacyRocketModel")
-                except Exception as e:
-                    print(f"❌ DEBUG: Failed to parse as LegacyRocketModel: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid legacy rocket format: {e}")
-            elif has_components and not has_parts:
-                # New format
-                print(f"🔍 DEBUG: Parsing as new component format...")
-                try:
-                    parsed_rocket = RocketModel(**rocket_data)
-                    print(f"✅ DEBUG: Successfully parsed as RocketModel")
-                except Exception as e:
-                    print(f"❌ DEBUG: Failed to parse as RocketModel: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid component rocket format: {e}")
-            else:
-                # Default to legacy if has parts
-                if has_parts:
-                    print(f"🔍 DEBUG: Ambiguous format, defaulting to legacy...")
-                    try:
-                        parsed_rocket = LegacyRocketModel(**rocket_data)
-                        print(f"✅ DEBUG: Successfully parsed ambiguous as LegacyRocketModel")
-                    except Exception as e:
-                        print(f"❌ DEBUG: Failed to parse ambiguous as legacy: {e}")
-                        raise HTTPException(status_code=400, detail=f"Could not parse as legacy format: {e}")
-                else:
-                    raise HTTPException(status_code=400, detail="Rocket format unclear - missing both 'parts' array and component fields")
-        else:
-            raise HTTPException(status_code=400, detail="Rocket must be a dictionary")
-        
-        # Parse other fields
-        environment = None
-        if 'environment' in body:
-            try:
-                environment = EnvironmentModel(**body['environment'])
-            except Exception as e:
-                print(f"❌ DEBUG: Failed to parse environment: {e}")
-        
-        launch_params = None
-        if 'launchParameters' in body:
-            try:
-                launch_params = LaunchParametersModel(**body['launchParameters'])
-            except Exception as e:
-                print(f"❌ DEBUG: Failed to parse launch parameters: {e}")
-        
-        simulation_type = body.get('simulationType', 'standard')
-        
-        # Create the request object manually
-        request_obj = FlexibleSimulationRequestModel()
-        request_obj._rocket_model = parsed_rocket
-        request_obj.environment = environment
-        request_obj.launchParameters = launch_params
-        request_obj.simulationType = simulation_type
-        
-        print(f"✅ DEBUG: Successfully created FlexibleSimulationRequestModel")
-        return request_obj
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ DEBUG: Unexpected error in parse_flexible_simulation_request: {e}")
-        raise HTTPException(status_code=400, detail=f"Request parsing error: {e}")
-
-# Simplified request model without problematic fields
-class FlexibleSimulationRequestModel(BaseModel):
-    """Flexible request model that accepts both legacy and new formats"""
-    environment: Optional[EnvironmentModel] = None
-    launchParameters: Optional[LaunchParametersModel] = None
-    simulationType: Optional[Literal["standard", "hifi", "monte_carlo"]] = "standard"
-    
-    # Store the parsed rocket model as Any to avoid Union validation
-    _rocket_model: Any = None
-    
-    class Config:
-        # Don't validate on assignment since we're setting _rocket_model manually
-        validate_assignment = False
-        # Allow arbitrary fields
-        extra = "allow"
-    
-    @property
-    def rocket(self) -> Any:
-        """Get the parsed rocket model"""
-        return self._rocket_model
-    
-    def get_rocket_model(self) -> RocketModel:
-        """Get rocket in new component format, converting if necessary"""
-        if isinstance(self._rocket_model, LegacyRocketModel):
-            print(f"🔍 DEBUG: Converting legacy model to component model")
-            return ModelConverter.legacy_to_component(self._rocket_model)
-        print(f"🔍 DEBUG: Using existing component model")
-        return self._rocket_model
 
 # ================================
 # ENHANCED MOTOR DATABASE WITH SI UNITS
 # ================================
 
-# Import shared motor database
-import sys
+# Load motors from shared JSON file - single source of truth
+import json
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data'))
 
-try:
-    from motors import MOTOR_DATABASE as SHARED_MOTOR_DATABASE
-    USE_SHARED_MOTORS = True
-except ImportError:
-    USE_SHARED_MOTORS = False
-    print("Warning: Could not import shared motor database, using local copy")
+def load_motor_database():
+    """Load motor database from shared JSON file"""
+    try:
+        motors_path = os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data', 'motors.json')
+        with open(motors_path, 'r') as f:
+            motor_data_raw = json.load(f)
 
-# Use shared database if available, otherwise fallback to local
-if USE_SHARED_MOTORS:
-    # Convert shared database to local format
-    MOTOR_DATABASE = {}
-    for motor_id, motor_spec in SHARED_MOTOR_DATABASE.items():
-        MOTOR_DATABASE[motor_id] = {
-            "name": motor_spec.name,
-            "manufacturer": motor_spec.manufacturer,
-            "type": motor_spec.type,
-            "impulse_class": motor_spec.impulseClass,
-            "total_impulse_n_s": motor_spec.totalImpulse_Ns,
-            "avg_thrust_n": motor_spec.avgThrust_N,
-            "burn_time_s": motor_spec.burnTime_s,
+        # Convert frontend format to backend format (camelCase -> snake_case)
+        motor_database = {}
+        for motor_id, spec in motor_data_raw.items():
+            motor_database[motor_id] = {
+                "name": spec["name"],
+                "manufacturer": spec["manufacturer"],
+                "type": spec["type"],
+                "impulse_class": spec["impulseClass"],
+                "total_impulse_n_s": spec["totalImpulse_Ns"],
+                "avg_thrust_n": spec["avgThrust_N"],
+                "burn_time_s": spec["burnTime_s"],
             "dimensions": {
-                "outer_diameter_m": motor_spec.dimensions.outerDiameter_m,
-                "length_m": motor_spec.dimensions.length_m
+                    "outer_diameter_m": spec["dimensions"]["outerDiameter_m"],
+                    "length_m": spec["dimensions"]["length_m"]
             },
             "mass": {
-                "propellant_kg": motor_spec.mass.propellant_kg,
-                "total_kg": motor_spec.mass.total_kg
+                    "propellant_kg": spec["mass"]["propellant_kg"],
+                    "total_kg": spec["mass"]["total_kg"]
             },
-            "isp_s": motor_spec.isp_s
+                "isp_s": spec["isp_s"]
         }
         
         # Add optional configs if present
-        if hasattr(motor_spec, 'grainConfig') and motor_spec.grainConfig:
-            MOTOR_DATABASE[motor_id]["grain_config"] = {
-                "grain_number": motor_spec.grainConfig.grainNumber,
-                "grain_density_kg_m3": motor_spec.grainConfig.grainDensity_kg_m3,
-                "grain_outer_radius_m": motor_spec.grainConfig.grainOuterRadius_m,
-                "grain_initial_inner_radius_m": motor_spec.grainConfig.grainInitialInnerRadius_m,
-                "grain_initial_height_m": motor_spec.grainConfig.grainInitialHeight_m
+            if "grainConfig" in spec and spec["grainConfig"]:
+                motor_database[motor_id]["grain_config"] = {
+                    "grain_number": spec["grainConfig"]["grainNumber"],
+                    "grain_density_kg_m3": spec["grainConfig"]["grainDensity_kg_m3"],
+                    "grain_outer_radius_m": spec["grainConfig"]["grainOuterRadius_m"],
+                    "grain_initial_inner_radius_m": spec["grainConfig"]["grainInitialInnerRadius_m"],
+                    "grain_initial_height_m": spec["grainConfig"]["grainInitialHeight_m"]
             }
             
-        if hasattr(motor_spec, 'propellantConfig') and motor_spec.propellantConfig:
-            MOTOR_DATABASE[motor_id]["propellant_config"] = {
-                "oxidizer_to_fuel_ratio": motor_spec.propellantConfig.oxidizerToFuelRatio,
-                "chamber_pressure_pa": motor_spec.propellantConfig.chamberPressure_pa,
-                "nozzle_expansion_ratio": motor_spec.propellantConfig.nozzleExpansionRatio
+            if "propellantConfig" in spec and spec["propellantConfig"]:
+                motor_database[motor_id]["propellant_config"] = {
+                    "oxidizer_to_fuel_ratio": spec["propellantConfig"]["oxidizerToFuelRatio"],
+                    "chamber_pressure_pa": spec["propellantConfig"]["chamberPressure_pa"],
+                    "nozzle_expansion_ratio": spec["propellantConfig"]["nozzleExpansionRatio"]
             }
             
-        if hasattr(motor_spec, 'hybridConfig') and motor_spec.hybridConfig:
-            MOTOR_DATABASE[motor_id]["hybrid_config"] = {
-                "grain_density_kg_m3": motor_spec.hybridConfig.grainDensity_kg_m3,
-                "oxidizer_mass_kg": motor_spec.hybridConfig.oxidizerMass_kg,
-                "fuel_mass_kg": motor_spec.hybridConfig.fuelMass_kg,
-                "chamber_pressure_pa": motor_spec.hybridConfig.chamberPressure_pa
-            }
-
-else:
-    # Keep existing motor database as fallback
-    MOTOR_DATABASE = {
-        "mini-motor": {
-            "name": "A8-3", "manufacturer": "Estes", "type": "solid",
-            "impulse_class": "A", "total_impulse_n_s": 2.5, "avg_thrust_n": 1.5,
-            "burn_time_s": 1.8, 
-            "dimensions": {"outer_diameter_m": 0.013, "length_m": 0.100},
-            "mass": {"propellant_kg": 0.008, "total_kg": 0.015}, 
-                "isp_s": 150
-        },
+            if "hybridConfig" in spec and spec["hybridConfig"]:
+                motor_database[motor_id]["hybrid_config"] = {
+                    "grain_density_kg_m3": spec["hybridConfig"]["grainDensity_kg_m3"],
+                    "oxidizer_mass_kg": spec["hybridConfig"]["oxidizerMass_kg"],
+                    "fuel_mass_kg": spec["hybridConfig"]["fuelMass_kg"],
+                    "chamber_pressure_pa": spec["hybridConfig"]["chamberPressure_pa"]
+                }
+        
+        print(f"✅ Successfully loaded {len(motor_database)} motors from shared JSON")
+        return motor_database
+        
+    except Exception as e:
+        print(f"❌ Failed to load motors from JSON: {e}")
+        print("🔄 Using minimal fallback motor database")
+        # Minimal fallback - only essential motors
+        return {
         "default-motor": {
             "name": "F32-6", "manufacturer": "Generic", "type": "solid",
             "impulse_class": "F", "total_impulse_n_s": 80, "avg_thrust_n": 32,
             "burn_time_s": 2.5,
             "dimensions": {"outer_diameter_m": 0.029, "length_m": 0.124},
             "mass": {"propellant_kg": 0.040, "total_kg": 0.070},
-            "isp_s": 200,
-            "grain_config": {
-                "grain_number": 1,
-                "grain_density_kg_m3": 1815,
-                "grain_outer_radius_m": 0.0125,
-                "grain_initial_inner_radius_m": 0.004,
-                "grain_initial_height_m": 0.100
-            }
-        },
-        "high-power": {
-            "name": "H180-7", "manufacturer": "Generic", "type": "solid",
-            "impulse_class": "H", "total_impulse_n_s": 320, "avg_thrust_n": 100,
-            "burn_time_s": 3.2,
-            "dimensions": {"outer_diameter_m": 0.038, "length_m": 0.150},
-            "mass": {"propellant_kg": 0.090, "total_kg": 0.150},
-            "isp_s": 220,
-            "grain_config": {
-                "grain_number": 2,
-                "grain_density_kg_m3": 1815,
-                "grain_outer_radius_m": 0.016,
-                "grain_initial_inner_radius_m": 0.005,
-                "grain_initial_height_m": 0.065
-            }
-        },
-        "super-power": {
-            "name": "I200-8", "manufacturer": "Generic", "type": "solid",
-            "impulse_class": "I", "total_impulse_n_s": 800, "avg_thrust_n": 200,
-            "burn_time_s": 4.0,
-            "dimensions": {"outer_diameter_m": 0.054, "length_m": 0.200},
-            "mass": {"propellant_kg": 0.200, "total_kg": 0.300},
-            "isp_s": 240,
-            "grain_config": {
-                "grain_number": 3,
-                "grain_density_kg_m3": 1815,
-                "grain_outer_radius_m": 0.024,
-                "grain_initial_inner_radius_m": 0.006,
-                "grain_initial_height_m": 0.060
-            }
-        },
-        "small-liquid": {
-            "name": "Liquid-500N", "manufacturer": "Custom", "type": "liquid",
-            "impulse_class": "M", "total_impulse_n_s": 15000, "avg_thrust_n": 500,
-            "burn_time_s": 30,
-            "dimensions": {"outer_diameter_m": 0.075, "length_m": 0.300},
-            "mass": {"propellant_kg": 1.5, "total_kg": 2.3},
-            "isp_s": 300,
-            "propellant_config": {
-                "oxidizer_to_fuel_ratio": 2.33,  # LOX/RP-1
-                "chamber_pressure_pa": 2e6,
-                "nozzle_expansion_ratio": 25
-            }
-        },
-        "medium-liquid": {
-            "name": "Liquid-2000N", "manufacturer": "Custom", "type": "liquid",
-            "impulse_class": "O", "total_impulse_n_s": 90000, "avg_thrust_n": 2000,
-            "burn_time_s": 45,
-            "dimensions": {"outer_diameter_m": 0.100, "length_m": 0.400},
-            "mass": {"propellant_kg": 6.5, "total_kg": 8.5},
-            "isp_s": 320,
-            "propellant_config": {
-                "oxidizer_to_fuel_ratio": 2.33,
-                "chamber_pressure_pa": 3e6,
-                "nozzle_expansion_ratio": 40
-            }
-        },
-        "large-liquid": {
-            "name": "Liquid-8000N", "manufacturer": "Custom", "type": "liquid",
-            "impulse_class": "P", "total_impulse_n_s": 120000, "avg_thrust_n": 8000,
-            "burn_time_s": 15,
-            "dimensions": {"outer_diameter_m": 0.150, "length_m": 0.500},
-            "mass": {"propellant_kg": 8.0, "total_kg": 11.0},
-            "isp_s": 340,
-            "propellant_config": {
-                "oxidizer_to_fuel_ratio": 2.33,
-                "chamber_pressure_pa": 5e6,
-                "nozzle_expansion_ratio": 60
-            }
-        },
-        "hybrid-engine": {
-            "name": "Hybrid-1200N", "manufacturer": "Custom", "type": "hybrid",
-            "impulse_class": "N", "total_impulse_n_s": 24000, "avg_thrust_n": 1200,
-            "burn_time_s": 20,
-            "dimensions": {"outer_diameter_m": 0.090, "length_m": 0.350},
-            "mass": {"propellant_kg": 4.5, "total_kg": 5.7},
-            "isp_s": 280,
-            "hybrid_config": {
-                "grain_density_kg_m3": 920,  # HTPB
-                "oxidizer_mass_kg": 3.6,
-                "fuel_mass_kg": 0.9,
-                "chamber_pressure_pa": 2.5e6
+                "isp_s": 200
             }
         }
-    }
+
+# Load the motor database at startup
+MOTOR_DATABASE = load_motor_database()
 
 # ================================
 # SIMULATION CLASSES
@@ -3655,220 +3310,86 @@ async def get_motors(
     
     return {"motors": motors}
 
+
 @app.post("/simulate", response_model=SimulationResult)
-async def simulate_standard(request: Request):
-    """Standard simulation endpoint with legacy compatibility"""
-    print("🚨🚨🚨 SIMULATE_STANDARD ENDPOINT CALLED! 🚨🚨🚨")
-    try:
-        # Get raw JSON
-        body = await request.json()
-        print(f"🔍 DEBUG: Received request body with keys: {list(body.keys())}")
-        
-        # Extract and parse rocket data
-        rocket_data = body.get('rocket')
-        if rocket_data is None:
-            raise HTTPException(status_code=400, detail="Missing 'rocket' field")
-        
-        print(f"🔍 DEBUG: Rocket data keys: {list(rocket_data.keys()) if isinstance(rocket_data, dict) else type(rocket_data)}")
-        
-        # Determine format and parse rocket
-        rocket_model = None
-        if isinstance(rocket_data, dict):
-            has_parts = 'parts' in rocket_data
-            has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
-            
-            print(f"🔍 DEBUG: has_parts={has_parts}, has_components={has_components}")
-            
-            if has_parts and not has_components:
-                # Legacy format
-                print(f"🔍 DEBUG: Parsing as legacy format...")
-                try:
-                    legacy_rocket = LegacyRocketModel(**rocket_data)
-                    print(f"✅ DEBUG: Successfully parsed as LegacyRocketModel")
-                    # Convert to new format
-                    rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-                    print(f"✅ DEBUG: Successfully converted to component model")
-                except Exception as e:
-                    print(f"❌ DEBUG: Failed to parse/convert legacy rocket: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid legacy rocket format: {e}")
-            elif has_components and not has_parts:
-                # New format
-                print(f"🔍 DEBUG: Parsing as new component format...")
-                try:
-                    rocket_model = RocketModel(**rocket_data)
-                    print(f"✅ DEBUG: Successfully parsed as RocketModel")
-                except Exception as e:
-                    print(f"❌ DEBUG: Failed to parse as RocketModel: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid component rocket format: {e}")
-            else:
-                # Default to legacy if has parts
-                if has_parts:
-                    print(f"🔍 DEBUG: Ambiguous format, defaulting to legacy...")
-                    try:
-                        legacy_rocket = LegacyRocketModel(**rocket_data)
-                        print(f"✅ DEBUG: Successfully parsed ambiguous as LegacyRocketModel")
-                        rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-                        print(f"✅ DEBUG: Successfully converted ambiguous to component model")
-                    except Exception as e:
-                        print(f"❌ DEBUG: Failed to parse ambiguous as legacy: {e}")
-                        raise HTTPException(status_code=400, detail=f"Could not parse as legacy format: {e}")
-                else:
-                    raise HTTPException(status_code=400, detail="Rocket format unclear")
-        else:
-            raise HTTPException(status_code=400, detail="Rocket must be a dictionary")
-        
-        # Parse environment and launch parameters
-        environment = EnvironmentModel()
-        if 'environment' in body and body['environment']:
-            try:
-                environment = EnvironmentModel(**body['environment'])
-            except Exception as e:
-                print(f"❌ DEBUG: Failed to parse environment: {e}")
-        
-        launch_params = LaunchParametersModel()
-        if 'launchParameters' in body and body['launchParameters']:
-            try:
-                launch_params = LaunchParametersModel(**body['launchParameters'])
-            except Exception as e:
-                print(f"❌ DEBUG: Failed to parse launch parameters: {e}")
-        
-        simulation_type = body.get('simulationType', 'standard')
-        
-        print(f"✅ DEBUG: About to run simulation with type: {simulation_type}")
+async def simulate_standard(request: SimulationRequestModel):
+    """Standard simulation endpoint with component-based models only"""
+    
+    logger.info("Starting standard simulation")
+    
+    # Set defaults
+    environment = request.environment or EnvironmentModel()
+    launch_params = request.launchParameters or LaunchParametersModel()
         
         # Run simulation
-        if simulation_type == "hifi" and ROCKETPY_AVAILABLE:
-            return await simulate_rocket_6dof(rocket_model, environment, launch_params)
-        else:
-            return await simulate_simplified_fallback(rocket_model)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ DEBUG: Unexpected error in simulate_standard: {e}")
-        raise HTTPException(status_code=500, detail=f"Simulation error: {e}")
+    result = await simulate_rocket_6dof(
+        request.rocket,
+        environment,
+        launch_params
+    )
+    
+    logger.info(f"Standard simulation completed: {result.maxAltitude:.1f}m apogee")
+    return result
 
 @app.post("/simulate/hifi", response_model=SimulationResult)
-async def simulate_high_fidelity(request: Request):
-    """High-fidelity 6-DOF simulation endpoint with legacy compatibility"""
-    try:
-        # Get raw JSON
-        body = await request.json()
-        print(f"🔍 DEBUG: HiFi received request body with keys: {list(body.keys())}")
-        
-        # Extract and parse rocket data  
-        rocket_data = body.get('rocket')
-        if rocket_data is None:
-            raise HTTPException(status_code=400, detail="Missing 'rocket' field")
-            
-        # Parse rocket (same logic as standard endpoint)
-        rocket_model = None
-        if isinstance(rocket_data, dict):
-            has_parts = 'parts' in rocket_data
-            has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
-            
-            if has_parts and not has_components:
-                legacy_rocket = LegacyRocketModel(**rocket_data)
-                rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-            elif has_components:
-                rocket_model = RocketModel(**rocket_data)
-            else:
-                if has_parts:
-                    legacy_rocket = LegacyRocketModel(**rocket_data)
-                    rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-                else:
-                    raise HTTPException(status_code=400, detail="Rocket format unclear")
-        else:
-            raise HTTPException(status_code=400, detail="Rocket must be a dictionary")
-        
-        # Parse environment and launch parameters
-        environment = EnvironmentModel()
-        if 'environment' in body and body['environment']:
-            environment = EnvironmentModel(**body['environment'])
-            
-        launch_params = LaunchParametersModel()
-        if 'launchParameters' in body and body['launchParameters']:
-            launch_params = LaunchParametersModel(**body['launchParameters'])
-        
-        return await simulate_rocket_6dof(rocket_model, environment, launch_params)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ DEBUG: Unexpected error in simulate_high_fidelity: {e}")
-        raise HTTPException(status_code=500, detail=f"HiFi simulation error: {e}")
 
-@app.post("/simulate/monte-carlo", response_model=MonteCarloResult)
-async def simulate_monte_carlo(request: Request):
-    """Monte Carlo simulation endpoint with legacy compatibility"""
-    
-    logger.info("🎯 MONTE CARLO ENDPOINT STARTED")
+async def simulate_high_fidelity(request: SimulationRequestModel):
+    """High-fidelity simulation endpoint with component-based models only"""
     
     if not ROCKETPY_AVAILABLE:
         raise HTTPException(
             status_code=503, 
-            detail="Monte Carlo simulation requires RocketPy library"
+            detail="High-fidelity simulation requires RocketPy library"
         )
     
-    try:
-        # Get raw JSON and parse (same logic as other simulation endpoints)
-        body = await request.json()
-        print(f"🔍 MONTE CARLO DEBUG: Received request body with keys: {list(body.keys())}")
-        
-        # Extract and parse rocket data
-        rocket_data = body.get('rocket')
-        if rocket_data is None:
-            raise HTTPException(
-                status_code=422, 
-                detail="Missing rocket data in request"
-            )
-        
-        print(f"🔍 MONTE CARLO DEBUG: Rocket data keys: {list(rocket_data.keys())}")
-        
-        # Parse rocket using flexible converter
-        if 'parts' in rocket_data:
-            print("🔍 MONTE CARLO DEBUG: Converting from legacy format")
-            legacy_rocket = LegacyRocketModel(**rocket_data)
-            rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-        else:
-            print("🔍 MONTE CARLO DEBUG: Using component format directly")
-            rocket_model = RocketModel(**rocket_data)
-        
-        print("✅ MONTE CARLO DEBUG: Successfully converted to component model")
-        
-        # Parse other components
-        environment = EnvironmentModel(**(body.get('environment', {})))
-        launch_params = LaunchParametersModel(**(body.get('launchParameters', {})))
-        variations = [ParameterVariation(**v) for v in body.get('variations', [])]
-        iterations = body.get('iterations', 100)
-        
-        # Create Monte Carlo request
-        mc_request = MonteCarloRequest(
-            rocket=rocket_model,
-            environment=environment,
-            launchParameters=launch_params,
-            variations=variations,
-            iterations=iterations
-        )
-        
-        print(f"✅ MONTE CARLO DEBUG: About to run Monte Carlo with {iterations} iterations")
-        logger.info(f"🎯 MONTE CARLO: Starting {iterations} iterations with {len(variations)} variations")
+    logger.info("Starting high-fidelity simulation")
+    
+    # Set defaults
+    environment = request.environment or EnvironmentModel()
+    launch_params = request.launchParameters or LaunchParametersModel()
+    
+    # Enhanced analysis options
+    analysis_options = {
+        'rtol': 1e-8,
+        'atol': 1e-12,
+        'max_time': 300,
+        'include_enhanced_analysis': True
+    }
+    
+    # Run enhanced simulation
+    result = await simulate_rocket_6dof_enhanced(
+        request.rocket,
+        environment,
+        launch_params,
+        analysis_options
+    )
+    
+    logger.info(f"High-fidelity simulation completed: {result.maxAltitude:.1f}m apogee")
+    return result
+
+
+
+
+
+@app.post("/simulate/monte-carlo", response_model=MonteCarloResult)
+async def simulate_monte_carlo(request: MonteCarloRequest):
+    """Monte Carlo simulation endpoint with component-based models only"""
+    
+    logger.info(f"Starting Monte Carlo simulation with {request.iterations} iterations")
         
         # Run Monte Carlo simulation
-        simulation = MonteCarloSimulation(mc_request)
-        result = await simulation.run()
+    mc_sim = MonteCarloSimulation(request)
+    result = await mc_sim.run()
         
-        logger.info("🎯 MONTE CARLO ENDPOINT COMPLETED SUCCESSFULLY")
+    logger.info(f"Monte Carlo simulation completed: mean apogee {result.statistics['maxAltitude'].mean:.1f}m")
         return result
         
-    except Exception as e:
-        logger.error(f"🚨 MONTE CARLO ENDPOINT ERROR: {e}")
-        raise HTTPException(status_code=500, detail=f"Monte Carlo simulation failed: {str(e)}")
+
 
 @app.post("/simulate/batch")
-async def simulate_batch(requests: List[FlexibleSimulationRequestModel], 
+async def simulate_batch(requests: List[SimulationRequestModel], 
                         background_tasks: BackgroundTasks):
-    """Batch simulation endpoint for multiple configurations with legacy compatibility"""
+    """Batch simulation endpoint with component-based models only"""
     
     if len(requests) > 50:
         raise HTTPException(
@@ -3887,18 +3408,15 @@ async def simulate_batch(requests: List[FlexibleSimulationRequestModel],
         "estimated_completion": "5-10 minutes"
     }
 
-async def run_batch_simulations(simulation_id: str, requests: List[FlexibleSimulationRequestModel]):
-    """Run batch simulations in background with legacy compatibility"""
+async def run_batch_simulations(simulation_id: str, requests: List[SimulationRequestModel]):
+    """Run batch simulations in background with component-based models only"""
     logger.info(f"Starting batch simulation {simulation_id} with {len(requests)} requests")
     
     results = []
     for i, request in enumerate(requests):
         try:
-            # Convert to new format if needed
-            rocket_model = request.get_rocket_model()
-            
             result = await simulate_rocket_6dof(
-                rocket_model,
+                request.rocket,
                 request.environment or EnvironmentModel(),
                 request.launchParameters or LaunchParametersModel()
             )
@@ -3907,15 +3425,14 @@ async def run_batch_simulations(simulation_id: str, requests: List[FlexibleSimul
             logger.error(f"Batch simulation {i} failed: {e}")
             results.append({"index": i, "error": str(e), "status": "failed"})
     
-    # Store results (in production, use Redis or database)
     logger.info(f"Batch simulation {simulation_id} completed with {len(results)} results")
 
+
 @app.post("/simulate/enhanced", response_model=SimulationResult)
-async def simulate_enhanced_6dof(request: FlexibleSimulationRequestModel):
-    """Enhanced high-fidelity 6-DOF simulation with full RocketPy capabilities and legacy compatibility"""
+async def simulate_enhanced_6dof(request: SimulationRequestModel):
+    """Enhanced high-fidelity 6-DOF simulation with component-based models only"""
     
-    # Convert to new format if needed
-    rocket_model = request.get_rocket_model()
+    # Set defaults
     environment = request.environment or EnvironmentModel()
     launch_params = request.launchParameters or LaunchParametersModel()
     
@@ -3928,15 +3445,16 @@ async def simulate_enhanced_6dof(request: FlexibleSimulationRequestModel):
     }
     
     return await simulate_rocket_6dof_enhanced(
-        rocket_model, 
+        request.rocket, 
         environment, 
         launch_params,
         analysis_options
     )
 
+
 @app.post("/simulate/professional", response_model=SimulationResult)
-async def simulate_professional_grade(request: FlexibleSimulationRequestModel):
-    """Professional-grade simulation with maximum fidelity and comprehensive analysis with legacy compatibility"""
+async def simulate_professional_grade(request: SimulationRequestModel):
+    """Professional-grade simulation with component-based models only"""
     
     if not ROCKETPY_AVAILABLE:
         raise HTTPException(
@@ -3944,8 +3462,7 @@ async def simulate_professional_grade(request: FlexibleSimulationRequestModel):
             detail="Professional simulation requires RocketPy library"
         )
     
-    # Convert to new format if needed
-    rocket_model = request.get_rocket_model()
+    # Set defaults
     environment = request.environment or EnvironmentModel()
     launch_params = request.launchParameters or LaunchParametersModel()
     
@@ -3961,47 +3478,20 @@ async def simulate_professional_grade(request: FlexibleSimulationRequestModel):
     }
     
     return await simulate_rocket_6dof_enhanced(
-        rocket_model, 
+        request.rocket, 
         environment, 
         launch_params,
         analysis_options
     )
 
+
 @app.post("/analyze/stability")
-async def analyze_rocket_stability(request: Request):
-    """Comprehensive stability analysis with legacy compatibility"""
+async def analyze_rocket_stability(request: SimulationRequestModel):
+    """Comprehensive stability analysis with component-based models only"""
     
     try:
-        # Get raw JSON and parse rocket data (same as simulate endpoints)
-        body = await request.json()
-        print(f"🔍 STABILITY DEBUG: Received request body with keys: {list(body.keys())}")
-        
-        # Extract and parse rocket data
-        rocket_data = body.get('rocket')
-        if rocket_data is None:
-            raise HTTPException(status_code=400, detail="Missing 'rocket' field")
-        
-        # Parse rocket (same logic as simulation endpoints)
-        rocket_model = None
-        if isinstance(rocket_data, dict):
-            has_parts = 'parts' in rocket_data
-            has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
-            
-            if has_parts and not has_components:
-                legacy_rocket = LegacyRocketModel(**rocket_data)
-                rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-                print(f"✅ STABILITY DEBUG: Converted legacy rocket to component model")
-            elif has_components:
-                rocket_model = RocketModel(**rocket_data)
-                print(f"✅ STABILITY DEBUG: Using component rocket model")
-            else:
-                if has_parts:
-                    legacy_rocket = LegacyRocketModel(**rocket_data)
-                    rocket_model = ModelConverter.legacy_to_component(legacy_rocket)
-                else:
-                    raise HTTPException(status_code=400, detail="Rocket format unclear")
-        else:
-            raise HTTPException(status_code=400, detail="Rocket must be a dictionary")
+        logger.info("Starting stability analysis")
+        rocket_model = request.rocket
         
         if ROCKETPY_AVAILABLE:
             # Full RocketPy stability analysis
@@ -4023,59 +3513,50 @@ async def analyze_rocket_stability(request: Request):
                 cp = 0.5
                 cm = 0.3
         else:
-            # ✅ FALLBACK: Simplified stability analysis when RocketPy not available
-            print(f"🔍 STABILITY DEBUG: Using simplified stability analysis")
+            # Simplified stability analysis when RocketPy not available
+            logger.info("Using simplified stability analysis")
             
-            # Calculate simplified stability metrics
+            # Calculate total length
             total_length = 0.0
             if hasattr(rocket_model, 'nose_cone') and rocket_model.nose_cone:
                 total_length += rocket_model.nose_cone.length_m
             for tube in rocket_model.body_tubes:
                 total_length += tube.length_m
             
-            # ✅ Calculate fin contribution to stability
+            # Calculate fin contribution to stability
             total_fin_area = 0.0
-            fin_distance_from_nose = total_length * 0.85  # Fins typically at 85% of length
+            fin_distance_from_nose = total_length * 0.85
             
             for fin in rocket_model.fins:
-                root_chord = fin.root_chord_m
-                tip_chord = fin.tip_chord_m
-                span = fin.span_m
-                fin_count = fin.fin_count
-                
-                # Trapezoidal fin area
-                fin_area = 0.5 * (root_chord + tip_chord) * span
-                total_fin_area += fin_area * fin_count
+                fin_area = 0.5 * (fin.root_chord_m + fin.tip_chord_m) * fin.span_m
+                total_fin_area += fin_area * fin.fin_count
             
-            # ✅ Simplified center of pressure calculation
-            # CP is approximately at the centroid of all lifting surfaces (fins + body)
+            # Simplified center of pressure calculation
             body_area = 0.0
             for tube in rocket_model.body_tubes:
-                body_area += tube.outer_radius_m * 2 * tube.length_m  # Side area
+                body_area += tube.outer_radius_m * 2 * tube.length_m
             
-            # Weight contributions by area and distance from nose
-            body_cp_distance = total_length * 0.5  # Body CP at middle
+            body_cp_distance = total_length * 0.5
             fin_cp_distance = fin_distance_from_nose
             
             if body_area + total_fin_area > 0:
                 cp = (body_area * body_cp_distance + total_fin_area * fin_cp_distance) / (body_area + total_fin_area)
             else:
-                cp = total_length * 0.6  # Default
+                cp = total_length * 0.6
             
-            # ✅ Simplified center of mass calculation  
-            # CM is approximately at the balance point of dry mass + motor
-            cm = total_length * 0.4  # Simplified: typically forward of center
+            # Simplified center of mass calculation
+            cm = total_length * 0.4
             
-            # ✅ Calculate static margin
-            reference_diameter = 0.05  # Default 5cm
+            # Calculate static margin
+            reference_diameter = 0.05
             if rocket_model.body_tubes:
                 reference_diameter = max(tube.outer_radius_m * 2 for tube in rocket_model.body_tubes)
             
             static_margin = (cp - cm) / reference_diameter
             
-            print(f"✅ STABILITY DEBUG: Calculated stability - CP: {cp:.3f}m, CM: {cm:.3f}m, Margin: {static_margin:.2f}")
+            logger.info(f"Calculated stability - CP: {cp:.3f}m, CM: {cm:.3f}m, Margin: {static_margin:.2f}")
         
-        # ✅ Stability rating (works for both RocketPy and fallback)
+        # Stability rating
         if static_margin < 0.5:
             rating = "unstable"
             recommendation = "Add more fin area or move fins aft. Static margin too low."
@@ -4102,6 +3583,7 @@ async def analyze_rocket_stability(request: Request):
         logger.error(f"Stability analysis failed: {e}")
         raise HTTPException(status_code=500, detail=f"Stability analysis error: {str(e)}")
 
+
 @app.get("/motors/detailed", response_model=Dict[str, Any])
 async def get_detailed_motors():
     """Get detailed motor specifications with performance data"""
@@ -4117,20 +3599,27 @@ async def get_detailed_motors():
         # Calculate peak thrust (estimated)
         peak_thrust = avg_thrust * 1.3
         
-        # Calculate impulse class boundaries
-        impulse_classes = {
-            "A": (1.26, 2.5), "B": (2.51, 5.0), "C": (5.01, 10.0),
-            "D": (10.01, 20.0), "E": (20.01, 40.0), "F": (40.01, 80.0),
-            "G": (80.01, 160.0), "H": (160.01, 320.0), "I": (320.01, 640.0),
-            "J": (640.01, 1280.0), "K": (1280.01, 2560.0), "L": (2560.01, 5120.0),
-            "M": (5120.01, 10240.0), "N": (10240.01, 20480.0), "O": (20480.01, 40960.0)
-        }
-        
         # Performance characteristics
-        thrust_density = avg_thrust / (spec["mass"]["total_kg"] * 9.81)  # N/N
+        thrust_density = avg_thrust / (spec["mass"]["total_kg"] * 9.81)
         specific_impulse = spec.get("isp_s", total_impulse / (spec["mass"]["propellant_kg"] * 9.81))
         
         detailed_motors[motor_id] = {
+            # ✅ ADD: Frontend-compatible format
+            "id": motor_id,
+            "name": spec["name"],
+            "manufacturer": spec["manufacturer"],
+            "type": spec["type"],
+            "impulseClass": spec["impulse_class"],
+            
+            # ✅ ADD: Frontend-expected field names
+            "averageThrust": avg_thrust,           # ← Frontend expects this
+            "totalImpulse": total_impulse,         # ← Frontend expects this
+            "specificImpulse": specific_impulse,   # ← Frontend expects this
+            "burnTime": burn_time,
+            "thrust": avg_thrust,                  # ← Alias for compatibility
+            "isp": specific_impulse,               # ← Alias for compatibility
+            
+            # Keep existing structure
             **spec,
             "performance_metrics": {
                 "peak_thrust": peak_thrust,
@@ -4140,8 +3629,8 @@ async def get_detailed_motors():
                 "burn_rate": spec["mass"]["propellant_kg"] / burn_time
             },
             "applications": {
-                "min_rocket_mass": spec["mass"]["total_kg"] * 5,  # 5:1 ratio minimum
-                "max_rocket_mass": spec["mass"]["total_kg"] * 15,  # 15:1 ratio maximum
+                "min_rocket_mass": spec["mass"]["total_kg"] * 5,
+                "max_rocket_mass": spec["mass"]["total_kg"] * 15,
                 "recommended_diameter": spec["dimensions"]["outer_diameter_m"] * 1.5,
                 "min_stability_length": spec["dimensions"]["length_m"] * 3
             }
@@ -4157,45 +3646,56 @@ async def get_detailed_motors():
         }
     }
 
+
 @app.get("/environment/atmospheric-models")
 async def get_atmospheric_models():
-    """Get available atmospheric models and their characteristics"""
+    """Get atmospheric modeling options for simulation configuration"""
     
     return {
-        "models": {
+        "available_models": ["standard", "custom", "forecast"],
+        "default_model": "standard",
+        
+        "descriptions": {
+            "standard": "International Standard Atmosphere (ISA) - Reliable baseline model",
+            "forecast": "Real-time weather data from GFS - Most accurate for actual launches", 
+            "custom": "User-defined atmospheric conditions - For research and specialized applications"
+        },
+        
+        "capabilities": {
             "standard": {
-                "name": "International Standard Atmosphere",
-                "description": "Standard atmospheric model (ISA) with temperature and pressure profiles",
-                "altitude_range": "0-30km",
-                "accuracy": "Good for general use",
-                "features": ["Temperature profile", "Pressure profile", "Density calculation"]
+                "altitude_range_m": [0, 30000],
+                "accuracy": "baseline",
+                "data_sources": ["ISA tables"],
+                "features": ["temperature_profile", "pressure_profile", "density_calculation"]
             },
             "forecast": {
-                "name": "GFS Weather Forecast",
-                "description": "Real-time weather data from Global Forecast System",
-                "altitude_range": "0-20km",
-                "accuracy": "High for current conditions",
-                "features": ["Real wind data", "Temperature profiles", "Pressure data", "Humidity"]
+                "altitude_range_m": [0, 20000], 
+                "accuracy": "high",
+                "data_sources": ["GFS", "real_time_weather"],
+                "features": ["real_wind_data", "temperature_profiles", "pressure_data", "humidity"]
             },
             "custom": {
-                "name": "Custom Atmospheric Profile",
-                "description": "User-defined atmospheric conditions",
-                "altitude_range": "User defined",
-                "accuracy": "Depends on input data",
-                "features": ["Custom profiles", "Specific conditions", "Research applications"]
+                "altitude_range_m": [0, 100000],
+                "accuracy": "user_defined", 
+                "data_sources": ["user_input"],
+                "features": ["custom_profiles", "research_conditions", "specialized_atmospheres"]
             }
         },
-        "wind_models": {
-            "constant": "Constant wind speed and direction",
-            "linear": "Linear wind variation with altitude",
-            "realistic": "Realistic wind profile with boundary layer effects",
-            "turbulent": "Turbulent wind with gusts and variations"
-        },
-        "recommendations": {
+        
+        "use_cases": {
             "beginner": "standard",
+            "educational": "standard", 
             "competition": "forecast",
+            "real_launch": "forecast",
             "research": "custom",
-            "high_altitude": "forecast"
+            "high_altitude": "forecast",
+            "planetary": "custom"
+        },
+        
+        "requirements": {
+            "standard": "No additional data required",
+            "forecast": "Internet connection and valid GPS coordinates required",
+            "custom": "Custom atmospheric profile data file required"
         }
     }
 

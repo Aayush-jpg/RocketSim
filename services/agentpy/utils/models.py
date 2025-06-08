@@ -116,45 +116,6 @@ class ComponentRocketModel(BaseModel):
     coordinate_system: Literal["tail_to_nose", "nose_to_tail"] = "tail_to_nose"
     rail_guides_position_m: Optional[List[float]] = Field(None, description="Rail guide positions")
 
-# ===========================
-# LEGACY MODELS (For backward compatibility)
-# ===========================
-
-class LegacyPartModel(BaseModel):
-    """Legacy part model for backward compatibility."""
-    id: str
-    type: Literal["nose", "body", "fin", "engine", "parachute"]
-    color: Optional[str] = "white"
-    # Legacy part properties
-    length: Optional[float] = None  # cm
-    diameter: Optional[float] = None  # cm
-    thickness: Optional[float] = None  # mm
-    shape: Optional[str] = None
-    root: Optional[float] = None  # cm
-    span: Optional[float] = None  # cm
-    tip: Optional[float] = None  # cm
-    sweep: Optional[float] = None  # cm
-    cd_s: Optional[float] = None  # parachute drag
-    trigger: Optional[Union[str, float]] = None  # parachute trigger
-    thrust: Optional[float] = None  # engine thrust
-    Isp: Optional[float] = None  # engine specific impulse
-    # Special Unicode fields
-    baseØ: Optional[float] = Field(None, alias="baseØ", description="Nose base diameter")
-    Ø: Optional[float] = Field(None, alias="Ø", description="Body diameter")
-    
-    model_config = {
-        "populate_by_name": True,
-        "extra": "allow"
-    }
-
-class LegacyRocketModel(BaseModel):
-    """Legacy rocket model with parts array."""
-    id: str
-    name: str
-    parts: List[LegacyPartModel]
-    motorId: str
-    Cd: float = 0.5
-    units: Literal["metric", "imperial"] = "metric"
 
 # ===========================
 # UNIFIED REQUEST MODELS
@@ -162,7 +123,7 @@ class LegacyRocketModel(BaseModel):
 
 class ComprehensiveContext(BaseModel):
     """Complete context information for agents."""
-    rocket: Union[Dict[str, Any], ComponentRocketModel, LegacyRocketModel]
+    rocket: Union[Dict[str, Any], ComponentRocketModel]
     environment: Optional[EnvironmentData] = None
     simulationHistory: Optional[List[SimulationHistory]] = None
     analysisHistory: Optional[List[AnalysisHistory]] = None
@@ -172,7 +133,7 @@ class ComprehensiveContext(BaseModel):
 class ChatRequest(BaseModel):
     """Request model for the main /reason endpoint."""
     messages: List[Dict[str, str]]
-    rocket: Union[Dict[str, Any], ComponentRocketModel, LegacyRocketModel]
+    rocket: Union[Dict[str, Any], ComponentRocketModel]
     # Enhanced context (optional for backward compatibility)
     environment: Optional[EnvironmentData] = None
     simulationHistory: Optional[List[SimulationHistory]] = None
@@ -183,7 +144,7 @@ class ChatRequest(BaseModel):
 class AgentRequest(BaseModel):
     """Request model for the /reason-with-agent endpoint."""
     messages: List[Dict[str, str]]
-    rocket: Union[Dict[str, Any], ComponentRocketModel, LegacyRocketModel]
+    rocket: Union[Dict[str, Any], ComponentRocketModel]
     agent: Optional[str] = "master"  # Which agent to use
     # Enhanced context (optional for backward compatibility)
     environment: Optional[EnvironmentData] = None
@@ -195,22 +156,6 @@ class AgentRequest(BaseModel):
 # ===========================
 # TOOL PARAMETER MODELS
 # ===========================
-
-class PartProps(BaseModel):
-    """Properties for a rocket part that can be modified (legacy)."""
-    color: Optional[str] = None
-    shape: Optional[str] = None
-    length: Optional[float] = None
-    baseØ: Optional[float] = Field(None, alias="baseØ")
-    Ø: Optional[float] = Field(None, alias="Ø")
-    root: Optional[float] = None
-    span: Optional[float] = None
-    sweep: Optional[float] = None
-    
-    model_config = {
-        "extra": "forbid",  # Forbid extra properties
-        "populate_by_name": True  # Allow population by name to handle aliases
-    }
 
 class ComponentProps(BaseModel):
     """Properties for component-based modifications."""
@@ -247,9 +192,6 @@ class ComponentProps(BaseModel):
 
 class RocketProps(BaseModel):
     """Properties for a rocket that can be modified."""
-    motorId: Optional[str] = None
-    Cd: Optional[float] = None
-    units: Optional[str] = None
     # Component-based rocket properties
     coordinate_system: Optional[Literal["tail_to_nose", "nose_to_tail"]] = None
     rail_guides_position_m: Optional[List[float]] = None

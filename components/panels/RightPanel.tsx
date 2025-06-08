@@ -16,6 +16,7 @@ import TrajectoryTab from './pro-mode/TrajectoryTab'
 import RecoveryTab from './pro-mode/RecoveryTab'
 import WeatherStatus from '@/components/WeatherStatus'
 import VersionHistoryTab from './pro-mode/VersionHistoryTab'
+import AtmosphericModelSelector from '@/components/AtmosphericModelSelector'
 
 // Format numbers to prevent overflow
 function formatNumber(value: number): string {
@@ -418,6 +419,9 @@ function EnvironmentTab() {
 
       {/* Weather Status Component */}
       <WeatherStatus />
+
+      {/* Atmospheric Model Selector */}
+      <AtmosphericModelSelector />
       
       {/* Environment Configuration */}
       <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">

@@ -505,34 +505,6 @@ class RocketContextBuilder:
         
         return "\n".join(contexts)
 
-    def _format_part_info(self, part: Dict[str, Any]) -> str:
-        """Format individual part information."""
-        part_type = part.get('type', 'unknown')
-        part_id = part.get('id', 'unknown')
-        color = part.get('color', 'white')
-        
-        info = f"{part_type.upper()} (ID: {part_id[:8]}..., Color: {color})"
-        
-        # Add type-specific details
-        if part_type == 'nose':
-            shape = part.get('shape', 'unknown')
-            length = part.get('length', 0)
-            base_diameter = part.get('baseØ', 0)
-            info += f" - {shape}, Length: {length}cm, Base Ø: {base_diameter}cm"
-        
-        elif part_type == 'body':
-            diameter = part.get('Ø', 0)
-            length = part.get('length', 0)
-            info += f" - Ø: {diameter}cm, Length: {length}cm"
-        
-        elif part_type == 'fin':
-            root = part.get('root', 0)
-            span = part.get('span', 0)
-            sweep = part.get('sweep', 0)
-            info += f" - Root: {root}cm, Span: {span}cm, Sweep: {sweep}°"
-        
-        return info
-    
     def _analyze_design(self, rocket_data: Dict[str, Any]) -> List[str]:
         """Analyze the current rocket design and provide insights."""
         analysis = []
@@ -707,25 +679,3 @@ def build_context_from_request(request: ChatRequest) -> str:
         user_message=user_message
     )
 
-
-# Legacy compatibility function
-def build_full_context(rocket_data: Dict[str, Any], 
-                      sim_data: Optional[Dict[str, Any]] = None,
-                      user_message: str = "") -> str:
-    """Legacy function for backward compatibility."""
-    # Convert sim_data to SimulationHistory format if provided
-    simulation_history = None
-    if sim_data:
-        simulation_history = [SimulationHistory(
-            maxAltitude=sim_data.get('apogee'),
-            maxVelocity=sim_data.get('max_velocity'),
-            stabilityMargin=sim_data.get('stability_margin'),
-            fidelity=sim_data.get('fidelity', 'unknown'),
-            timestamp=datetime.now().isoformat()
-        )]
-    
-    return build_comprehensive_context(
-        rocket_data=rocket_data,
-        simulation_history=simulation_history,
-        user_message=user_message
-    ) 

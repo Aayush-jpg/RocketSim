@@ -15,14 +15,18 @@ def calculate_max_altitude(total_mass, thrust, burn_time, specific_impulse, drag
         burn_time: Engine burn time in seconds
         specific_impulse: Engine specific impulse in seconds
         drag_coef: Drag coefficient
-        rocket_data: Dictionary containing rocket configuration
+        rocket_data: Dictionary containing rocket configuration (component-based)
         
     Returns:
         float: Maximum altitude in meters
     """
-    body_part = next((p for p in rocket_data.get("parts", []) if p.get("type") == "body"), None)
-    diameter = body_part.get("Ø", 5) if body_part else 5
-    frontal_area = math.pi * (diameter / 200)**2
+    body_tubes = rocket_data.get("body_tubes", [])
+    if body_tubes:
+        diameter_m = body_tubes[0].get("outer_radius_m", 0.05) * 2  # Convert radius to diameter
+    else:
+        diameter_m = 0.1  # Default 10cm diameter
+    
+    frontal_area = math.pi * (diameter_m / 2)**2
     effective_drag = drag_coef * 0.8 if thrust > 500 else drag_coef
     
     exhaust_velocity = specific_impulse * GRAVITATIONAL_ACCELERATION
@@ -30,9 +34,9 @@ def calculate_max_altitude(total_mass, thrust, burn_time, specific_impulse, drag
     dry_mass = total_mass - prop_mass
     if dry_mass <= 0 or total_mass <= dry_mass : # dry_mass must be less than total_mass
         print(f"Warning: Invalid mass values (total: {total_mass}, dry: {dry_mass}, prop: {prop_mass}). Using estimated dry_mass.")
-        # Estimate dry_mass as a fraction of total_mass if calculation is off
-        # This is a fallback, ideally PROPULSION_SYSTEMS should have consistent propellant_mass
-        engine_details = PROPULSION_SYSTEMS.get(rocket_data.get('motorId', 'default-motor'), PROPULSION_SYSTEMS['default-motor'])
+        motor = rocket_data.get('motor', {})
+        motor_id = motor.get('motor_database_id', 'default-motor')
+        engine_details = PROPULSION_SYSTEMS.get(motor_id, PROPULSION_SYSTEMS['default-motor'])
         prop_mass = engine_details['propellant_mass']
         dry_mass = total_mass - prop_mass
         if dry_mass <= 0: return 0 # Still invalid
@@ -40,7 +44,7 @@ def calculate_max_altitude(total_mass, thrust, burn_time, specific_impulse, drag
     ideal_delta_v = exhaust_velocity * math.log(total_mass / dry_mass)
     
     propulsion_type = "solid"
-    motor_id = rocket_data.get("motorId", "")
+    motor_id = rocket_data.get("motor", {}).get("motor_database_id", "default-motor")
     if "liquid" in motor_id: propulsion_type = "liquid"
     elif "hybrid" in motor_id: propulsion_type = "hybrid"
 
@@ -68,63 +72,94 @@ def physics_based_rocket_design(rocket_data, target_altitude):
     Design a rocket to reach a specific altitude using physics-based calculations.
     
     Args:
-        rocket_data: Dictionary containing current rocket configuration
+        rocket_data: Dictionary containing current rocket configuration (component-based)
         target_altitude: Target altitude in meters
         
     Returns:
-        list: A list of actions to modify the rocket design
+        list: A list of actions to modify the rocket design using component tools
     """
     actions = []
     rocket_dry_mass = calculate_rocket_mass(rocket_data)
     selected_engine_id = select_engine_for_altitude(target_altitude, rocket_dry_mass)
     selected_engine = PROPULSION_SYSTEMS[selected_engine_id]
-    actions.append({"action": "update_rocket", "props": {"motorId": selected_engine_id}})
+    
+    actions.append({"action": "update_motor", "props": {"motor_database_id": selected_engine_id}})
 
-    body_part = next((p for p in rocket_data.get("parts", []) if p.get("type") == "body"), None)
-    nose_part = next((p for p in rocket_data.get("parts", []) if p.get("type") == "nose"), None)
-    fin_part = next((p for p in rocket_data.get("parts", []) if p.get("type") == "fin"), None)
+    nose_cone = rocket_data.get("nose_cone")
+    body_tubes = rocket_data.get("body_tubes", [])
+    fins = rocket_data.get("fins", [])
 
     is_liquid = "liquid" in selected_engine_id
     is_high_power_solid = "super-power" in selected_engine_id
 
-    if body_part:
-        base_length = body_part.get("length", 40)
+    if body_tubes:
+        body_tube = body_tubes[0]
+        base_length_m = body_tube.get("length_m", 0.4)
         thrust_factor = math.sqrt(selected_engine['thrust'] / 32)
-        altitude_factor = math.pow(max(100, target_altitude) / 500, 0.25) # Avoid log(0) or small numbers
+        altitude_factor = math.pow(max(100, target_altitude) / 500, 0.25)
         
-        if is_liquid: new_length = min(250, max(100, 120 * thrust_factor * 0.6))
-        elif is_high_power_solid: new_length = min(120, max(60, 80 * altitude_factor)) # Adjusted for high power solid
-        else: new_length = min(120, max(40, base_length * thrust_factor * altitude_factor))
-        actions.append({"action": "update_part", "id": body_part["id"], "props": {"length": round(new_length, 1)}})
+        if is_liquid: 
+            new_length_m = min(2.5, max(1.0, 1.2 * thrust_factor * 0.6))
+        elif is_high_power_solid: 
+            new_length_m = min(1.2, max(0.6, 0.8 * altitude_factor))
+        else: 
+            new_length_m = min(1.2, max(0.4, base_length_m * thrust_factor * altitude_factor))
+        
+        actions.append({
+            "action": "update_body_tube", 
+            "index": 0,
+            "props": {"length_m": round(new_length_m, 3)}
+        })
         
         if is_liquid:
-            current_diameter = body_part.get("Ø", 5)
-            new_diameter = min(15, max(8, current_diameter * 1.6))
-            if new_diameter > current_diameter:
-                actions.append({"action": "update_part", "id": body_part["id"], "props": {"Ø": round(new_diameter, 1)}})
-                if nose_part: # Match nose base diameter
-                    actions.append({"action": "update_part", "id": nose_part["id"], "props": {"baseØ": round(new_diameter, 1)}})
+            current_radius_m = body_tube.get("outer_radius_m", 0.05)
+            new_radius_m = min(0.075, max(0.04, current_radius_m * 1.6))
+            if new_radius_m > current_radius_m:
+                actions.append({
+                    "action": "update_body_tube", 
+                    "index": 0,
+                    "props": {"outer_radius_m": round(new_radius_m, 4)}
+                })
+                
+                if nose_cone:
+                    actions.append({
+                        "action": "update_nose_cone", 
+                        "props": {"base_radius_m": round(new_radius_m, 4)}
+                    })
 
-
-    if fin_part:
+    if fins:
+        fin_set = fins[0]
         velocity_factor = 1.1 if target_altitude < 1000 else 1.3 if target_altitude < 5000 else 1.5 if target_altitude < 20000 else 1.8
         if is_liquid: velocity_factor *= 1.3
         
-        new_root = min(25, max(10, fin_part.get("root", 10) * velocity_factor))
-        new_span = min(20, max(8, fin_part.get("span", 8) * velocity_factor))
+        current_root_m = fin_set.get("root_chord_m", 0.08)
+        current_span_m = fin_set.get("span_m", 0.06)
+        
+        new_root_m = min(0.25, max(0.08, current_root_m * velocity_factor))
+        new_span_m = min(0.20, max(0.06, current_span_m * velocity_factor))
 
-        if body_part and is_liquid: # Proportional fins for liquid rockets
-            body_len = body_part.get("length", new_length if 'new_length' in locals() else 80) # Use updated length if available
-            body_dia = body_part.get("Ø", new_diameter if 'new_diameter' in locals() else 5)
-            new_root = max(new_root, body_len * 0.15)
-            new_span = max(new_span, body_dia * 1.5) # Adjusted span factor
+        if body_tubes and is_liquid:
+            body_len_m = body_tubes[0].get("length_m", new_length_m if 'new_length_m' in locals() else 0.8)
+            body_radius_m = body_tubes[0].get("outer_radius_m", 0.05)
+            new_root_m = max(new_root_m, body_len_m * 0.15)
+            new_span_m = max(new_span_m, body_radius_m * 3.0)
 
-        actions.append({"action": "update_part", "id": fin_part["id"], "props": {"root": round(new_root, 1), "span": round(new_span, 1)}})
+        actions.append({
+            "action": "update_fins", 
+            "index": 0,
+            "props": {
+                "root_chord_m": round(new_root_m, 3), 
+                "span_m": round(new_span_m, 3)
+            }
+        })
 
-    if nose_part and (is_liquid or target_altitude > 1000): # Ogive for higher performance
-        if nose_part.get("shape", "ogive") != "ogive":
-            actions.append({"action": "update_part", "id": nose_part["id"], "props": {"shape": "ogive"}})
+    if nose_cone and (is_liquid or target_altitude > 1000):
+        if nose_cone.get("shape", "ogive") != "ogive":
+            actions.append({
+                "action": "update_nose_cone", 
+                "props": {"shape": "ogive"}
+            })
             
     actions.append({"action": "run_sim", "fidelity": "quick"})
-    print(f"[physics_based_rocket_design] Generated actions: {actions}")
+    print(f"[physics_based_rocket_design] Generated component-based actions: {actions}")
     return actions 

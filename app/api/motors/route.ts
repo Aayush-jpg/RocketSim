@@ -1,34 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMotors, toLegacyFormat } from "@/lib/data/motors";
+import { getMotors } from "@/lib/data/motors";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // Mark route as dynamic to prevent static generation issues
 
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = req.nextUrl;
-    const motorType = searchParams.get('motor_type') as "solid" | "liquid" | "hybrid" | null;
-    const manufacturer = searchParams.get('manufacturer');
-    const impulseClass = searchParams.get('impulse_class');
-    
-    // Use centralized motor database with filters
+    const searchParams = request.nextUrl.searchParams;
+    const type = searchParams.get("type") as "solid" | "liquid" | "hybrid" | null;
+    const manufacturer = searchParams.get("manufacturer");
+    const impulseClass = searchParams.get("impulseClass");
+
+    // Apply filters to get motors
     const motors = getMotors({
-      type: motorType || undefined,
-      manufacturer: manufacturer || undefined,
-      impulseClass: impulseClass || undefined
+      ...(type && { type }),
+      ...(manufacturer && { manufacturer }),
+      ...(impulseClass && { impulseClass }),
     });
-    
-    // Convert to legacy format for backward compatibility
-    const legacyMotors = motors.map(motor => ({
-      id: motor.id,
-      ...toLegacyFormat(motor)
+
+    // Return motors in component-based format (no legacy conversion needed)
+    const response = motors.map(motor => ({
+      ...motor
     }));
-    
-    return NextResponse.json({ motors: legacyMotors });
-    
+
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400'
+      }
+    });
   } catch (error) {
-    console.error("Motors API error:", error);
+    console.error("Motor API error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch motors" }, 
+      { error: "Failed to fetch motors" },
       { status: 500 }
     );
   }
