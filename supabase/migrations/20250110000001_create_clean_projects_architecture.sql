@@ -683,160 +683,160 @@ BEGIN
 END;
 $$;
 
--- Create component legacy conversion function (MISSING CRITICAL FUNCTIONALITY)
-CREATE OR REPLACE FUNCTION convert_legacy_to_components(legacy_parts JSONB)
-RETURNS JSONB AS $$
-DECLARE
-  components JSONB;
-  nose_cone JSONB := NULL;
-  body_tubes JSONB := '[]'::jsonb;
-  fins JSONB := '[]'::jsonb;
-  motor JSONB := NULL;
-  parachutes JSONB := '[]'::jsonb;
-  part JSONB;
-  body_tube JSONB;
-  fin JSONB;
-BEGIN
-  -- Handle null or empty input
-  IF legacy_parts IS NULL OR legacy_parts = 'null'::jsonb THEN
-    legacy_parts := '[]'::jsonb;
-  END IF;
+-- -- Create component legacy conversion function (MISSING CRITICAL FUNCTIONALITY)
+-- CREATE OR REPLACE FUNCTION convert_legacy_to_components(legacy_parts JSONB)
+-- RETURNS JSONB AS $$
+-- DECLARE
+--   components JSONB;
+--   nose_cone JSONB := NULL;
+--   body_tubes JSONB := '[]'::jsonb;
+--   fins JSONB := '[]'::jsonb;
+--   motor JSONB := NULL;
+--   parachutes JSONB := '[]'::jsonb;
+--   part JSONB;
+--   body_tube JSONB;
+--   fin JSONB;
+-- BEGIN
+--   -- Handle null or empty input
+--   IF legacy_parts IS NULL OR legacy_parts = 'null'::jsonb THEN
+--     legacy_parts := '[]'::jsonb;
+--   END IF;
   
-  -- If input is not an array, wrap it
-  IF NOT (legacy_parts ? '0') THEN
-    legacy_parts := jsonb_build_array(legacy_parts);
-  END IF;
+--   -- If input is not an array, wrap it
+--   IF NOT (legacy_parts ? '0') THEN
+--     legacy_parts := jsonb_build_array(legacy_parts);
+--   END IF;
   
-  -- Process each legacy part
-  FOR part IN SELECT * FROM jsonb_array_elements(legacy_parts)
-  LOOP
-    CASE part->>'type'
-      WHEN 'nose' THEN
-        nose_cone := jsonb_build_object(
-          'id', COALESCE(part->>'id', gen_random_uuid()::text),
-          'shape', COALESCE(part->>'shape', 'ogive'),
-          'length_m', CASE 
-            WHEN part->'length' IS NOT NULL THEN (part->>'length')::numeric / 100.0
-            ELSE 0.15 
-          END,
-          'base_radius_m', CASE 
-            WHEN part->'baseØ' IS NOT NULL THEN (part->>'baseØ')::numeric / 200.0
-            ELSE 0.05 
-          END,
-          'wall_thickness_m', 0.002,
-          'material_density_kg_m3', 1600.0,
-          'surface_roughness_m', 1e-5,
-          'color', COALESCE(part->>'color', '#A0A7B8')
-        );
+--   -- Process each legacy part
+--   FOR part IN SELECT * FROM jsonb_array_elements(legacy_parts)
+--   LOOP
+--     CASE part->>'type'
+--       WHEN 'nose' THEN
+--         nose_cone := jsonb_build_object(
+--           'id', COALESCE(part->>'id', gen_random_uuid()::text),
+--           'shape', COALESCE(part->>'shape', 'ogive'),
+--           'length_m', CASE 
+--             WHEN part->'length' IS NOT NULL THEN (part->>'length')::numeric / 100.0
+--             ELSE 0.15 
+--           END,
+--           'base_radius_m', CASE 
+--             WHEN part->'baseØ' IS NOT NULL THEN (part->>'baseØ')::numeric / 200.0
+--             ELSE 0.05 
+--           END,
+--           'wall_thickness_m', 0.002,
+--           'material_density_kg_m3', 1600.0,
+--           'surface_roughness_m', 1e-5,
+--           'color', COALESCE(part->>'color', '#A0A7B8')
+--         );
         
-      WHEN 'body' THEN
-        body_tube := jsonb_build_object(
-          'id', COALESCE(part->>'id', gen_random_uuid()::text),
-          'outer_radius_m', CASE 
-            WHEN part->'Ø' IS NOT NULL THEN (part->>'Ø')::numeric / 200.0
-            ELSE 0.05 
-          END,
-          'length_m', CASE 
-            WHEN part->'length' IS NOT NULL THEN (part->>'length')::numeric / 100.0
-            ELSE 0.40 
-          END,
-          'wall_thickness_m', 0.003,
-          'material_density_kg_m3', 1600.0,
-          'surface_roughness_m', 1e-5,
-          'color', COALESCE(part->>'color', '#8C8D91')
-        );
-        body_tubes := body_tubes || body_tube;
+--       WHEN 'body' THEN
+--         body_tube := jsonb_build_object(
+--           'id', COALESCE(part->>'id', gen_random_uuid()::text),
+--           'outer_radius_m', CASE 
+--             WHEN part->'Ø' IS NOT NULL THEN (part->>'Ø')::numeric / 200.0
+--             ELSE 0.05 
+--           END,
+--           'length_m', CASE 
+--             WHEN part->'length' IS NOT NULL THEN (part->>'length')::numeric / 100.0
+--             ELSE 0.40 
+--           END,
+--           'wall_thickness_m', 0.003,
+--           'material_density_kg_m3', 1600.0,
+--           'surface_roughness_m', 1e-5,
+--           'color', COALESCE(part->>'color', '#8C8D91')
+--         );
+--         body_tubes := body_tubes || body_tube;
         
-      WHEN 'fin' THEN
-        fin := jsonb_build_object(
-          'id', COALESCE(part->>'id', gen_random_uuid()::text),
-          'fin_count', 3,
-          'root_chord_m', CASE 
-            WHEN part->'root' IS NOT NULL THEN (part->>'root')::numeric / 100.0
-            ELSE 0.08 
-          END,
-          'tip_chord_m', CASE 
-            WHEN part->'root' IS NOT NULL THEN (part->>'root')::numeric / 200.0
-            ELSE 0.04 
-          END,
-          'span_m', CASE 
-            WHEN part->'span' IS NOT NULL THEN (part->>'span')::numeric / 100.0
-            ELSE 0.06 
-          END,
-          'sweep_length_m', CASE 
-            WHEN part->'sweep' IS NOT NULL THEN (part->>'sweep')::numeric / 100.0
-            ELSE 0.02 
-          END,
-          'thickness_m', 0.006,
-          'material_density_kg_m3', 650.0,
-          'airfoil', 'symmetric',
-          'cant_angle_deg', 0.0,
-          'color', COALESCE(part->>'color', '#A0A7B8')
-        );
-        fins := fins || fin;
+--       WHEN 'fin' THEN
+--         fin := jsonb_build_object(
+--           'id', COALESCE(part->>'id', gen_random_uuid()::text),
+--           'fin_count', 3,
+--           'root_chord_m', CASE 
+--             WHEN part->'root' IS NOT NULL THEN (part->>'root')::numeric / 100.0
+--             ELSE 0.08 
+--           END,
+--           'tip_chord_m', CASE 
+--             WHEN part->'root' IS NOT NULL THEN (part->>'root')::numeric / 200.0
+--             ELSE 0.04 
+--           END,
+--           'span_m', CASE 
+--             WHEN part->'span' IS NOT NULL THEN (part->>'span')::numeric / 100.0
+--             ELSE 0.06 
+--           END,
+--           'sweep_length_m', CASE 
+--             WHEN part->'sweep' IS NOT NULL THEN (part->>'sweep')::numeric / 100.0
+--             ELSE 0.02 
+--           END,
+--           'thickness_m', 0.006,
+--           'material_density_kg_m3', 650.0,
+--           'airfoil', 'symmetric',
+--           'cant_angle_deg', 0.0,
+--           'color', COALESCE(part->>'color', '#A0A7B8')
+--         );
+--         fins := fins || fin;
         
-      WHEN 'engine' THEN
-        motor := jsonb_build_object(
-          'id', COALESCE(part->>'id', 'motor'),
-          'motor_database_id', 'C6-5',
-          'position_from_tail_m', 0.0
-        );
+--       WHEN 'engine' THEN
+--         motor := jsonb_build_object(
+--           'id', COALESCE(part->>'id', 'motor'),
+--           'motor_database_id', 'C6-5',
+--           'position_from_tail_m', 0.0
+--         );
         
-      ELSE
-        NULL;
-    END CASE;
-  END LOOP;
+--       ELSE
+--         NULL;
+--     END CASE;
+--   END LOOP;
   
-  -- Set defaults if components are missing
-  IF nose_cone IS NULL THEN
-    nose_cone := jsonb_build_object(
-      'id', gen_random_uuid()::text,
-      'shape', 'ogive',
-      'length_m', 0.15,
-      'base_radius_m', 0.05,
-      'wall_thickness_m', 0.002,
-      'material_density_kg_m3', 1600.0,
-      'surface_roughness_m', 1e-5,
-      'color', '#A0A7B8'
-    );
-  END IF;
+--   -- Set defaults if components are missing
+--   IF nose_cone IS NULL THEN
+--     nose_cone := jsonb_build_object(
+--       'id', gen_random_uuid()::text,
+--       'shape', 'ogive',
+--       'length_m', 0.15,
+--       'base_radius_m', 0.05,
+--       'wall_thickness_m', 0.002,
+--       'material_density_kg_m3', 1600.0,
+--       'surface_roughness_m', 1e-5,
+--       'color', '#A0A7B8'
+--     );
+--   END IF;
   
-  IF motor IS NULL THEN
-    motor := jsonb_build_object(
-      'id', 'motor',
-      'motor_database_id', 'C6-5',
-      'position_from_tail_m', 0.0
-    );
-  END IF;
+--   IF motor IS NULL THEN
+--     motor := jsonb_build_object(
+--       'id', 'motor',
+--       'motor_database_id', 'C6-5',
+--       'position_from_tail_m', 0.0
+--     );
+--   END IF;
   
-  -- Add default parachute
-  parachutes := jsonb_build_array(jsonb_build_object(
-    'id', gen_random_uuid()::text,
-    'name', 'Main Parachute',
-    'cd_s_m2', 1.0,
-    'trigger', 'apogee',
-    'sampling_rate_hz', 105.0,
-    'lag_s', 1.5,
-    'noise_bias', 0.0,
-    'noise_deviation', 8.3,
-    'noise_correlation', 0.5,
-    'position_from_tail_m', 0.0,
-    'color', '#FF6B35'
-  ));
+--   -- Add default parachute
+--   parachutes := jsonb_build_array(jsonb_build_object(
+--     'id', gen_random_uuid()::text,
+--     'name', 'Main Parachute',
+--     'cd_s_m2', 1.0,
+--     'trigger', 'apogee',
+--     'sampling_rate_hz', 105.0,
+--     'lag_s', 1.5,
+--     'noise_bias', 0.0,
+--     'noise_deviation', 8.3,
+--     'noise_correlation', 0.5,
+--     'position_from_tail_m', 0.0,
+--     'color', '#FF6B35'
+--   ));
   
-  -- Build final component structure
-  components := jsonb_build_object(
-    'nose_cone', nose_cone,
-    'body_tubes', body_tubes,
-    'fins', fins,
-    'motor', motor,
-    'parachutes', parachutes,
-    'coordinate_system', 'tail_to_nose'
-  );
+--   -- Build final component structure
+--   components := jsonb_build_object(
+--     'nose_cone', nose_cone,
+--     'body_tubes', body_tubes,
+--     'fins', fins,
+--     'motor', motor,
+--     'parachutes', parachutes,
+--     'coordinate_system', 'tail_to_nose'
+--   );
   
-  RETURN components;
-END;
-$$ LANGUAGE plpgsql;
+--   RETURN components;
+-- END;
+-- $$ LANGUAGE plpgsql;
 
 -- Create user synchronization function (MISSING CRITICAL FUNCTIONALITY)
 CREATE OR REPLACE FUNCTION public.handle_new_user()

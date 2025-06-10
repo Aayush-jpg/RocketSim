@@ -10,19 +10,19 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type") as "solid" | "liquid" | "hybrid" | null;
     const manufacturer = searchParams.get("manufacturer");
     const impulseClass = searchParams.get("impulseClass");
-
+    
     // Apply filters to get motors
     const motors = getMotors({
       ...(type && { type }),
       ...(manufacturer && { manufacturer }),
       ...(impulseClass && { impulseClass }),
     });
-
+    
     // Return motors in component-based format (no legacy conversion needed)
     const response = motors.map(motor => ({
       ...motor
     }));
-
+    
     return NextResponse.json(response, {
       headers: {
         'Cache-Control': 'public, max-age=3600, s-maxage=86400'
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Motor API error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch motors" },
+      { error: "Failed to fetch motors" }, 
       { status: 500 }
     );
   }

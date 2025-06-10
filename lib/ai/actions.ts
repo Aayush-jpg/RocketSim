@@ -81,7 +81,7 @@ function calculateComponentMass(component: any): number {
  */
 export async function runHighFiSim() {
   try {
-    const { rocket, setSim, setSimulating, setSimulationProgress } = useRocket.getState();
+    const { rocket, environment, setSim, setSimulating, setSimulationProgress } = useRocket.getState();
     
     setSimulating(true);
     setSimulationProgress(0);
@@ -89,7 +89,7 @@ export async function runHighFiSim() {
     const response = await fetch('/api/hifi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rocket })
+      body: JSON.stringify({ rocket, environment })
     });
     
     if (!response.ok) {
@@ -777,10 +777,11 @@ export function updateEnvironmentFromWeather(action: any) {
       latitude: action.location?.latitude || action.lat,
       longitude: action.location?.longitude || action.lon,
       elevation: action.location?.elevation || action.elevation || 0,
-      windSpeed: action.windSpeed || action.wind?.speed || 0,
-      windDirection: action.windDirection || action.wind?.direction || 0,
+      windSpeed: action.current?.windSpeed || action.wind?.speed || 0,
+      windDirection: action.current?.windDirection || action.wind?.direction || 0,
       atmosphericModel: "forecast",
-      date: action.timestamp || new Date().toISOString()
+      date: action.validTime || action.timestamp || new Date().toISOString(),
+      atmospheric_profile: action.atmospheric 
     };
     
     const filteredUpdate = Object.fromEntries(

@@ -50,7 +50,8 @@ export const DEFAULT_ENVIRONMENT: EnvironmentConfig = {
   elevation: 0.0,
   windSpeed: 0.0,
   windDirection: 0.0,
-  atmosphericModel: "standard"
+  atmosphericModel: "standard",
+  atmospheric_profile: undefined
 };
 
 // Default launch parameters

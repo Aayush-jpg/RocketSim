@@ -198,7 +198,7 @@ export interface EnvironmentConfig {
   elevation: number;
   windSpeed: number;
   windDirection: number;
-  atmosphericModel: "standard" | "forecast" | "custom";
+  atmosphericModel: "standard" | "forecast" | "custom" | "nrlmsise";
   date?: string;
   temperature?: number;
   pressure?: number;
@@ -208,6 +208,16 @@ export interface EnvironmentConfig {
   airDensity?: number;
   soundSpeed?: number;
   timestamp?: string;
+  atmospheric_profile?: AtmosphericProfile;
+}
+
+export interface AtmosphericProfile {
+  altitude: number[]; // meters
+  temperature: number[]; // K
+  pressure: number[]; // Pa
+  density: number[]; // kg/m³
+  windU: number[]; // m/s (east component)
+  windV: number[]; // m/s (north component)
 }
 
 export interface LaunchParameters {

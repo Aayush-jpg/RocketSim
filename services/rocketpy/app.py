@@ -13,6 +13,13 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import traceback
 
+# ✅ ADD: Import for MSISE00 library
+try:
+    from msise00 import GCF
+    MSISE_AVAILABLE = True
+except ImportError:
+    MSISE_AVAILABLE = False
+    
 # ✅ ADD: Thread lock for RocketPy integrator thread safety
 rocketpy_lock = threading.Lock()
 
@@ -59,7 +66,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 def load_material_database():
     """Load material database from shared JSON file"""
     try:
-        materials_path = os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data', 'materials.json')
+        materials_path = '/app/lib/data/materials.json'
         with open(materials_path, 'r') as f:
             material_data = json.load(f)
         
@@ -179,6 +186,18 @@ class UnitConverter:
 # ENHANCED PYDANTIC MODELS WITH PROPER SI UNITS
 # ================================
 
+class AtmosphericProfileModel(BaseModel):
+    """
+    Detailed atmospheric profile data, typically from a weather forecast service.
+    This model allows the frontend to be the single source of truth for atmospheric conditions.
+    """
+    altitude: List[float] = Field(..., description="Altitude points in meters")
+    temperature: List[float] = Field(..., description="Temperature at each altitude point in Kelvin")
+    pressure: List[float] = Field(..., description="Pressure at each altitude point in Pascals")
+    density: List[float] = Field(..., description="Density at each altitude point in kg/m³")
+    windU: List[float] = Field(..., description="Wind's U-component (East) at each altitude point in m/s")
+    windV: List[float] = Field(..., description="Wind's V-component (North) at each altitude point in m/s")
+
 class NoseComponentModel(BaseModel):
     """Nose cone component with SI units"""
     id: str
@@ -264,6 +283,8 @@ class EnvironmentModel(BaseModel):
     atmospheric_model: Literal["standard", "custom", "forecast"] = "standard"
     temperature_offset_k: float = Field(0.0, description="Temperature offset from standard in Kelvin", ge=-50, le=50)
     pressure_offset_pa: float = Field(0.0, description="Pressure offset from standard in Pascals")
+    # ✅ ADD: Optional field for high-fidelity atmospheric data from the frontend
+    atmospheric_profile: Optional[AtmosphericProfileModel] = Field(None, description="Detailed atmospheric data profile from frontend weather service.")
 
 class LaunchParametersModel(BaseModel):
     """Launch parameters with SI units"""
@@ -434,7 +455,7 @@ import os
 def load_motor_database():
     """Load motor database from shared JSON file"""
     try:
-        motors_path = os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'data', 'motors.json')
+        motors_path = '/app/lib/data/motors.json'
         with open(motors_path, 'r') as f:
             motor_data_raw = json.load(f)
 
@@ -533,19 +554,85 @@ class SimulationEnvironment:
             except:
                 logger.warning(f"Failed to parse date: {config.date}")
         
-        # Set atmospheric model
-        if config.atmospheric_model == "standard":
-            self.env.set_atmospheric_model(type='standard_atmosphere')
-        elif config.atmospheric_model == "forecast":
+        # --- RESTRUCTURED LOGIC: Prioritize the selected atmospheric model ---
+
+        model_type = config.atmospheric_model
+
+        if model_type == "nrlmsise":
+            if MSISE_AVAILABLE:
+                logger.info("✅ Using NRLMSISE-00 high-fidelity atmospheric model based on user selection.")
+                try:
+                    # Generate profile from 0 to 120km
+                    altitudes = np.linspace(0, 120000, 241).tolist() # 500m steps
+                    date_obj = datetime.fromisoformat(config.date.replace('Z', '+00:00')) if config.date else datetime.now()
+                    
+                    atmos = GCF(altitudes, config.latitude_deg, config.longitude_deg, date_obj)
+                    temperatures = atmos.T.T[4].tolist()
+                    
+                    pressures = [PhysicalConstants.STANDARD_PRESSURE]
+                    for i in range(1, len(altitudes)):
+                        g = PhysicalConstants.STANDARD_GRAVITY
+                        R_specific = 287.058
+                        T_avg = (temperatures[i] + temperatures[i-1]) / 2
+                        h_step = altitudes[i] - altitudes[i-1]
+                        p_next = pressures[-1] * np.exp(-g * h_step / (R_specific * T_avg))
+                        pressures.append(p_next)
+                    
+                    self.env.set_atmospheric_model(
+                        type='Custom',
+                        pressure=list(zip(altitudes, pressures)),
+                        temperature=list(zip(altitudes, temperatures))
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Failed to apply NRLMSISE-00 profile: {e}. Falling back to standard atmosphere.")
+                    self.env.set_atmospheric_model(type='standard_atmosphere')
+            else:
+                logger.warning("⚠️ MSISE00 library not found, but was requested. Falling back to standard atmosphere.")
+                self.env.set_atmospheric_model(type='standard_atmosphere')
+
+        elif model_type == "forecast":
+            # For forecasts, we prioritize the detailed profile from the frontend if available
+            if config.atmospheric_profile and all(getattr(config.atmospheric_profile, field) for field in ['altitude', 'temperature', 'pressure', 'density', 'windU', 'windV']):
+                logger.info("✅ Using high-fidelity atmospheric forecast profile provided by frontend.")
+                try:
+                    self.env.set_atmospheric_model(
+                        type='Custom',
+                        pressure=list(zip(config.atmospheric_profile.altitude, config.atmospheric_profile.pressure)),
+                        temperature=list(zip(config.atmospheric_profile.altitude, config.atmospheric_profile.temperature)),
+                        wind_u=list(zip(config.atmospheric_profile.altitude, config.atmospheric_profile.windU)),
+                        wind_v=list(zip(config.atmospheric_profile.altitude, config.atmospheric_profile.windV))
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Failed to apply frontend atmospheric profile: {e}. Falling back to standard model.")
+                    self.env.set_atmospheric_model(type='standard_atmosphere')
+            else:
+                # If no profile, fetch from backend (original behavior)
+                logger.info("ℹ️ Frontend forecast profile not found. Backend is fetching GFS forecast.")
             try:
                 self.env.set_atmospheric_model(type='Forecast', file='GFS')
-            except:
-                logger.warning("Failed to load GFS forecast, using standard atmosphere")
-                self.env.set_atmospheric_model(type='standard_atmosphere')
+            except Exception as e:
+                    logger.warning(f"Failed to load GFS forecast: {e}, using standard atmosphere")
+                    self.env.set_atmospheric_model(type='standard_atmosphere')
         
-        # Add wind if specified
-        if config.wind_speed_m_s and config.wind_speed_m_s > 0:
-            self._add_wind_profile(config.wind_speed_m_s, config.wind_direction_deg or 0)
+        elif model_type == "custom":
+            # This is for user-defined custom profiles, which is a future feature.
+            # For now, it will fall through to standard if no profile is provided.
+            logger.info("ℹ️ Custom model selected. This feature is pending full implementation. Falling back to standard.")
+            self.env.set_atmospheric_model(type='standard_atmosphere')
+            
+        else: # "standard" or any other fallback
+            logger.info("ℹ️ Using standard atmosphere model.")
+            self.env.set_atmospheric_model(type='standard_atmosphere')
+
+        # Apply simple wind as a last resort if no other wind data was set by a detailed profile
+        self._apply_wind_model(config)
+        # --- END RESTRUCTURED LOGIC ---
+    
+    def _apply_wind_model(self, config: EnvironmentModel):
+        """Applies the wind model if no wind data has been set by a detailed profile."""
+        if self.env.wind_velocity_x(0) == 0 and self.env.wind_velocity_y(0) == 0:
+            if config.wind_speed_m_s and config.wind_speed_m_s > 0:
+                self._add_wind_profile(config.wind_speed_m_s, config.wind_direction_deg or 0)
     
     def _add_wind_profile(self, wind_speed: float, wind_direction: float):
         """Add wind profile to environment with correct meteorological coordinate conversion"""
@@ -1868,38 +1955,20 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
     """Enhanced environment with full atmospheric modeling capabilities"""
     
     def __init__(self, config: EnvironmentModel):
+        # Initializes self.env and sets atmospheric model via parent
         super().__init__(config)
         
         if not ROCKETPY_AVAILABLE or not self.env:
             return
             
-        # Enhanced atmospheric modeling
-        self._setup_enhanced_atmosphere(config)
-        
-        # Advanced wind modeling
-        self._setup_wind_profile(config)
-        
-        # Weather forecast integration
-        self._setup_weather_forecast(config)
-    
-    def _setup_enhanced_atmosphere(self, config: EnvironmentModel):
-        """Setup enhanced atmospheric modeling"""
-        try:
-            if config.atmospheric_model == "forecast":
-                # Use GFS forecast data
-                self.env.set_atmospheric_model(type='Forecast', file='GFS')
-                logger.info("Using GFS forecast atmospheric model")
-            elif config.atmospheric_model == "custom":
-                # Use custom atmospheric profile
-                self._setup_custom_atmosphere()
-                logger.info("Using custom atmospheric model")
-            else:
-                # Use standard atmosphere with enhancements
-                self.env.set_atmospheric_model(type='standard_atmosphere')
-                logger.info("Using enhanced standard atmospheric model")
-        except Exception as e:
-            logger.warning(f"Failed to set enhanced atmosphere: {e}, using standard")
-            self.env.set_atmospheric_model(type='standard_atmosphere')
+    def _apply_wind_model(self, config: EnvironmentModel):
+        """
+        OVERRIDE: Applies the ADVANCED wind model for the enhanced simulation
+        if no wind data has been set by a detailed profile.
+        """
+        if self.env.wind_velocity_x(0) == 0 and self.env.wind_velocity_y(0) == 0:
+            if config.wind_speed_m_s and config.wind_speed_m_s > 0:
+                self._setup_wind_profile(config)
     
     def _setup_wind_profile(self, config: EnvironmentModel):
         """Setup realistic wind profile with correct meteorological coordinate conversion and boundary layer effects"""
@@ -1912,13 +1981,11 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
             wind_direction = config.wind_direction_deg or 0
             
             # CRITICAL FIX: Correct meteorological to Cartesian coordinate conversion
-            # Meteorological convention: wind_direction is direction wind comes FROM
-            # Convert to "direction wind goes TO" for proper u,v component calculation
             direction_to = wind_direction + 180.0
             
             # Convert to u, v components (u=East, v=North)
-            wind_u_surface = wind_speed * np.sin(np.radians(direction_to))  # East component
-            wind_v_surface = wind_speed * np.cos(np.radians(direction_to))  # North component
+            wind_u_surface = wind_speed * np.sin(np.radians(direction_to))
+            wind_v_surface = wind_speed * np.cos(np.radians(direction_to))
             
             # Create realistic altitude-varying wind profile with boundary layer effects
             altitudes = [0, 10, 50, 100, 500, 1000, 2000, 5000, 10000, 15000]
@@ -1926,51 +1993,20 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
             wind_v_profile = []
             
             for alt in altitudes:
-                # Atmospheric boundary layer effects (0-1000m)
-                if alt <= 1000:
-                    # Power law wind profile in boundary layer: V(z) = V_ref * (z/z_ref)^α
-                    alpha = 0.15  # Surface roughness exponent (typical for open terrain)
-                    z_ref = 10.0  # Reference height (10m)
-                    if alt < z_ref:
-                        # Very low altitude - use logarithmic profile
-                        altitude_factor = max(0.3, alt / z_ref)  # Minimum 30% of reference wind
-                    else:
-                        altitude_factor = (alt / z_ref) ** alpha
-                else:
-                    # Free atmosphere (above boundary layer)
-                    # Wind typically increases and may change direction with altitude
-                    base_factor = (1000 / 10.0) ** 0.15  # Boundary layer top factor
-                    
-                    # Geostrophic wind effects (stronger winds aloft)
-                    altitude_factor = base_factor * (1 + (alt - 1000) / 10000 * 0.5)  # 50% increase at 11km
-                    
-                    # Add Ekman spiral effects (wind direction change with altitude)
-                    # In Northern Hemisphere, wind backs (turns left) with altitude in boundary layer
-                    # and veers (turns right) above boundary layer
-                    if config.latitude_deg >= 0:  # Northern Hemisphere
-                        direction_change = 15.0 * (alt - 1000) / 10000  # Up to 15° veer at 11km
-                    else:  # Southern Hemisphere
-                        direction_change = -15.0 * (alt - 1000) / 10000  # Up to 15° back at 11km
-                    
-                    # Apply direction change
-                    direction_at_alt = direction_to + direction_change
-                    wind_u_at_alt = wind_speed * altitude_factor * np.sin(np.radians(direction_at_alt))
-                    wind_v_at_alt = wind_speed * altitude_factor * np.cos(np.radians(direction_at_alt))
-                    
-                    wind_u_profile.append((alt, wind_u_at_alt))
-                    wind_v_profile.append((alt, wind_v_at_alt))
-                    continue
-                
-                # Add realistic turbulence variation
-                turbulence_factor = 1 + 0.05 * np.sin(alt / 200)  # ±5% variation
-                
-                u_at_alt = wind_u_surface * altitude_factor * turbulence_factor
-                v_at_alt = wind_v_surface * altitude_factor * turbulence_factor
+                if alt <= 1000: # Atmospheric boundary layer
+                    alpha = 0.15  # For open terrain
+                    z_ref = 10.0
+                    altitude_factor = (alt / z_ref) ** alpha if alt > 0 else 0
+                else: # Free atmosphere
+                    base_factor = (1000 / 10.0) ** alpha
+                    altitude_factor = base_factor * (1 + (alt - 1000) / 10000 * 0.5)
+
+                u_at_alt = wind_u_surface * altitude_factor
+                v_at_alt = wind_v_surface * altitude_factor
                 
                 wind_u_profile.append((alt, u_at_alt))
                 wind_v_profile.append((alt, v_at_alt))
             
-            # Set enhanced wind profile
             self.env.set_atmospheric_model(
                 type='Custom',
                 wind_u=wind_u_profile,
@@ -1978,7 +2014,6 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
             )
             
             logger.info(f"Set realistic wind profile: {wind_speed} m/s from {wind_direction}° with boundary layer effects")
-            logger.info(f"Surface components: u={wind_u_surface:.2f} m/s, v={wind_v_surface:.2f} m/s")
             
         except Exception as e:
             logger.warning(f"Failed to set enhanced wind profile: {e}")
@@ -1993,35 +2028,6 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
                 logger.info(f"Set forecast date: {config.date}")
             except Exception as e:
                 logger.warning(f"Failed to set forecast date: {e}")
-    
-    def _setup_custom_atmosphere(self):
-        """Setup custom atmospheric profile"""
-        # Example custom atmosphere with realistic profiles
-        altitudes = np.linspace(0, 30000, 100)  # 0 to 30km
-        
-        # Standard atmosphere calculations
-        pressures = []
-        temperatures = []
-        
-        for alt in altitudes:
-            if alt <= 11000:  # Troposphere
-                temp = 288.15 - 0.0065 * alt  # Linear temperature decrease
-                pressure = 101325 * (temp / 288.15) ** 5.256
-            else:  # Stratosphere (simplified)
-                temp = 216.65  # Constant temperature
-                pressure = 22632 * np.exp(-0.0001577 * (alt - 11000))
-            
-            temperatures.append((alt, temp))
-            pressures.append((alt, pressure))
-        
-        try:
-            self.env.set_atmospheric_model(
-                type='Custom',
-                pressure=pressures,
-                temperature=temperatures
-            )
-        except Exception as e:
-            logger.warning(f"Failed to set custom atmosphere: {e}")
 
 class EnhancedSimulationMotor(SimulationMotor):
     """Enhanced motor with advanced modeling capabilities"""
@@ -3382,7 +3388,7 @@ async def simulate_monte_carlo(request: MonteCarloRequest):
     result = await mc_sim.run()
         
     logger.info(f"Monte Carlo simulation completed: mean apogee {result.statistics['maxAltitude'].mean:.1f}m")
-        return result
+    return result
         
 
 
@@ -3652,13 +3658,14 @@ async def get_atmospheric_models():
     """Get atmospheric modeling options for simulation configuration"""
     
     return {
-        "available_models": ["standard", "custom", "forecast"],
+        "available_models": ["standard", "custom", "forecast", "nrlmsise"],
         "default_model": "standard",
         
         "descriptions": {
             "standard": "International Standard Atmosphere (ISA) - Reliable baseline model",
             "forecast": "Real-time weather data from GFS - Most accurate for actual launches", 
-            "custom": "User-defined atmospheric conditions - For research and specialized applications"
+            "custom": "User-defined atmospheric conditions - For research and specialized applications",
+            "nrlmsise": "NASA's NRLMSISE-00 model for high-altitude flights (0-120km)"
         },
         
         "capabilities": {
@@ -3679,6 +3686,12 @@ async def get_atmospheric_models():
                 "accuracy": "user_defined", 
                 "data_sources": ["user_input"],
                 "features": ["custom_profiles", "research_conditions", "specialized_atmospheres"]
+            },
+            "nrlmsise": {
+                "altitude_range_m": [0, 120000],
+                "accuracy": "high_fidelity",
+                "data_sources": ["NRLMSISE-00 model"],
+                "features": ["high_altitude_temperature", "high_altitude_density", "space_weather_effects"]
             }
         },
         
@@ -3688,14 +3701,15 @@ async def get_atmospheric_models():
             "competition": "forecast",
             "real_launch": "forecast",
             "research": "custom",
-            "high_altitude": "forecast",
+            "high_altitude": "nrlmsise",
             "planetary": "custom"
         },
         
         "requirements": {
             "standard": "No additional data required",
             "forecast": "Internet connection and valid GPS coordinates required",
-            "custom": "Custom atmospheric profile data file required"
+            "custom": "Custom atmospheric profile data file required",
+            "nrlmsise": "'msise00' library must be installed on the server"
         }
     }
 

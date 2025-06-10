@@ -73,7 +73,7 @@ services:
       retries: 3
       start_period: 40s
     volumes:
-      - rocket-data:/app/data
+      - ./lib/data:/app/lib/data:ro
 
 networks:
   rocket-network:

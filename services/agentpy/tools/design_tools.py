@@ -57,52 +57,6 @@ def update_rocket_properties(props: Dict[str, Any]) -> Dict[str, Any]:
     validated_props = RocketProps(**props).model_dump(exclude_none=True)
     return {"action": "update_rocket_properties", "props": validated_props}
 
-# ========================================
-# LEGACY COMPATIBILITY TOOLS (DEPRECATED)
-# ========================================
-
-@function_tool(strict_mode=False)
-def add_part(type: str, props: Dict[str, Any]) -> Dict[str, Any]:
-    """DEPRECATED: Add a new rocket component with specified type and properties. Use specific component tools instead."""
-    # Convert old part structure to component actions
-    if type == "nose":
-        return update_nose_cone(props)
-    elif type == "body":
-        return update_body_tube(props)
-    elif type == "fin":
-        return update_fins(props)
-    elif type == "motor" or type == "engine":
-        return update_motor(props)
-    elif type == "parachute":
-        return update_parachute(props)
-    else:
-        # Fallback: return raw action for backwards compatibility
-        validated_props = ComponentProps(**props).model_dump(exclude_none=True)
-        return {"action": "add_part", "type": type, "props": validated_props}
-
-@function_tool(strict_mode=False)
-def update_part(id: str, props: Dict[str, Any]) -> Dict[str, Any]:
-    """DEPRECATED: Update an existing rocket component with specified ID and new properties. Use specific component tools instead."""
-    # Try to map old ID patterns to component actions
-    if id.startswith("nose") or "nose" in id.lower():
-        return update_nose_cone(props)
-    elif id.startswith("body") or "body" in id.lower():
-        return update_body_tube(props)
-    elif id.startswith("fin") or "fin" in id.lower():
-        return update_fins(props)
-    elif id.startswith("motor") or id.startswith("engine") or "motor" in id.lower() or "engine" in id.lower():
-        return update_motor(props)
-    elif id.startswith("parachute") or "parachute" in id.lower():
-        return update_parachute(props)
-    else:
-        # Fallback: return raw action for backwards compatibility
-        validated_props = ComponentProps(**props).model_dump(exclude_none=True)
-        return {"action": "update_part", "id": id, "props": validated_props}
-
-@function_tool(strict_mode=False)
-def update_rocket(props: Dict[str, Any]) -> Dict[str, Any]:
-    """DEPRECATED: Update rocket-level properties. Use update_rocket_properties instead."""
-    return update_rocket_properties(props)
 
 # ========================================
 # ALTITUDE DESIGN TOOL (UPDATED)

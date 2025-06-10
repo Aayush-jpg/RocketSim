@@ -1480,7 +1480,7 @@ export class DatabaseService {
   }
 
   async saveChatToDb(
-    messages: Array<{role: string, content: string, agent?: string}>, 
+    messages: Array<{role: string, content: string, agent?: string}>,
     projectId: string,
     rocketId?: string
   ): Promise<boolean> {
@@ -1496,12 +1496,35 @@ export class DatabaseService {
 
       const sessionId = await this.getCurrentSession();
       console.log('   - sessionId:', sessionId);
+
+      // --- START FIX: Validate rocket_id before use ---
+      let validatedRocketId: string | null = null;
+      if (rocketId) {
+        // Check if this rocket actually exists in the database
+        const { data: existingRocket, error: rocketCheckError } = await supabase
+          .from('rockets')
+          .select('id')
+          .eq('id', rocketId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existingRocket && !rocketCheckError) {
+          // The rocket exists, it's safe to link the chat message to it.
+          validatedRocketId = rocketId;
+        } else {
+          // The rocket does NOT exist. Save the message without a rocket link
+          // to prevent the foreign key constraint violation.
+          console.warn(`Rocket with ID ${rocketId} not found. Saving chat message without the rocket link to prevent a crash.`);
+          validatedRocketId = null;
+        }
+      }
+      // --- END FIX ---
       
       const chatMessages = messages.map(msg => ({
         user_id: user.id,
         session_id: sessionId,
         project_id: projectId, // CRITICAL: This should NOT be null
-        rocket_id: rocketId || null,
+        rocket_id: validatedRocketId, // Use the validated ID, which may be null
         role: msg.role,
         content: msg.content,
         context_data: msg.agent ? { agent: msg.agent } : null

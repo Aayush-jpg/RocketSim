@@ -13,6 +13,13 @@ interface AtmosphericModelsData {
   requirements: Record<string, string>;
 }
 
+const ATMOSPHERE_MODELS = [
+  { value: 'standard', label: 'Standard Atmosphere', description: 'ISA model, good for general use.' },
+  { value: 'forecast', label: 'Live Weather Forecast', description: 'Real-time GFS data for launch day.' },
+  { value: 'nrlmsise', label: 'NRLMSISE-00', description: 'NASA model for high-altitude flights.' },
+  { value: 'custom', label: 'Custom Profile', description: 'User-defined atmospheric data.' },
+];
+
 export default function AtmosphericModelSelector() {
   const { environment, setEnvironment } = useRocket();
   const [modelsData, setModelsData] = useState<AtmosphericModelsData | null>(null);
@@ -62,7 +69,7 @@ export default function AtmosphericModelSelector() {
   const handleModelChange = (selectedModel: string) => {
     const updatedEnvironment = {
       ...environment,
-      atmosphericModel: selectedModel as "standard" | "forecast" | "custom"
+      atmosphericModel: selectedModel as "standard" | "forecast" | "custom" | "nrlmsise"
     };
     
     setEnvironment(updatedEnvironment);
@@ -73,6 +80,7 @@ export default function AtmosphericModelSelector() {
     switch (model) {
       case 'standard': return '📊';
       case 'forecast': return '🌤️';
+      case 'nrlmsise': return '🛰️';
       case 'custom': return '🔬';
       default: return '🌍';
     }
@@ -82,6 +90,7 @@ export default function AtmosphericModelSelector() {
     switch (model) {
       case 'standard': return 'text-blue-400';
       case 'forecast': return 'text-green-400';
+      case 'nrlmsise': return 'text-cyan-400';
       case 'custom': return 'text-purple-400';
       default: return 'text-gray-400';
     }
