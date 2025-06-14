@@ -188,7 +188,7 @@ function StatisticCard({
 }
 
 export default function MonteCarloTab() {
-  const { monteCarloResult, rocket } = useRocket();
+  const { monteCarloResult, rocket, environment, launchParameters } = useRocket();
   const [isRunning, setIsRunning] = useState(false);
   const [iterations, setIterations] = useState(100);
   const [selectedVariations, setSelectedVariations] = useState([
@@ -259,20 +259,9 @@ export default function MonteCarloTab() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rocket,
-          environment: {
-            latitude: 0,
-            longitude: 0,
-            elevation: 0,
-            windSpeed: 5,
-            windDirection: 0,
-            atmosphericModel: "standard"
-          },
-          launchParameters: {
-            railLength: 5.0,
-            inclination: 85.0,
-            heading: 0.0
-          },
+          rocket: { ...rocket, Cd: rocketCd },
+          environment,
+          launchParameters,
           variations,
           iterations
         }),

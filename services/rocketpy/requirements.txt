@@ -8,4 +8,5 @@ matplotlib>=3.7.0
 pandas>=2.0.0
 python-dotenv>=1.0.0
 httpx>=0.25.0 
-msise00 
+msise00
+multiprocess>=0.70.0 

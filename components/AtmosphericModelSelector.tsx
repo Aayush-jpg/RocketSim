@@ -135,9 +135,9 @@ export default function AtmosphericModelSelector() {
           onChange={(e) => handleModelChange(e.target.value)}
           className="w-full bg-slate-700/70 border border-white/10 text-white text-sm rounded-lg px-4 py-3 hover:bg-slate-700 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
         >
-          {modelsData?.available_models.map((model) => (
-            <option key={model} value={model}>
-              {getModelIcon(model)} {modelsData.descriptions[model] || model}
+          {ATMOSPHERE_MODELS.map((model) => (
+            <option key={model.value} value={model.value}>
+              {getModelIcon(model.value)} {model.label}
             </option>
           ))}
         </select>

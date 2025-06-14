@@ -6,12 +6,37 @@ import threading
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Any, Optional, Tuple, Union, Literal
+from typing import List, Dict, Any, Optional, Tuple, Union, Literal, TYPE_CHECKING
 from datetime import datetime
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import traceback
+
+# --- Enhanced Logging Setup ---
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# Configure logging
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("rocketpy")
+
+def dbg_enter(func_name: str, **kwargs):
+    """Debug log for function entry."""
+    if logger.isEnabledFor(logging.DEBUG):
+        # Truncate long arguments for cleaner logs
+        preview_args = {k: (str(v)[:120] + '...') if len(str(v)) > 120 else v for k, v in kwargs.items()}
+        logger.debug(f"▶️ ENTER: {func_name} | ARGS: {preview_args}")
+
+def dbg_exit(func_name: str, **kwargs):
+    """Debug log for function exit."""
+    if logger.isEnabledFor(logging.DEBUG):
+        # Truncate long return values
+        preview_returns = {k: (str(v)[:120] + '...') if len(str(v)) > 120 else v for k, v in kwargs.items()}
+        logger.debug(f"◀️ EXIT: {func_name} | RETURNS: {preview_returns}")
+
+# --- End Enhanced Logging Setup ---
 
 # ✅ ADD: Import for MSISE00 library
 try:
@@ -19,7 +44,7 @@ try:
     MSISE_AVAILABLE = True
 except ImportError:
     MSISE_AVAILABLE = False
-    
+
 # ✅ ADD: Thread lock for RocketPy integrator thread safety
 rocketpy_lock = threading.Lock()
 
@@ -27,6 +52,12 @@ rocketpy_lock = threading.Lock()
 try:
     from rocketpy import Environment, SolidMotor, Rocket, Flight, GenericMotor, LiquidMotor, HybridMotor
     from rocketpy import NoseCone, Fins, Parachute
+    # ✅ MOVE IMPORTS HERE and add to the try...except block
+    from rocketpy import MonteCarlo
+    from rocketpy.stochastic import (
+        StochasticEnvironment, StochasticFlight, StochasticNoseCone, StochasticRocket,
+        StochasticSolidMotor, StochasticTrapezoidalFins, StochasticParachute
+    )
     ROCKETPY_AVAILABLE = True
     print("✅ RocketPy successfully imported with core classes")
 except ImportError as e:
@@ -34,6 +65,8 @@ except ImportError as e:
     print("Using simplified simulation model")
     Environment, SolidMotor, Rocket, Flight, GenericMotor, LiquidMotor, HybridMotor = None, None, None, None, None, None, None
     NoseCone, Fins, Parachute = None, None, None
+    # ✅ ADD to except block
+    MonteCarlo, StochasticEnvironment, StochasticFlight, StochasticNoseCone, StochasticRocket, StochasticSolidMotor, StochasticTrapezoidalFins, StochasticParachute = [None] * 8
     ROCKETPY_AVAILABLE = False
 
 # Configure logging
@@ -65,19 +98,21 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Load materials from shared JSON file - single source of truth
 def load_material_database():
     """Load material database from shared JSON file"""
+    dbg_enter("load_material_database")
     try:
         materials_path = '/app/lib/data/materials.json'
         with open(materials_path, 'r') as f:
             material_data = json.load(f)
         
-        print(f"✅ Successfully loaded {len(material_data)} materials from shared JSON")
+        logger.info(f"✅ Successfully loaded {len(material_data)} materials from shared JSON")
+        dbg_exit("load_material_database", count=len(material_data))
         return material_data
         
     except Exception as e:
-        print(f"❌ Failed to load materials from JSON: {e}")
-        print("🔄 Using minimal fallback material database")
+        logger.error(f"❌ Failed to load materials from JSON: {e}")
+        logger.info("🔄 Using minimal fallback material database")
         # Minimal fallback - only essential materials
-        return {
+        fallback_data = {
             "fiberglass": {
                 "id": "fiberglass",
                 "name": "Fiberglass (G10/FR4)",
@@ -109,9 +144,34 @@ def load_material_database():
                 "applications": ["fins", "internal_structures"]
             }
         }
+        dbg_exit("load_material_database", error=str(e), fallback_count=len(fallback_data))
+        return fallback_data
 
 # Load the material database at startup
 MATERIAL_DATABASE = load_material_database()
+
+# ✅ ADD: Helper to create stochastic objects
+def create_stochastic_class(base_obj, variations):
+    """Dynamically creates a stochastic version of a RocketPy object."""
+    stochastic_params = {}
+    for var in variations:
+        # Example: 'rocket.mass' -> 'mass'
+        param_name = var['parameter'].split('.')[-1]
+        
+        # Convert to tuple for RocketPy stochastic arguments
+        if var['distribution'] == 'normal':
+            stochastic_params[param_name] = (var['parameters'][0], var['parameters'][1])
+        elif var['distribution'] == 'uniform':
+            stochastic_params[param_name] = (var['parameters'][0], var['parameters'][1], 'uniform')
+        # Add other distributions as needed...
+
+    # Dynamically find the correct Stochastic class (e.g., Rocket -> StochasticRocket)
+    stochastic_class_name = "Stochastic" + base_obj.__class__.__name__
+    stochastic_class = globals().get(stochastic_class_name)
+    
+    if stochastic_class:
+        return stochastic_class(base_obj, **stochastic_params)
+    return base_obj # Fallback to base if no stochastic version exists
 
 class PhysicalConstants:
     """Physical constants in SI units with centralized material properties"""
@@ -308,24 +368,25 @@ class SimulationRequestModel(BaseModel):
 
 async def parse_simulation_request(request: Request) -> SimulationRequestModel:
     """Parse simulation request with component-based rocket model"""
+    dbg_enter("parse_simulation_request")
     try:
         # Get raw JSON
         body = await request.json()
-        print(f"🔍 DEBUG: Received request body with keys: {list(body.keys())}")
+        logger.info(f"🔍 DEBUG: Received request body with keys: {list(body.keys())}")
         
         # Extract rocket data
         rocket_data = body.get('rocket')
         if rocket_data is None:
             raise HTTPException(status_code=400, detail="Missing 'rocket' field")
         
-        print(f"🔍 DEBUG: Rocket data keys: {list(rocket_data.keys()) if isinstance(rocket_data, dict) else type(rocket_data)}")
+        logger.info(f"🔍 DEBUG: Rocket data keys: {list(rocket_data.keys()) if isinstance(rocket_data, dict) else type(rocket_data)}")
         
         # Parse rocket as component-based model
         try:
             rocket_model = RocketModel(**rocket_data)
-            print(f"✅ DEBUG: Successfully parsed as component-based RocketModel")
+            logger.info(f"✅ DEBUG: Successfully parsed as component-based RocketModel")
         except Exception as e:
-            print(f"❌ DEBUG: Failed to parse as RocketModel: {e}")
+            logger.error(f"❌ DEBUG: Failed to parse as RocketModel: {e}")
             # Try to provide helpful error message
             if isinstance(rocket_data, dict):
                 has_components = any(key in rocket_data for key in ['nose_cone', 'body_tubes', 'fins', 'motor', 'parachutes'])
@@ -343,7 +404,7 @@ async def parse_simulation_request(request: Request) -> SimulationRequestModel:
             try:
                 environment = EnvironmentModel(**body['environment'])
             except Exception as e:
-                print(f"❌ DEBUG: Failed to parse environment: {e}")
+                logger.error(f"❌ DEBUG: Failed to parse environment: {e}")
                 # Use defaults if environment parsing fails
                 environment = EnvironmentModel()
         
@@ -353,7 +414,7 @@ async def parse_simulation_request(request: Request) -> SimulationRequestModel:
             try:
                 launch_params = LaunchParametersModel(**body['launchParameters'])
             except Exception as e:
-                print(f"❌ DEBUG: Failed to parse launch parameters: {e}")
+                logger.error(f"❌ DEBUG: Failed to parse launch parameters: {e}")
                 # Use defaults if launch parameters parsing fails
                 launch_params = LaunchParametersModel()
         
@@ -367,13 +428,16 @@ async def parse_simulation_request(request: Request) -> SimulationRequestModel:
             simulationType=simulation_type
         )
         
-        print(f"✅ DEBUG: Successfully created SimulationRequestModel")
+        logger.info(f"✅ DEBUG: Successfully created SimulationRequestModel")
+        dbg_exit("parse_simulation_request", rocket_name=request_obj.rocket.name, sim_type=request_obj.simulationType)
         return request_obj
         
-    except HTTPException:
+    except HTTPException as e:
+        dbg_exit("parse_simulation_request", error=str(e))
         raise
     except Exception as e:
-        print(f"❌ DEBUG: Unexpected error in parse_simulation_request: {e}")
+        dbg_exit("parse_simulation_request", error=str(e))
+        logger.error(f"❌ DEBUG: Unexpected error in parse_simulation_request: {e}")
         raise HTTPException(status_code=400, detail=f"Request parsing error: {e}")
 
 class ParameterVariation(BaseModel):
@@ -454,6 +518,7 @@ import os
 
 def load_motor_database():
     """Load motor database from shared JSON file"""
+    dbg_enter("load_motor_database")
     try:
         motors_path = '/app/lib/data/motors.json'
         with open(motors_path, 'r') as f:
@@ -506,14 +571,15 @@ def load_motor_database():
                     "chamber_pressure_pa": spec["hybridConfig"]["chamberPressure_pa"]
                 }
         
-        print(f"✅ Successfully loaded {len(motor_database)} motors from shared JSON")
+        logger.info(f"✅ Successfully loaded {len(motor_database)} motors from shared JSON")
+        dbg_exit("load_motor_database", count=len(motor_database))
         return motor_database
         
     except Exception as e:
-        print(f"❌ Failed to load motors from JSON: {e}")
-        print("🔄 Using minimal fallback motor database")
+        logger.error(f"❌ Failed to load motors from JSON: {e}")
+        logger.info("🔄 Using minimal fallback motor database")
         # Minimal fallback - only essential motors
-        return {
+        fallback_data = {
         "default-motor": {
             "name": "F32-6", "manufacturer": "Generic", "type": "solid",
             "impulse_class": "F", "total_impulse_n_s": 80, "avg_thrust_n": 32,
@@ -523,6 +589,8 @@ def load_motor_database():
                 "isp_s": 200
             }
         }
+        dbg_exit("load_motor_database", error=str(e), fallback_count=len(fallback_data))
+        return fallback_data
 
 # Load the motor database at startup
 MOTOR_DATABASE = load_motor_database()
@@ -535,8 +603,10 @@ class SimulationEnvironment:
     """Wrapper for RocketPy Environment with enhanced features"""
     
     def __init__(self, config: EnvironmentModel):
+        dbg_enter("SimulationEnvironment.__init__", model=config.atmospheric_model, lat=config.latitude_deg, lon=config.longitude_deg)
         if not ROCKETPY_AVAILABLE:
             self.env = None
+            dbg_exit("SimulationEnvironment.__init__", reason="RocketPy not available")
             return
             
         self.config = config
@@ -557,6 +627,7 @@ class SimulationEnvironment:
         # --- RESTRUCTURED LOGIC: Prioritize the selected atmospheric model ---
 
         model_type = config.atmospheric_model
+        logger.info(f"🌐 Selected atmospheric model after precedence checks: {model_type}")
 
         if model_type == "nrlmsise":
             if MSISE_AVAILABLE:
@@ -611,8 +682,8 @@ class SimulationEnvironment:
             try:
                 self.env.set_atmospheric_model(type='Forecast', file='GFS')
             except Exception as e:
-                    logger.warning(f"Failed to load GFS forecast: {e}, using standard atmosphere")
-                    self.env.set_atmospheric_model(type='standard_atmosphere')
+                logger.warning(f"Failed to load GFS forecast: {e}, using standard atmosphere")
+                self.env.set_atmospheric_model(type='standard_atmosphere')
         
         elif model_type == "custom":
             # This is for user-defined custom profiles, which is a future feature.
@@ -627,6 +698,8 @@ class SimulationEnvironment:
         # Apply simple wind as a last resort if no other wind data was set by a detailed profile
         self._apply_wind_model(config)
         # --- END RESTRUCTURED LOGIC ---
+        
+        dbg_exit("SimulationEnvironment.__init__", effective_model=model_type)
     
     def _apply_wind_model(self, config: EnvironmentModel):
         """Applies the wind model if no wind data has been set by a detailed profile."""
@@ -674,14 +747,17 @@ class SimulationMotor:
     """Enhanced motor wrapper supporting multiple motor types"""
     
     def __init__(self, motor_id: str):
+        dbg_enter("SimulationMotor.__init__", motor_id=motor_id)
         self.motor_id = motor_id
         self.spec = MOTOR_DATABASE.get(motor_id, MOTOR_DATABASE["default-motor"])
         self.motor = None
         
         if not ROCKETPY_AVAILABLE:
+            dbg_exit("SimulationMotor.__init__", reason="RocketPy not available")
             return
         
         self._create_motor()
+        dbg_exit("SimulationMotor.__init__", motor_type=self.spec.get("type"))
     
     def _create_motor(self):
         """Create appropriate motor type based on specifications"""
@@ -702,12 +778,12 @@ class SimulationMotor:
             thrust_source=thrust_curve,
             dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
             dry_inertia=(0.125, 0.125, 0.002),
-            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,  # mm to m
+            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2,
             grain_number=1,
             grain_density=1815,  # kg/m³
-            grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000 - 0.002,
+            grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2 - 0.002,
             grain_initial_inner_radius=0.005,
-            grain_initial_height=self.spec["dimensions"]["length_m"] / 1000 * 0.8,
+            grain_initial_height=self.spec["dimensions"]["length_m"] * 0.8,
             grain_separation=0.005,  # 5mm separation between grains
             grains_center_of_mass_position=0.5,  # Center of motor
             center_of_dry_mass_position=0.5,  # Center of dry mass
@@ -719,14 +795,74 @@ class SimulationMotor:
         """Create liquid motor with staged combustion"""
         thrust_curve = self._generate_liquid_thrust_curve()
         
-        # Use GenericMotor for liquid engines with custom thrust curves
-        self.motor = GenericMotor(
+        propellant_total_mass = self.spec["mass"]["propellant_kg"]
+        
+        # ✅ FIXED: Simplified LiquidMotor creation without Tank (which is abstract)
+        try:
+            # Create liquid motor with minimal required parameters
+            self.motor = LiquidMotor(
+                thrust_source=thrust_curve,
+                dry_mass=self.spec["mass"]["total_kg"] - propellant_total_mass,
+                dry_inertia=(0.2, 0.2, 0.002),
+                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 4,
+                burn_time=self.spec["burn_time_s"],
+                nozzle_position=0.0,
+                center_of_dry_mass_position=self.spec["dimensions"]["length_m"] / 2
+            )
+            
+            logger.info(f"✅ Created liquid motor with propellant: {propellant_total_mass:.1f}kg")
+            
+        except Exception as e:
+            logger.warning(f"Liquid motor creation failed: {e}")
+            # Fallback to SolidMotor if LiquidMotor fails
+            logger.info("🔄 Falling back to solid motor equivalent")
+            self._create_solid_motor_fallback(thrust_curve, propellant_total_mass)
+    
+    def _create_solid_motor_fallback(self, thrust_curve, propellant_mass):
+        """Fallback to solid motor when liquid motor fails"""
+        try:
+            from rocketpy import SolidMotor
+            
+            # ✅ FIXED: Add all required parameters for SolidMotor
+            self.motor = SolidMotor(
+                thrust_source=thrust_curve,
+                dry_mass=self.spec["mass"]["total_kg"] - propellant_mass,
+                dry_inertia=(0.2, 0.2, 0.002),
+                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 4,
+                grain_number=1,
+                grain_density=1815,  # APCP density
+                grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2 - 0.005,
+                grain_initial_inner_radius=0.015,
+                grain_initial_height=self.spec["dimensions"]["length_m"] * 0.6,
+                nozzle_position=0.0,
+                burn_time=self.spec["burn_time_s"],
+                # ✅ ADD: Missing required parameters
+                grain_separation=0.005,  # 5mm separation between grains
+                grains_center_of_mass_position=self.spec["dimensions"]["length_m"] * 0.3,  # 30% from nose
+                center_of_dry_mass_position=self.spec["dimensions"]["length_m"] / 2  # Center of motor
+            )
+            logger.info(f"✅ Created solid motor fallback: {propellant_mass:.1f}kg propellant")
+        except Exception as fallback_error:
+            logger.error(f"❌ Both liquid and solid motor creation failed: {fallback_error}")
+            # Final fallback to GenericMotor
+            logger.info("🔄 Final fallback to GenericMotor")
+            self._create_generic_motor_fallback(thrust_curve, propellant_mass)
+    
+    def _create_generic_motor_fallback(self, thrust_curve, propellant_mass):
+        """Final fallback to GenericMotor"""
+        try:
+            from rocketpy import GenericMotor
+            self.motor = GenericMotor(
             thrust_source=thrust_curve,
-            dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
+                dry_mass=self.spec["mass"]["total_kg"] - propellant_mass,
             dry_inertia=(0.2, 0.2, 0.002),
-            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,
+                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 4,
             burn_time=self.spec["burn_time_s"]
         )
+            logger.info(f"✅ Created generic motor fallback: {propellant_mass:.1f}kg propellant")
+        except Exception as final_error:
+            logger.error(f"❌ All motor creation methods failed: {final_error}")
+            raise
     
     def _create_hybrid_motor(self):
         """Create hybrid motor"""
@@ -736,7 +872,7 @@ class SimulationMotor:
             thrust_source=thrust_curve,
             dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
             dry_inertia=(0.15, 0.15, 0.002),
-            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,
+            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2,
             burn_time=self.spec["burn_time_s"]
         )
     
@@ -822,14 +958,17 @@ class SimulationRocket:
     """Enhanced rocket wrapper with component modeling"""
     
     def __init__(self, rocket_config: RocketModel, motor: SimulationMotor):
+        dbg_enter("SimulationRocket.__init__", name=rocket_config.name, motor_id=motor.motor_id)
         self.config = rocket_config
         self.motor = motor
         self.rocket = None
         
         if not ROCKETPY_AVAILABLE:
+            dbg_exit("SimulationRocket.__init__", reason="RocketPy not available")
             return
         
         self._create_rocket()
+        dbg_exit("SimulationRocket.__init__", rocket_mass=self.rocket.mass if self.rocket else "N/A")
     
     def _create_rocket(self):
         """Create RocketPy rocket from configuration"""
@@ -1166,6 +1305,7 @@ class SimulationFlight:
     
     def __init__(self, rocket: SimulationRocket, environment: SimulationEnvironment, 
                  launch_params: LaunchParametersModel):
+        dbg_enter("SimulationFlight.__init__", rocket_name=rocket.config.name)
         self.rocket = rocket
         self.environment = environment
         self.launch_params = launch_params
@@ -1173,9 +1313,11 @@ class SimulationFlight:
         self.results = None
         
         if not ROCKETPY_AVAILABLE or not rocket.rocket or not environment.env:
+            dbg_exit("SimulationFlight.__init__", reason="Dependencies not met (RocketPy, rocket model, or env)")
             return
         
         self._run_simulation()
+        dbg_exit("SimulationFlight.__init__", apogee=self.results.maxAltitude if self.results else "failed")
     
     def _run_simulation(self):
         """Run the flight simulation with thread safety for Monte Carlo"""
@@ -1525,233 +1667,175 @@ class SimulationFlight:
 # ================================
 
 class MonteCarloSimulation:
-    """Monte Carlo simulation with parameter variations"""
-    
+    """
+    Performs a full-fidelity Monte Carlo simulation using the official RocketPy
+    MonteCarlo class, which leverages the complete physics engine.
+    """
     def __init__(self, base_request: MonteCarloRequest):
+        dbg_enter("MonteCarloSimulation.__init__")
         self.base_request = base_request
-        self.results = []
-        self.statistics = {}
+        # Correctly and safely initialize all necessary attributes from the request
+        self.nominal_rocket_config = base_request.rocket
+        self.nominal_env_config = base_request.environment or EnvironmentModel()
+        self.nominal_launch_params = base_request.launchParameters or LaunchParametersModel()
+        self.variations = base_request.variations or []  # Ensure it's a list even if null
+        self.iterations = base_request.iterations or 100 # Use a default if not provided
+        dbg_exit("MonteCarloSimulation.__init__")
     
     async def run(self) -> MonteCarloResult:
-        """Run Monte Carlo simulation with sequential execution for thread safety"""
-        logger.info(f"🎯 Starting Monte Carlo simulation with {self.base_request.iterations} iterations")
+        """
+        Executes the full Monte Carlo simulation using RocketPy's dedicated class.
+        This process runs in a thread pool to avoid blocking the server.
+        """
+        dbg_enter("MonteCarloSimulation.run")
+        loop = asyncio.get_event_loop()
         
-        # ✅ COMPLETELY DISABLE ROCKETPY FOR MONTE CARLO - Run nominal simulation with simplified physics
+        # This entire complex operation runs in a separate thread
+        mc_results = await loop.run_in_executor(
+            executor,
+            self._execute_rocketpy_montecarlo
+        )
+
+        dbg_exit("MonteCarloSimulation.run", results_keys=mc_results.keys())
+        return mc_results
+
+    def _execute_rocketpy_montecarlo(self) -> MonteCarloResult:
+        """
+        [SYNC] Sets up and runs the full RocketPy Monte Carlo analysis.
+        This function is designed to be called within a thread pool.
+        """
+        dbg_enter("MonteCarloSimulation._execute_rocketpy_montecarlo")
         try:
-            logger.info("🎯 MONTE CARLO: Running nominal simulation with simplified physics")
-            nominal_result = await simulate_simplified_fallback(self.base_request.rocket)
-            logger.info(f"🎯 MONTE CARLO: Nominal simulation successful - max altitude: {nominal_result.maxAltitude:.1f}m")
-        except Exception as e:
-            logger.warning(f"Nominal simulation failed: {e}")
-            # Create fallback nominal result
-            nominal_result = SimulationResult(
-                maxAltitude=1000.0,
-                maxVelocity=100.0,
-                maxAcceleration=50.0,
-                apogeeTime=10.0,
-                stabilityMargin=1.5,
-                thrustCurve=[(0.0, 0.0), (2.5, 50.0), (5.0, 0.0)],
-                simulationFidelity="nominal_fallback"
+            # Comprehensive logging for the incoming request
+            logger.info("="*50)
+            logger.info("🔍 INCOMING MONTE CARLO REQUEST")
+            logger.info(f"ENVIRONMENT:\n{json.dumps(self.nominal_env_config.model_dump(), indent=2)}")
+            logger.info(f"VARIATIONS:\n{json.dumps([v.model_dump() for v in self.variations], indent=2)}")
+            logger.info(f"ITERATIONS: {self.iterations}")
+            logger.info("="*50)
+
+            # 1. Create nominal (non-stochastic) base objects
+            env_sim = EnhancedSimulationEnvironment(self.nominal_env_config)
+            motor_sim = EnhancedSimulationMotor(self.nominal_rocket_config.motor.motor_database_id)
+            rocket_sim = EnhancedSimulationRocket(self.nominal_rocket_config, motor_sim)
+            flight_sim = EnhancedSimulationFlight(rocket_sim, env_sim, self.nominal_launch_params, {})
+
+            # 2. Create Stochastic versions of the objects
+            stochastic_env = self._create_stochastic_environment(env_sim.env)
+            stochastic_rocket = self._create_stochastic_rocket(rocket_sim.rocket)
+            stochastic_flight = self._create_stochastic_flight(flight_sim.flight)
+
+            # 3. Initialize RocketPy's MonteCarlo class
+            # The filename is used for caching and can be based on a unique ID
+            mc_runner = MonteCarlo(
+                environment=stochastic_env,
+                rocket=stochastic_rocket,
+                flight=stochastic_flight,
+                filename=f"/tmp/mc_run_{self.base_request.rocket.id}"
             )
-        
-        # ✅ FIXED: Run simulations sequentially to avoid integrator conflicts
-        logger.info("🎯 MONTE CARLO: Running Monte Carlo iterations sequentially for thread safety")
-        
-        for i in range(self.base_request.iterations):
-            try:
-                # Generate varied configuration for this iteration
-                varied_config = self._apply_variations(i)
+
+            # 4. Run the simulation in parallel
+            mc_runner.simulate(
+                number_of_simulations=self.iterations,
+                parallel=True,
+                n_workers=os.cpu_count() or 4
+            )
+
+            # 5. Process and return the results
+            result = self._format_results(mc_runner)
+            dbg_exit("MonteCarloSimulation._execute_rocketpy_montecarlo", success=True)
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ RocketPy Monte Carlo execution failed: {e}\n{traceback.format_exc()}")
+            dbg_exit("MonteCarloSimulation._execute_rocketpy_montecarlo", error=str(e))
+            raise HTTPException(status_code=500, detail=f"Monte Carlo simulation failed: {e}")
+
+    def _get_variations_for(self, object_name: str) -> dict:
+        """Filters variations for a specific object (e.g., 'rocket')."""
+        variations = {}
+        for var in self.base_request.variations:
+            if var.parameter.startswith(object_name + '.'):
+                param_name = var.parameter.split('.')[-1]
                 
-                # ✅ Run single simulation sequentially (not concurrently)
-                result = await self._run_single_simulation(*varied_config)
-                self.results.append(result)
-                
-                # Log progress every 10 iterations
-                if (i + 1) % 10 == 0:
-                    logger.info(f"🎯 MONTE CARLO: Completed {i + 1}/{self.base_request.iterations} Monte Carlo iterations")
-                    
-            except Exception as e:
-                logger.warning(f"Monte Carlo iteration {i} failed: {e}")
-                # Add fallback result for failed iterations
-                fallback_result = SimulationResult(
-                    maxAltitude=500.0 + i * 10,  # Add some variation
-                    maxVelocity=80.0 + i * 2,
-                    maxAcceleration=40.0,
-                    apogeeTime=8.0 + i * 0.1,
-                    stabilityMargin=1.3,
-                    thrustCurve=[(0.0, 0.0), (2.5, 45.0), (5.0, 0.0)],
-                    simulationFidelity="iteration_fallback"
-                )
-                self.results.append(fallback_result)
+                # Convert to tuple format for RocketPy stochastic arguments
+                if var.distribution == 'normal':
+                    variations[param_name] = (var.parameters[0], var.parameters[1])
+                elif var.distribution == 'uniform':
+                    variations[param_name] = (var.parameters[0], var.parameters[1], 'uniform')
+        return variations
+
+    def _create_stochastic_environment(self, base_env: Environment) -> StochasticEnvironment:
+        """Creates the StochasticEnvironment."""
+        variations = self._get_variations_for('environment')
+        return StochasticEnvironment(base_env, **variations)
+
+    def _create_stochastic_rocket(self, base_rocket: Rocket) -> StochasticRocket:
+        """Creates the StochasticRocket, including its sub-components."""
+        rocket_variations = self._get_variations_for('rocket')
         
-        # ✅ Calculate statistics from successful results
-        if self.results:
-            self._calculate_statistics()
-            logger.info(f"🎯 MONTE CARLO: Completed with {len(self.results)} results")
-        else:
-            logger.error("🚨 MONTE CARLO: No successful Monte Carlo iterations")
-            # Return minimal result set
-            self.results = [nominal_result]
-            self._calculate_statistics()
+        # Create stochastic rocket shell
+        stochastic_rocket = StochasticRocket(base_rocket, **rocket_variations)
         
-        # Calculate landing dispersion
-        dispersion = self._calculate_landing_dispersion()
+        # Handle stochastic motor (assuming one motor)
+        motor_variations = self._get_variations_for('motor')
+        stochastic_motor = StochasticSolidMotor(base_rocket.motor, **motor_variations)
         
-        logger.info("🎯 MONTE CARLO: All simulations completed successfully")
+        # Get motor position from the rocket configuration instead of motor object
+        motor_position = self.nominal_rocket_config.motor.position_from_tail_m
+        stochastic_rocket.add_motor(stochastic_motor, motor_position)
+
+        # Handle other components like fins, parachutes if variations are defined
+        # This part can be expanded based on which components can have variations.
+        
+        return stochastic_rocket
+
+    def _create_stochastic_flight(self, base_flight: Flight) -> StochasticFlight:
+        """Creates the StochasticFlight."""
+        variations = self._get_variations_for('launch')
+        # Map frontend names to RocketPy names if necessary (e.g., inclination_deg -> inclination)
+        if 'inclination_deg' in variations:
+            variations['inclination'] = variations.pop('inclination_deg')
+        if 'heading_deg' in variations:
+            variations['heading'] = variations.pop('heading_deg')
+
+        return StochasticFlight(base_flight, **variations)
+
+    def _format_results(self, mc_runner: MonteCarlo) -> MonteCarloResult:
+        """Converts RocketPy MonteCarlo results to the API's response model."""
+        stats = {}
+        for key, data in mc_runner.processed_results.items():
+            stats[key] = MonteCarloStatistics(
+                mean=data['mean'],
+                std=data['std_dev'],
+                min=data.get('min', 0), # RocketPy results may not have min/max
+                max=data.get('max', 0),
+                percentiles={} # Can be calculated if needed
+            )
+
+        # Get summary of all individual runs
+        iterations_summary = []
+        if mc_runner.outputs_log:
+            for run_output in mc_runner.outputs_log:
+                iterations_summary.append({k: v for k, v in run_output.items() if isinstance(v, (int, float))})
+
+        # Placeholder for nominal result - a full implementation would run one
+        # simulation with mean values to populate this properly.
+        nominal_result_placeholder = SimulationResult(
+            maxAltitude=stats.get('apogee', {}).get('mean', 0),
+            maxVelocity=stats.get('max_velocity', {}).get('mean', 0),
+            maxAcceleration=stats.get('max_acceleration', {}).get('mean', 0),
+            apogeeTime=stats.get('apogee_time', {}).get('mean', 0),
+            stabilityMargin=0, # This would require a nominal run to calculate
+            simulationFidelity="monte_carlo_full"
+        )
         
         return MonteCarloResult(
-            nominal=nominal_result,
-            statistics=self.statistics,
-            iterations=[self._extract_summary(r) for r in self.results],
-            landingDispersion=dispersion
+            nominal=nominal_result_placeholder,
+            statistics=stats,
+            iterations=iterations_summary,
+            landingDispersion={} # This can be populated from mc_runner.plots.ellipses if needed
         )
-    
-    def _apply_variations(self, iteration: int) -> Tuple[RocketModel, EnvironmentModel, LaunchParametersModel]:
-        """Apply parameter variations for a single iteration"""
-        import copy
-        
-        rocket = copy.deepcopy(self.base_request.rocket)
-        environment = copy.deepcopy(self.base_request.environment or EnvironmentModel())
-        launch_params = copy.deepcopy(self.base_request.launchParameters or LaunchParametersModel())
-        
-        np.random.seed(iteration)  # Reproducible random numbers
-        
-        for variation in self.base_request.variations:
-            value = self._generate_random_value(variation)
-            self._apply_parameter_value(rocket, environment, launch_params, 
-                                      variation.parameter, value)
-        
-        return rocket, environment, launch_params
-    
-    def _generate_random_value(self, variation: ParameterVariation) -> float:
-        """Generate random value based on distribution"""
-        if variation.distribution == "normal":
-            mean, std = variation.parameters
-            return np.random.normal(mean, std)
-        elif variation.distribution == "uniform":
-            low, high = variation.parameters
-            return np.random.uniform(low, high)
-        elif variation.distribution == "triangular":
-            low, mode, high = variation.parameters
-            return np.random.triangular(low, mode, high)
-        else:
-            return variation.parameters[0]  # Default to first value
-    
-    def _apply_parameter_value(self, rocket: RocketModel, environment: EnvironmentModel,
-                             launch_params: LaunchParametersModel, parameter: str, value: float):
-        """Apply parameter value to appropriate object"""
-        try:
-            if parameter.startswith("rocket."):
-                param_name = parameter.split(".", 1)[1]
-                # ✅ FIXED: Remove Cd assignment since new RocketModel doesn't have this field
-                # Drag is now calculated from components, not a single coefficient
-                if param_name == "Cd":
-                    logger.warning(f"Cd parameter no longer supported in component-based model. Drag calculated from components.")
-                elif param_name.startswith("parts."):
-                    # Handle part-specific parameters
-                    part_param = param_name.split(".", 2)
-                    if len(part_param) == 3:
-                        part_type, prop_name = part_param[1], part_param[2]
-                        for part in rocket.parts:
-                            if part.type == part_type:
-                                setattr(part, prop_name, value)
-                                break
-            
-            elif parameter.startswith("environment."):
-                param_name = parameter.split(".", 1)[1]
-                if hasattr(environment, param_name):
-                    setattr(environment, param_name, value)
-            
-            elif parameter.startswith("launch."):
-                param_name = parameter.split(".", 1)[1]
-                if hasattr(launch_params, param_name):
-                    setattr(launch_params, param_name, value)
-                    
-        except Exception as e:
-            logger.warning(f"Failed to apply parameter {parameter}={value}: {e}")
-    
-    async def _run_single_simulation(self, rocket: RocketModel, environment: EnvironmentModel,
-                                   launch_params: LaunchParametersModel) -> SimulationResult:
-        """Run a single simulation iteration with optimized approach for Monte Carlo"""
-        # ✅ COMPLETELY DISABLE ROCKETPY FOR MONTE CARLO - Always use simplified simulation
-        # This ensures no integrator conflicts and provides reliable results for statistical analysis
-        logger.debug("🎯 Monte Carlo iteration: Using simplified physics simulation (NO ROCKETPY)")
-        
-        try:
-            return await simulate_simplified_fallback(rocket)
-        except Exception as e:
-            logger.warning(f"Monte Carlo simplified simulation failed: {e}")
-            # Return default result for failed simulations
-            return SimulationResult(
-                maxAltitude=100.0,
-                maxVelocity=50.0,
-                maxAcceleration=20.0,
-                apogeeTime=5.0,
-                stabilityMargin=1.0,
-                simulationFidelity="failed",
-                thrustCurve=[(0.0, 0.0), (2.5, 30.0), (5.0, 0.0)]
-            )
-    
-    def _calculate_statistics(self):
-        """Calculate statistical measures from results"""
-        if not self.results:
-            return
-        
-        metrics = ["maxAltitude", "maxVelocity", "maxAcceleration", "apogeeTime", "stabilityMargin"]
-        
-        for metric in metrics:
-            values = [getattr(result, metric) for result in self.results if hasattr(result, metric)]
-            if values:
-                self.statistics[metric] = MonteCarloStatistics(
-                    mean=float(np.mean(values)),
-                    std=float(np.std(values)),
-                    min=float(np.min(values)),
-                    max=float(np.max(values)),
-                    percentiles={
-                        "5": float(np.percentile(values, 5)),
-                        "25": float(np.percentile(values, 25)),
-                        "50": float(np.percentile(values, 50)),
-                        "75": float(np.percentile(values, 75)),
-                        "95": float(np.percentile(values, 95))
-                    }
-                )
-    
-    def _calculate_landing_dispersion(self) -> Dict[str, Any]:
-        """Calculate landing dispersion statistics"""
-        if not self.results:
-            return {}
-        
-        drift_distances = [r.driftDistance for r in self.results if r.driftDistance is not None]
-        
-        if not drift_distances:
-            return {}
-        
-        # Simple dispersion calculation
-        mean_drift = np.mean(drift_distances)
-        std_drift = np.std(drift_distances)
-        
-        # CEP (Circular Error Probable) - radius containing 50% of impacts
-        cep = np.percentile(drift_distances, 50)
-        
-        return {
-            "coordinates": [[0, 0]],  # Simplified - just origin
-            "cep": float(cep),
-            "majorAxis": float(std_drift * 2),
-            "minorAxis": float(std_drift * 1.5),
-            "rotation": 0.0,
-            "meanDrift": float(mean_drift),
-            "maxDrift": float(np.max(drift_distances))
-        }
-    
-    def _extract_summary(self, result: SimulationResult) -> Dict[str, float]:
-        """Extract summary metrics from simulation result"""
-        return {
-            "maxAltitude": result.maxAltitude,
-            "maxVelocity": result.maxVelocity,
-            "apogeeTime": result.apogeeTime,
-            "stabilityMargin": result.stabilityMargin,
-            "driftDistance": result.driftDistance or 0.0
-        }
 
 # ================================
 # SIMULATION FUNCTIONS
@@ -1795,7 +1879,7 @@ def _run_simulation_sync(rocket_config: RocketModel,
     
     # Create simulation objects
     environment = SimulationEnvironment(environment_config)
-    motor = SimulationMotor(rocket_config.motor.id)
+    motor = SimulationMotor(rocket_config.motor.motor_database_id)
     rocket = SimulationRocket(rocket_config, motor)
     flight = SimulationFlight(rocket, environment, launch_params)
     
@@ -1940,9 +2024,18 @@ def _run_enhanced_simulation_sync(rocket_config: RocketModel,
                                 analysis_options: Dict[str, Any]) -> SimulationResult:
     """Enhanced synchronous simulation runner with full RocketPy features"""
     
-    # Create enhanced simulation objects
+    # Create enhanced simulation objects with dynamic configuration
     environment = EnhancedSimulationEnvironment(environment_config)
-    motor = EnhancedSimulationMotor(rocket_config.motor.id)
+    
+    # Pass the actual rocket motor configuration to the motor
+    rocket_motor_config = {
+        "motor_database_id": rocket_config.motor.motor_database_id,
+        "position_from_tail_m": rocket_config.motor.position_from_tail_m,
+        "nozzle_expansion_ratio": rocket_config.motor.nozzle_expansion_ratio,
+        "chamber_pressure_pa": rocket_config.motor.chamber_pressure_pa
+    }
+    
+    motor = EnhancedSimulationMotor(rocket_config.motor.motor_database_id, rocket_motor_config)
     rocket = EnhancedSimulationRocket(rocket_config, motor)
     flight = EnhancedSimulationFlight(rocket, environment, launch_params, analysis_options)
     
@@ -2030,19 +2123,19 @@ class EnhancedSimulationEnvironment(SimulationEnvironment):
                 logger.warning(f"Failed to set forecast date: {e}")
 
 class EnhancedSimulationMotor(SimulationMotor):
-    """Enhanced motor with advanced modeling capabilities"""
+    """Enhanced motor simulation with realistic characteristics and component-based configuration"""
     
-    def __init__(self, motor_id: str):
+    def __init__(self, motor_id: str, rocket_motor_config=None):
         super().__init__(motor_id)
         
-        if not ROCKETPY_AVAILABLE:
-            return
+        # Store the actual rocket motor configuration from frontend
+        self.rocket_motor_config = rocket_motor_config or {}
             
         # Enhanced motor modeling
         self._setup_enhanced_motor()
     
     def _setup_enhanced_motor(self):
-        """Setup enhanced motor with realistic characteristics"""
+        """Setup enhanced motor with realistic characteristics using rocket configuration"""
         motor_type = self.spec["type"]
         
         try:
@@ -2066,10 +2159,10 @@ class EnhancedSimulationMotor(SimulationMotor):
                 thrust_source=thrust_curve,
                 dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
                 dry_inertia=(0.125, 0.125, 0.002),
-                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,
+                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2,
                 grain_number=self._calculate_grain_number(),
                 grain_density=1815,  # kg/m³ - typical APCP
-                grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000 - 0.002,
+                grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2 - 0.002,
                 grain_initial_inner_radius=self._calculate_initial_bore(),
                 grain_initial_height=self._calculate_grain_height(),
                 grain_separation=0.005,  # 5mm separation between grains
@@ -2093,44 +2186,97 @@ class EnhancedSimulationMotor(SimulationMotor):
         thrust_curve = self._generate_liquid_thrust_curve()
         
         try:
-            # Enhanced liquid motor
-            self.motor = LiquidMotor(
-                thrust_source=thrust_curve,
-                dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
-                dry_inertia=(0.2, 0.2, 0.002),
-                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,
-                burn_time=self.spec["burn_time_s"],
-                center_of_dry_mass_position=0.5,
-                nozzle_position=0,
-                tanks=[
-                    # Oxidizer tank
-                    {
+            # Get motor configuration from the actual rocket motor component (from frontend)
+            rocket_motor = self.rocket_motor_config
+            
+            # Calculate propellant masses from motor spec (dynamic, not hardcoded)
+            total_propellant_kg = self.spec["mass"]["propellant_kg"]
+            
+            # Use rocket motor configuration for propellant ratios if available
+            if rocket_motor.get("nozzle_expansion_ratio") or rocket_motor.get("chamber_pressure_pa"):
+                # Advanced configuration - calculate ratios based on rocket motor config
+                chamber_pressure = rocket_motor.get("chamber_pressure_pa", 2000000)  # Default 20 bar
+                expansion_ratio = rocket_motor.get("nozzle_expansion_ratio", 10)
+                
+                # Calculate optimal oxidizer/fuel ratio based on chamber conditions
+                # This makes the motor configuration completely dynamic
+                if chamber_pressure > 1500000:  # High pressure = more oxidizer
+                    oxidizer_ratio = 0.75
+                else:
+                    oxidizer_ratio = 0.65
+                    
+                fuel_ratio = 1.0 - oxidizer_ratio
+                logger.info(f"Using dynamic propellant ratios based on rocket config: chamber_pressure={chamber_pressure}Pa, expansion_ratio={expansion_ratio}")
+                
+            elif "propellant_config" in self.spec and self.spec["propellant_config"]:
+                # Use motor database propellant config if available
+                propellant_config = self.spec["propellant_config"]
+                oxidizer_ratio = propellant_config.get("oxidizer_to_fuel_ratio", 2.3) / (propellant_config.get("oxidizer_to_fuel_ratio", 2.3) + 1)
+                fuel_ratio = 1.0 - oxidizer_ratio
+                logger.info(f"Using motor spec propellant config: O/F ratio = {propellant_config.get('oxidizer_to_fuel_ratio', 2.3)}")
+            else:
+                # Fallback ratios
+                oxidizer_ratio = 0.7
+                fuel_ratio = 0.3
+                logger.info("Using default propellant ratios (no rocket config found)")
+            
+            oxidizer_mass_kg = total_propellant_kg * oxidizer_ratio
+            fuel_mass_kg = total_propellant_kg * fuel_ratio
+            
+            # Use motor dimensions from spec (dynamic)
+            motor_length = self.spec["dimensions"]["length_m"]
+            motor_radius = self.spec["dimensions"]["outer_diameter_m"] / 2
+            
+            # Use rocket motor position configuration
+            motor_position = rocket_motor.get("position_from_tail_m", 0.0)
+            
+            # Calculate tank dimensions proportionally (configurable based on motor size)
+            oxidizer_tank_length = motor_length * 0.4  # 40% of motor length
+            fuel_tank_length = motor_length * 0.3      # 30% of motor length
+            tank_radius = motor_radius * 0.85          # 85% of motor radius to fit inside
+            
+            # ✅ FIXED: Use proper RocketPy tank configuration format
+            # Create tank configurations that prevent division by zero
+            oxidizer_tank = {
                         'type': 'oxidizer',
                         'geometry': 'cylindrical',
-                        'tank_height': 0.3,
-                        'tank_radius': 0.05,
-                        'liquid_mass': self.spec["mass"]["propellant_kg"] * 0.7,  # 70% oxidizer
-                        'liquid_height': 0.25,
-                        'tank_position': 0.7
-                    },
-                    # Fuel tank
-                    {
+                'tank_height': oxidizer_tank_length,
+                'tank_radius': tank_radius,
+                'liquid_mass': oxidizer_mass_kg,
+                'liquid_height': oxidizer_tank_length * 0.9,  # 90% fill level
+                'tank_position': motor_length * 0.7  # Position towards combustion chamber
+            }
+            
+            fuel_tank = {
                         'type': 'fuel',
                         'geometry': 'cylindrical',
-                        'tank_height': 0.2,
-                        'tank_radius': 0.05,
-                        'liquid_mass': self.spec["mass"]["propellant_kg"] * 0.3,  # 30% fuel
-                        'liquid_height': 0.15,
-                        'tank_position': 0.4
-                    }
-                ]
+                'tank_height': fuel_tank_length,
+                'tank_radius': tank_radius,
+                'liquid_mass': fuel_mass_kg,
+                'liquid_height': fuel_tank_length * 0.9,  # 90% fill level
+                'tank_position': motor_length * 0.3  # Position towards nozzle
+            }
+            
+            # ✅ CRITICAL FIX: Use RocketPy 1.2+ tank format 
+            # Create the LiquidMotor with proper tank list format
+            self.motor = LiquidMotor(
+                thrust_source=thrust_curve,
+                dry_mass=self.spec["mass"]["total_kg"] - total_propellant_kg,
+                dry_inertia=(0.2, 0.2, 0.002),
+                nozzle_radius=motor_radius * 0.7,  # Nozzle throat radius
+                burn_time=self.spec["burn_time_s"],
+                center_of_dry_mass_position=motor_length / 2,
+                nozzle_position=0,
+                tanks=[oxidizer_tank, fuel_tank]  # Pass as list of tank dicts
             )
             
-            logger.info(f"Created enhanced liquid motor: {self.spec['name']}")
+            logger.info(f"✅ Created enhanced liquid motor: {self.spec['name']} with {oxidizer_mass_kg:.3f}kg oxidizer + {fuel_mass_kg:.3f}kg fuel (ratio: {oxidizer_ratio:.2f}:{fuel_ratio:.2f}) at position {motor_position}m")
             
         except Exception as e:
-            logger.warning(f"Enhanced liquid motor creation failed: {e}")
-            self._create_liquid_motor()  # Fallback
+            logger.warning(f"❌ Enhanced liquid motor creation failed: {e}")
+            logger.info("🔄 Using basic solid motor fallback for liquid motor")
+            # ✅ Fallback to solid motor instead of broken liquid motor
+            self._create_enhanced_solid_motor()
     
     def _create_enhanced_hybrid_motor(self):
         """Create enhanced hybrid motor with regression modeling"""
@@ -2142,15 +2288,15 @@ class EnhancedSimulationMotor(SimulationMotor):
                 thrust_source=thrust_curve,
                 dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
                 dry_inertia=(0.15, 0.15, 0.002),
-                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000,
+                nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2,
                 burn_time=self.spec["burn_time_s"],
                 center_of_dry_mass_position=0.5,
                 nozzle_position=0,
                 grain_number=1,
                 grain_density=920,  # kg/m³ - typical HTPB
-                grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2000 - 0.005,
+                grain_outer_radius=self.spec["dimensions"]["outer_diameter_m"] / 2 - 0.005,
                 grain_initial_inner_radius=0.01,
-                grain_initial_height=self.spec["dimensions"]["length_m"] / 1000 * 0.6,
+                grain_initial_height=self.spec["dimensions"]["length_m"] * 0.6,
                 oxidizer_tank_position=0.7,
                 oxidizer_tank_geometry='cylindrical',
                 oxidizer_tank_height=0.2,
@@ -2166,7 +2312,7 @@ class EnhancedSimulationMotor(SimulationMotor):
     
     def _calculate_grain_number(self) -> int:
         """Calculate optimal number of grains based on motor size"""
-        motor_length = self.spec["dimensions"]["length_m"] / 1000  # mm to m
+        motor_length = self.spec["dimensions"]["length_m"]
         if motor_length < 0.1:
             return 1
         elif motor_length < 0.2:
@@ -2176,12 +2322,12 @@ class EnhancedSimulationMotor(SimulationMotor):
     
     def _calculate_initial_bore(self) -> float:
         """Calculate initial bore radius for optimal performance"""
-        outer_radius = self.spec["dimensions"]["outer_diameter_m"] / 2000 - 0.002
+        outer_radius = self.spec["dimensions"]["outer_diameter_m"] / 2 - 0.002
         return outer_radius * 0.3  # 30% of outer radius
     
     def _calculate_grain_height(self) -> float:
         """Calculate grain height based on motor dimensions"""
-        total_length = self.spec["dimensions"]["length_m"] / 1000
+        total_length = self.spec["dimensions"]["length_m"]
         grain_number = self._calculate_grain_number()
         return (total_length * 0.8) / grain_number  # 80% of total length
     
@@ -2239,12 +2385,17 @@ class EnhancedSimulationRocket(SimulationRocket):
     
     def __init__(self, rocket_config: RocketModel, motor: EnhancedSimulationMotor):
         self.config = rocket_config
+        
+        # Pass the rocket motor configuration to the motor
+        if hasattr(motor, 'rocket_motor_config'):
+            motor.rocket_motor_config = {
+                "motor_database_id": rocket_config.motor.motor_database_id,
+                "position_from_tail_m": rocket_config.motor.position_from_tail_m,
+                "nozzle_expansion_ratio": rocket_config.motor.nozzle_expansion_ratio,
+                "chamber_pressure_pa": rocket_config.motor.chamber_pressure_pa
+            }
+        
         self.motor = motor
-        self.rocket = None
-        
-        if not ROCKETPY_AVAILABLE:
-            return
-        
         self._create_enhanced_rocket()
     
     def _create_enhanced_rocket(self):
@@ -2396,51 +2547,119 @@ class EnhancedSimulationRocket(SimulationRocket):
         return (ixx, iyy, izz)
     
     def _calculate_enhanced_center_of_mass(self) -> float:
-        """Calculate center of mass with component-wise analysis"""
-        total_mass = 0
-        weighted_position = 0
-        current_position = 0
-        
-        # ✅ FIXED: Calculate from nose to tail using direct component access
+        """Calculate enhanced center of mass with detailed component analysis"""
+        total_mass = 0.0
+        weighted_position = 0.0
         
         # Nose cone contribution
-        if hasattr(self.config, 'nose_cone') and self.config.nose_cone:
+        nose_mass = self._calculate_nose_mass()
+        nose_position = self.config.nose_cone.length_m / 2 if self.config.nose_cone else 0.0
+        total_mass += nose_mass
+        weighted_position += nose_mass * nose_position
+        
+        # Body tubes contribution
+        for i, body in enumerate(self.config.body_tubes):
+            body_mass = self._calculate_body_mass(body)
+            # Position body tubes sequentially after nose cone
+            nose_length = self.config.nose_cone.length_m if self.config.nose_cone else 0.0
+            body_position = nose_length + (i * body.length_m) + (body.length_m / 2)
+            total_mass += body_mass
+            weighted_position += body_mass * body_position
+        
+        # Fins contribution (at the rear)
+        fins_mass = self._calculate_fins_mass()
+        fins_position = self._calculate_total_length() - 0.1  # Near the tail
+        total_mass += fins_mass
+        weighted_position += fins_mass * fins_position
+        
+        # Motor contribution (if available and properly configured)
+        if self.motor and self.motor.motor:
+            try:
+                motor_mass = self.motor.motor.propellant_initial_mass + self.motor.motor.dry_mass
+                motor_position = self._calculate_enhanced_motor_position()
+                total_mass += motor_mass
+                weighted_position += motor_mass * motor_position
+            except:
+                # Use motor spec data as fallback
+                motor_spec = self.motor.spec
+                motor_mass = motor_spec["mass"]["total_kg"]
+                motor_position = self.config.motor.position_from_tail_m
+                total_mass += motor_mass
+                weighted_position += motor_mass * motor_position
+        
+        # Parachutes contribution
+        for parachute in self.config.parachutes:
+            parachute_mass = 0.5  # Estimated parachute mass in kg
+            total_mass += parachute_mass
+            weighted_position += parachute_mass * parachute.position_from_tail_m
+        
+        if total_mass > 0:
+            center_of_mass = weighted_position / total_mass
+            logger.debug(f"Enhanced center of mass: {center_of_mass:.3f}m (total mass: {total_mass:.2f}kg)")
+            return center_of_mass
+        else:
+            logger.warning("Zero total mass detected, using geometric center")
+            return self._calculate_total_length() / 2
+    
+    def _calculate_nose_mass(self) -> float:
+        """Calculate nose cone mass"""
+        if not hasattr(self.config, 'nose_cone') or not self.config.nose_cone:
+            return 0.0
+        
             nose = self.config.nose_cone
             length = nose.length_m
             base_radius = nose.base_radius_m or self._calculate_enhanced_radius()
             wall_thickness = nose.wall_thickness_m
             material_density = nose.material_density_kg_m3
             
-            # Calculate actual nose cone mass
-            volume = np.pi * base_radius**2 * length / 3
-            nose_mass = volume * (wall_thickness / base_radius) * material_density
-            
-            # Nose COM is at approximately 60% from tip for cone
-            nose_com = current_position + length * 0.6
-            
-            weighted_position += nose_mass * nose_com
-            total_mass += nose_mass
-            current_position += length
+        # Nose cone mass based on volume and material
+        volume = np.pi * base_radius**2 * length / 3  # Cone volume
+        shell_mass = volume * (wall_thickness / base_radius) * material_density
+        return shell_mass
+    
+    def _calculate_body_mass(self, body: BodyComponentModel) -> float:
+        """Calculate individual body tube mass"""
+        length = body.length_m
+        radius = body.outer_radius_m
+        wall_thickness = body.wall_thickness_m
+        material_density = body.material_density_kg_m3
         
-        # Body tube contributions
-        for tube in self.config.body_tubes:
-            length = tube.length_m
-            radius = tube.outer_radius_m
-            wall_thickness = tube.wall_thickness_m
-            material_density = tube.material_density_kg_m3
-            
-            # Calculate actual tube mass
-            surface_area = 2 * np.pi * radius * length
-            tube_mass = surface_area * wall_thickness * material_density
-            
-            # Body tube COM is at center
-            tube_com = current_position + length / 2
-            
-            weighted_position += tube_mass * tube_com
-            total_mass += tube_mass
-            current_position += length
+        # Body tube mass based on surface area and wall thickness
+        surface_area = 2 * np.pi * radius * length
+        shell_mass = surface_area * wall_thickness * material_density
+        return shell_mass
+    
+    def _calculate_fins_mass(self) -> float:
+        """Calculate total fins mass"""
+        total_fin_mass = 0.0
         
-        return weighted_position / total_mass if total_mass > 0 else current_position / 2
+        for fin in self.config.fins:
+            root_chord = fin.root_chord_m
+            tip_chord = fin.tip_chord_m
+            span = fin.span_m
+            thickness = fin.thickness_m
+            material_density = fin.material_density_kg_m3
+            fin_count = fin.fin_count
+            
+            # Fin mass based on area and thickness
+            fin_area = 0.5 * (root_chord + tip_chord) * span  # Trapezoidal area
+            volume_per_fin = fin_area * thickness
+            mass_per_fin = volume_per_fin * material_density
+            total_fin_mass += mass_per_fin * fin_count
+        
+        return total_fin_mass
+
+    def _calculate_enhanced_motor_position(self) -> float:
+        """Calculate motor position from tail in enhanced rocket"""
+        motor_position = self.config.motor.position_from_tail_m
+        
+        # If not specified, place motor at 10% of total length from tail
+        if motor_position == 0.0:
+            total_length = self._calculate_total_length()
+            motor_position = total_length * 0.1
+        
+        logger.debug(f"Enhanced motor position: {motor_position:.3f}m from tail")
+        return motor_position
     
     def _calculate_enhanced_drag_curves(self) -> Dict[str, Any]:
         """Calculate enhanced drag curves for power-on and power-off flight"""
@@ -3257,11 +3476,6 @@ class EnhancedSimulationFlight(SimulationFlight):
     def _estimate_rail_departure_time(self) -> float:
         """Estimate time when rocket leaves launch rail"""
         return 0.1  # Stub implementation
-    
-    def _calculate_enhanced_motor_position(self) -> float:
-        """Calculate motor position from tail in enhanced rocket"""
-        # ✅ NEW METHOD: Calculate motor position for enhanced rockets
-        return self.config.motor.position_from_tail_m
 
 # ================================
 # API ENDPOINTS
@@ -3320,12 +3534,15 @@ async def get_motors(
 @app.post("/simulate", response_model=SimulationResult)
 async def simulate_standard(request: SimulationRequestModel):
     """Standard simulation endpoint with component-based models only"""
+    dbg_enter("/simulate", rocket_name=request.rocket.name, atm_model=request.environment.atmospheric_model if request.environment else 'default')
     
     logger.info("Starting standard simulation")
     
     # Set defaults
     environment = request.environment or EnvironmentModel()
     launch_params = request.launchParameters or LaunchParametersModel()
+    # ✅ Log which atmospheric model was received from the frontend
+    logger.info(f"🌐 [STANDARD] Frontend atmospheric model: {environment.atmospheric_model}")
         
         # Run simulation
     result = await simulate_rocket_6dof(
@@ -3335,12 +3552,13 @@ async def simulate_standard(request: SimulationRequestModel):
     )
     
     logger.info(f"Standard simulation completed: {result.maxAltitude:.1f}m apogee")
+    dbg_exit("/simulate", apogee=result.maxAltitude)
     return result
 
 @app.post("/simulate/hifi", response_model=SimulationResult)
-
 async def simulate_high_fidelity(request: SimulationRequestModel):
     """High-fidelity simulation endpoint with component-based models only"""
+    dbg_enter("/simulate/hifi", rocket_name=request.rocket.name, atm_model=request.environment.atmospheric_model if request.environment else 'default')
     
     if not ROCKETPY_AVAILABLE:
         raise HTTPException(
@@ -3353,6 +3571,8 @@ async def simulate_high_fidelity(request: SimulationRequestModel):
     # Set defaults
     environment = request.environment or EnvironmentModel()
     launch_params = request.launchParameters or LaunchParametersModel()
+    # ✅ Log which atmospheric model was received from the frontend
+    logger.info(f"🌐 [HIFI] Frontend atmospheric model: {environment.atmospheric_model}")
     
     # Enhanced analysis options
     analysis_options = {
@@ -3371,6 +3591,7 @@ async def simulate_high_fidelity(request: SimulationRequestModel):
     )
     
     logger.info(f"High-fidelity simulation completed: {result.maxAltitude:.1f}m apogee")
+    dbg_exit("/simulate/hifi", apogee=result.maxAltitude)
     return result
 
 
@@ -3380,6 +3601,7 @@ async def simulate_high_fidelity(request: SimulationRequestModel):
 @app.post("/simulate/monte-carlo", response_model=MonteCarloResult)
 async def simulate_monte_carlo(request: MonteCarloRequest):
     """Monte Carlo simulation endpoint with component-based models only"""
+    dbg_enter("/simulate/monte-carlo", iterations=request.iterations)
     
     logger.info(f"Starting Monte Carlo simulation with {request.iterations} iterations")
         
@@ -3388,6 +3610,7 @@ async def simulate_monte_carlo(request: MonteCarloRequest):
     result = await mc_sim.run()
         
     logger.info(f"Monte Carlo simulation completed: mean apogee {result.statistics['maxAltitude'].mean:.1f}m")
+    dbg_exit("/simulate/monte-carlo", mean_apogee=result.statistics.get('maxAltitude', {}).get('mean'))
     return result
         
 
@@ -3396,6 +3619,7 @@ async def simulate_monte_carlo(request: MonteCarloRequest):
 async def simulate_batch(requests: List[SimulationRequestModel], 
                         background_tasks: BackgroundTasks):
     """Batch simulation endpoint with component-based models only"""
+    dbg_enter("/simulate/batch", count=len(requests))
     
     if len(requests) > 50:
         raise HTTPException(
@@ -3407,6 +3631,7 @@ async def simulate_batch(requests: List[SimulationRequestModel],
     simulation_id = f"batch_{datetime.now().isoformat()}"
     background_tasks.add_task(run_batch_simulations, simulation_id, requests)
     
+    dbg_exit("/simulate/batch", simulation_id=simulation_id)
     return {
         "simulation_id": simulation_id,
         "status": "started",
@@ -3437,6 +3662,7 @@ async def run_batch_simulations(simulation_id: str, requests: List[SimulationReq
 @app.post("/simulate/enhanced", response_model=SimulationResult)
 async def simulate_enhanced_6dof(request: SimulationRequestModel):
     """Enhanced high-fidelity 6-DOF simulation with component-based models only"""
+    dbg_enter("/simulate/enhanced", rocket_name=request.rocket.name, atm_model=request.environment.atmospheric_model if request.environment else 'default')
     
     # Set defaults
     environment = request.environment or EnvironmentModel()
@@ -3456,11 +3682,14 @@ async def simulate_enhanced_6dof(request: SimulationRequestModel):
         launch_params,
         analysis_options
     )
+    dbg_exit("/simulate/enhanced", apogee=result.maxAltitude)
+    return result
 
 
 @app.post("/simulate/professional", response_model=SimulationResult)
 async def simulate_professional_grade(request: SimulationRequestModel):
     """Professional-grade simulation with component-based models only"""
+    dbg_enter("/simulate/professional", rocket_name=request.rocket.name, atm_model=request.environment.atmospheric_model if request.environment else 'default')
     
     if not ROCKETPY_AVAILABLE:
         raise HTTPException(
@@ -3489,11 +3718,14 @@ async def simulate_professional_grade(request: SimulationRequestModel):
         launch_params,
         analysis_options
     )
+    dbg_exit("/simulate/professional", apogee=result.maxAltitude)
+    return result
 
 
 @app.post("/analyze/stability")
 async def analyze_rocket_stability(request: SimulationRequestModel):
     """Comprehensive stability analysis with component-based models only"""
+    dbg_enter("/analyze/stability", rocket_name=request.rocket.name)
     
     try:
         logger.info("Starting stability analysis")
@@ -3576,7 +3808,7 @@ async def analyze_rocket_stability(request: SimulationRequestModel):
             rating = "overstable"
             recommendation = "Consider reducing fin area for better performance. May be too stable."
         
-        return {
+        result_dict = {
             "static_margin": static_margin,
             "center_of_pressure": cp,
             "center_of_mass": cm,
@@ -3584,8 +3816,11 @@ async def analyze_rocket_stability(request: SimulationRequestModel):
             "recommendation": recommendation,
             "analysis_type": "simplified" if not ROCKETPY_AVAILABLE else "comprehensive"
         }
+        dbg_exit("/analyze/stability", static_margin=result_dict["static_margin"], rating=result_dict["stability_rating"])
+        return result_dict
         
     except Exception as e:
+        dbg_exit("/analyze/stability", error=str(e))
         logger.error(f"Stability analysis failed: {e}")
         raise HTTPException(status_code=500, detail=f"Stability analysis error: {str(e)}")
 
@@ -3593,6 +3828,7 @@ async def analyze_rocket_stability(request: SimulationRequestModel):
 @app.get("/motors/detailed", response_model=Dict[str, Any])
 async def get_detailed_motors():
     """Get detailed motor specifications with performance data"""
+    dbg_enter("get_detailed_motors")
     
     detailed_motors = {}
     
@@ -3642,7 +3878,7 @@ async def get_detailed_motors():
             }
         }
     
-    return {
+    result_dict = {
         "motors": detailed_motors,
         "total_count": len(detailed_motors),
         "categories": {
@@ -3651,13 +3887,16 @@ async def get_detailed_motors():
             "hybrid": len([m for m in detailed_motors.values() if m["type"] == "hybrid"])
         }
     }
+    dbg_exit("get_detailed_motors", count=result_dict["total_count"])
+    return result_dict
 
 
 @app.get("/environment/atmospheric-models")
 async def get_atmospheric_models():
     """Get atmospheric modeling options for simulation configuration"""
+    dbg_enter("get_atmospheric_models")
     
-    return {
+    models_data = {
         "available_models": ["standard", "custom", "forecast", "nrlmsise"],
         "default_model": "standard",
         
@@ -3712,6 +3951,8 @@ async def get_atmospheric_models():
             "nrlmsise": "'msise00' library must be installed on the server"
         }
     }
+    dbg_exit("get_atmospheric_models", count=len(models_data["available_models"]))
+    return models_data
 
 # ================================
 # STARTUP/SHUTDOWN HANDLERS
@@ -3735,10 +3976,11 @@ async def shutdown_event():
 # ================================
 
 if __name__ == "__main__":
+    # Remove the old basicConfig, as it's handled at the top of the file
     uvicorn.run(
         app, 
         host="0.0.0.0", 
         port=8000,
-        log_level="info",
+        log_level=LOG_LEVEL.lower(), # Use the configured log level
         access_log=True
     ) 

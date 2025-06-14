@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         {
           parameter: "rocket.Cd",
           distribution: "normal",
-          parameters: [0.5, 0.05]
+          parameters: [rocket.Cd ?? 0.5, (rocket.Cd ?? 0.5) * 0.1]
         },
         {
           parameter: "launch.inclination",

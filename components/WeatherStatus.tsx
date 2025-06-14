@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { weatherService, type LocationData, type WeatherForecast } from '@/lib/services/weather';
 import LocationPermissionDialog from './LocationPermissionDialog';
+import { useRocket } from '@/lib/store';
 
 interface WeatherStatusProps {
   className?: string;
@@ -79,6 +80,7 @@ function EnvironmentMetric({
 }
 
 export default function WeatherStatus({ className = '', compact = false, onClose }: WeatherStatusProps) {
+  const { environment, setEnvironment } = useRocket();
   const [location, setLocation] = useState<LocationData | null>(null);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -146,6 +148,80 @@ export default function WeatherStatus({ className = '', compact = false, onClose
     setWeather(weatherData);
     setLastUpdated(new Date());
     setShowLocationDialog(false);
+    
+    const calculateRealAtmosphericProfile = (weather: WeatherForecast, elevation: number) => {
+      const altitudes = [0, 1000, 2000, 5000, 10000];
+      const baseTemp = weather.current.temperature + 273.15; // Convert to Kelvin
+      const basePressure = weather.current.pressure * 100; // Convert to Pascals
+      const baseHumidity = weather.current.humidity;
+      
+      // Calculate real atmospheric data for each altitude
+      const temperatures = altitudes.map(alt => {
+        // Standard lapse rate: -6.5°C per 1000m, but adjust based on actual conditions
+        const lapseRate = 0.0065; // K/m
+        return Math.max(200, baseTemp - (lapseRate * alt)); // Minimum 200K
+      });
+      
+      const pressures = altitudes.map((alt, i) => {
+        // Barometric formula with real base pressure
+        const scale_height = 8400; // meters
+        return basePressure * Math.exp(-alt / scale_height);
+      });
+      
+      const densities = altitudes.map((alt, i) => {
+        // Ideal gas law: ρ = P / (R * T)
+        const R = 287.05; // Specific gas constant for dry air
+        return pressures[i] / (R * temperatures[i]);
+      });
+      
+      // Calculate wind components from real wind data
+      const windSpeedMs = weather.current.windSpeed;
+      const windDirRad = (weather.current.windDirection * Math.PI) / 180;
+      
+      // Wind typically increases with altitude
+      const windUs = altitudes.map(alt => {
+        const windMultiplier = 1 + (alt / 10000) * 0.5; // 50% increase at 10km
+        return windSpeedMs * windMultiplier * Math.sin(windDirRad);
+      });
+      
+      const windVs = altitudes.map(alt => {
+        const windMultiplier = 1 + (alt / 10000) * 0.5; // 50% increase at 10km
+        return windSpeedMs * windMultiplier * Math.cos(windDirRad);
+      });
+      
+      return {
+        altitude: altitudes,
+        temperature: temperatures,
+        pressure: pressures,
+        density: densities,
+        windU: windUs,
+        windV: windVs
+      };
+    };
+    
+    const realAtmosphericProfile = calculateRealAtmosphericProfile(weatherData, locationData.elevation || 0);
+    
+    const updatedEnvironment = {
+      ...environment,
+      latitude_deg: locationData.latitude,
+      longitude_deg: locationData.longitude,
+      elevation_m: locationData.elevation || 0,
+      wind_speed_m_s: weatherData.current.windSpeed,
+      wind_direction_deg: weatherData.current.windDirection,
+      atmospheric_model: "forecast" as const,
+      atmospheric_profile: realAtmosphericProfile
+    };
+    
+    setEnvironment(updatedEnvironment);
+    console.log('✅ Weather data saved to store with REAL atmospheric profile:', {
+      location: `${locationData.latitude}, ${locationData.longitude}`,
+      wind: `${weatherData.current.windSpeed} m/s @ ${weatherData.current.windDirection}°`,
+      temperature: `${weatherData.current.temperature}°C`,
+      pressure: `${weatherData.current.pressure} hPa`,
+      atmospheric_model: 'forecast',
+      profile_altitudes: realAtmosphericProfile.altitude,
+      surface_density: realAtmosphericProfile.density[0].toFixed(3) + ' kg/m³'
+    });
   };
 
   const getWindDirection = (degrees: number): string => {

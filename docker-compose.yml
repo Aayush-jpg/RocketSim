@@ -63,6 +63,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
     networks:
       - rocket-network
     restart: unless-stopped

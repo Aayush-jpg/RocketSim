@@ -77,6 +77,42 @@ function calculateComponentMass(component: any): number {
 }
 
 /**
+ * Run standard simulation using RocketPy service
+ */
+export async function runStandardSim() {
+  try {
+    const { rocket, environment, setSim, setSimulating, setSimulationProgress } = useRocket.getState();
+    
+    setSimulating(true);
+    setSimulationProgress(0);
+    
+    const response = await fetch('/api/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rocket, environment, fidelity: 'standard' })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Simulation failed: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    setSim({
+      ...result,
+      simulationFidelity: 'standard',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Standard simulation failed:', error);
+  } finally {
+    useRocket.getState().setSimulating(false);
+    useRocket.getState().setSimulationProgress(100);
+  }
+}
+
+/**
  * Run high-fidelity simulation using RocketPy service
  */
 export async function runHighFiSim() {
@@ -555,69 +591,76 @@ export function analyzeEnvironmentalImpact(action: any) {
 }
 
 /**
- * Run Monte Carlo simulation with environmental variations
+ * Run Monte Carlo simulation by calling the dedicated API endpoint.
  */
-export function runMonteCarloSimulation(action: any) {
+export async function runMonteCarloSimulation(action: any) {
   try {
-    const { rocket, environment, setMonteCarloResult, setSimulating } = useRocket.getState();
+    const { rocket, environment, launchParameters, setMonteCarloResult, setSimulating } = useRocket.getState();
     
-    console.log('🎲 Running Monte Carlo simulation...');
+    console.log('🎲 Running Monte Carlo simulation via API...');
     setSimulating(true);
     
-    const iterations = action.iterations || 100;
+    // Estimate rocket's drag coefficient for the simulation
+    const estimatedCd = (rocket.nose_cone?.surface_roughness_m ?? 0.05) + 
+                        (rocket.fins?.[0]?.thickness_m ?? 0.005) * 4;
     
-    setTimeout(() => {
-      const results = [];
-      
-      for (let i = 0; i < iterations; i++) {
-        const variedWind = environment.windSpeed + (Math.random() - 0.5) * 4;
-        const baseAltitude = 200;
-        const windEffect = -variedWind * 0.5;
-        const randomVariation = (Math.random() - 0.5) * 50;
-        const simulatedAltitude = Math.max(0, baseAltitude + windEffect + randomVariation);
-        
-        results.push({ altitude: simulatedAltitude, windSpeed: variedWind });
+    const iterations = action.iterations || 100;
+    // Provide default variations if not specified by the agent action
+    const variations = action.variations || [
+      {
+        parameter: "environment.windSpeed",
+        distribution: "uniform",
+        parameters: [0, 10]
+      },
+      {
+        parameter: "rocket.Cd",
+        distribution: "normal",
+        parameters: [estimatedCd, estimatedCd * 0.1] // Use the estimated Cd
+      },
+      {
+        parameter: "launch.inclination",
+        distribution: "normal",
+        parameters: [85, 2]
       }
+    ];
       
-      const altitudes = results.map(r => r.altitude);
-      const mean = altitudes.reduce((a, b) => a + b, 0) / altitudes.length;
-      const std = Math.sqrt(altitudes.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / altitudes.length);
-      altitudes.sort((a, b) => a - b);
-      
-      const stats = {
-        altitude: {
-          mean,
-          std,
-          min: Math.min(...altitudes),
-          max: Math.max(...altitudes),
-          percentiles: {
-            "5": altitudes[Math.floor(altitudes.length * 0.05)],
-            "25": altitudes[Math.floor(altitudes.length * 0.25)],
-            "50": altitudes[Math.floor(altitudes.length * 0.50)],
-            "75": altitudes[Math.floor(altitudes.length * 0.75)],
-            "95": altitudes[Math.floor(altitudes.length * 0.95)]
-          }
-        }
-      };
-      
-      setMonteCarloResult({
-        nominal: {
-          maxAltitude: stats.altitude.mean,
-          simulationFidelity: 'monte-carlo',
-          timestamp: new Date().toISOString()
-        },
-        statistics: stats,
-        iterations: results
-      });
-      
-      setSimulating(false);
-      console.log(`✅ Monte Carlo completed: ${iterations} iterations`);
-      
-    }, 2000);
+    const response = await fetch('/api/simulate/monte-carlo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rocket: { ...rocket, Cd: estimatedCd },
+        environment,
+        launchParameters,
+        iterations,
+        variations
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Monte Carlo analysis failed: ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    setMonteCarloResult(result);
+    
+    // Dispatch a browser event that other components (like charts) can listen to
+    window.dispatchEvent(new CustomEvent('monteCarloComplete', { 
+      detail: { result } 
+    }));
     
   } catch (error) {
     console.error('❌ Monte Carlo simulation failed:', error);
+    // Optionally, dispatch a notification to the UI for user feedback
+    window.dispatchEvent(new CustomEvent('notification', {
+      detail: { 
+        message: `Monte Carlo analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        type: 'error' 
+      }
+    }));
+  } finally {
     useRocket.getState().setSimulating(false);
+    console.log(`✅ Monte Carlo API call completed`);
   }
 }
 
@@ -1086,6 +1129,10 @@ export function dispatchActions(actions: any[]) {
             runQuickSim();
           } else if (action.fidelity === "hifi") {
             runHighFiSim();
+          } else if (action.fidelity === "monte_carlo") {
+            runMonteCarloSimulation(action);
+          } else {
+            runStandardSim();
           }
           break;
 
@@ -1127,6 +1174,7 @@ export function dispatchActions(actions: any[]) {
           analyzeEnvironmentalImpact(action);
           break;
           
+        case "run_monte_carlo":
         case "run_monte_carlo_simulation":
           runMonteCarloSimulation(action);
           break;
