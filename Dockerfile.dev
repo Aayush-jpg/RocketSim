@@ -1,0 +1,25 @@
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+COPY pnpm-lock.yaml* ./
+
+# Install dependencies (use pnpm if available, otherwise npm)
+RUN if [ -f pnpm-lock.yaml ]; then \
+      npm install -g pnpm && pnpm install; \
+    else \
+      npm install; \
+    fi
+
+# Set development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Expose port
+EXPOSE 3000
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"] 

@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+*/node_modules/
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+
+# Development files
+.git/
+.github/
+.vscode/
+.idea/
+*.log
+*.logs
+logs/
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development tools
+.eslintrc*
+.prettierrc*
+jest.config.*
+*.test.*
+*.spec.*
+
+# Temporary files
+tmp/
+temp/
+.tmp/ 

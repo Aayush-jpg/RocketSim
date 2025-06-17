@@ -61,6 +61,11 @@ export async function POST(req: NextRequest) {
       atmosphericModel: "standard"
     };
 
+    // Normalize wind direction to 0-360 degrees for Python backend
+    if (cleanEnvironment.windDirection && typeof cleanEnvironment.windDirection === 'number') {
+      cleanEnvironment.windDirection = ((cleanEnvironment.windDirection % 360) + 360) % 360;
+    }
+
     // Forward request to RocketPy service
     const rocketpyUrl = process.env.ROCKETPY_URL || "http://rocketpy:8000";
     

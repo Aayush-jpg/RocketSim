@@ -350,7 +350,7 @@ class WeatherService {
       pressure: data.surface.pressure,
       humidity: data.surface.humidity,
       windSpeed: Math.sqrt(data.surface.windU ** 2 + data.surface.windV ** 2),
-      windDirection: Math.atan2(data.surface.windU, data.surface.windV) * 180 / Math.PI,
+      windDirection: ((Math.atan2(data.surface.windU, data.surface.windV) * 180 / Math.PI) + 360) % 360,
       visibility: data.surface.visibility || 10,
       cloudCover: data.surface.cloudCover || 0,
       dewPoint: data.surface.dewPoint,

@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
       iterations: iterations || 100
     };
     
+    // Normalize wind direction to 0-360 degrees for Python backend
+    if (requestData.environment && typeof requestData.environment.windDirection === 'number') {
+      requestData.environment.windDirection = ((requestData.environment.windDirection % 360) + 360) % 360;
+    }
+    
     console.log(`🎲 Proxying Monte Carlo simulation request to ${rocketpyUrl}/simulate/monte-carlo`);
     
     // Create AbortController with longer timeout for threaded Monte Carlo
@@ -72,7 +77,13 @@ export async function POST(req: NextRequest) {
       }
       
       const result = await response.json();
-      console.log(`✅ Monte Carlo simulation completed successfully with ${result.statistics?.maxAltitude?.mean || 'unknown'} mean altitude`);
+      
+      // Get mean altitude from the properly mapped statistics
+      const meanAltitude = result.statistics?.maxAltitude?.mean || 
+                          result.nominal?.maxAltitude || 
+                          'unknown';
+      
+      console.log(`✅ Monte Carlo simulation completed successfully with ${meanAltitude.toFixed ? meanAltitude.toFixed(1) + 'm' : meanAltitude} mean altitude`);
       
       return NextResponse.json(result);
       

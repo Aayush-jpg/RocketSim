@@ -29,6 +29,11 @@ export async function POST(req: NextRequest) {
       simulationType: "hifi"
     };
     
+    // Normalize wind direction to 0-360 degrees for Python backend
+    if (requestData.environment && typeof requestData.environment.windDirection === 'number') {
+      requestData.environment.windDirection = ((requestData.environment.windDirection % 360) + 360) % 360;
+    }
+    
     console.log(`🚀 Proxying high-fidelity simulation request to ${rocketpyUrl}/simulate/hifi`);
     
     // Create AbortController with 10 minute timeout for hi-fi simulations
