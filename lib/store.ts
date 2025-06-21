@@ -45,12 +45,12 @@ const DEFAULT_ROCKET = getDefaultRocket();
 
 // Default environment configuration
 export const DEFAULT_ENVIRONMENT: EnvironmentConfig = {
-  latitude: 0.0,
-  longitude: 0.0,
-  elevation: 0.0,
-  windSpeed: 0.0,
-  windDirection: 0.0,
-  atmosphericModel: "standard",
+  latitude_deg: 0.0,
+  longitude_deg: 0.0,
+  elevation_m: 0.0,
+  wind_speed_m_s: 0.0,
+  wind_direction_deg: 0.0,
+  atmospheric_model: "standard",
   atmospheric_profile: undefined
 };
 

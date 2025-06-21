@@ -1,12 +1,39 @@
+# CORE DEPENDENCIES (INSTALL FIRST)
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+pandas>=2.0.0
+
+# MAIN APPLICATION DEPENDENCIES
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.7.0
-numpy>=1.24.0
 rocketpy>=1.2.0
-scipy>=1.11.0
-matplotlib>=3.7.0
-pandas>=2.0.0
 python-dotenv>=1.0.0
-httpx>=0.25.0 
+httpx>=0.25.0
+requests>=2.31.0
 msise00
-multiprocess>=0.70.0 
+multiprocess>=0.70.0
+
+# SPACE-GRADE LIBRARIES (AFTER CORE DEPENDENCIES)
+nrlmsise00>=0.0.4        # Thread-safe NRLMSISE-00 atmospheric model
+numba>=0.58.0            # JIT compilation for performance
+dask>=2023.0.0           # Distributed computing framework
+cloudpickle>=2.2.0       # Enhanced serialization for distributed computing
+
+# ENHANCED NUMERICAL LIBRARIES
+scikit-learn>=1.3.0      # Advanced statistical analysis
+sympy>=1.12              # Symbolic mathematics for analytical solutions
+
+# PROFESSIONAL MONITORING
+psutil>=5.9.0            # System monitoring for performance optimization
+
+# ADVANCED ATMOSPHERIC DATA
+xarray>=2023.8.0         # Professional atmospheric data processing
+netcdf4>=1.6.4           # NetCDF file support for atmospheric data
+
+# ADVANCED STIFF ODE SOLVERS (REQUIRES NUMPY/SCIPY FIRST)
+# assimulo>=3.0          # Advanced stiff ODE solvers (commented due to build issues)
+
+# OPTIONAL GPU ACCELERATION (graceful fallback if not available)
+# cupy>=12.0.0           # GPU acceleration (commented - install manually if needed) 

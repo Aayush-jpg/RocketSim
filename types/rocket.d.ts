@@ -193,12 +193,12 @@ export interface MonteCarloResult {
 }
 
 export interface EnvironmentConfig {
-  latitude: number;
-  longitude: number;
-  elevation: number;
-  windSpeed: number;
-  windDirection: number;
-  atmosphericModel: "standard" | "forecast" | "custom" | "nrlmsise";
+  latitude_deg: number;
+  longitude_deg: number;
+  elevation_m: number;
+  wind_speed_m_s: number;
+  wind_direction_deg: number;
+  atmospheric_model: "standard" | "forecast" | "custom" | "nrlmsise";
   date?: string;
   temperature?: number;
   pressure?: number;
@@ -209,6 +209,10 @@ export interface EnvironmentConfig {
   soundSpeed?: number;
   timestamp?: string;
   atmospheric_profile?: AtmosphericProfile;
+  // Enhanced weather data for comprehensive simulations
+  temperature_offset_k?: number;
+  pressure_offset_pa?: number;
+  timezone?: string;
 }
 
 export interface AtmosphericProfile {

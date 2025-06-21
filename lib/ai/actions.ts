@@ -362,12 +362,12 @@ export function setEnvironment(action: any) {
     const { setEnvironment } = useRocket.getState();
     
     const environmentUpdate = {
-      latitude: action.latitude !== undefined ? action.latitude : undefined,
-      longitude: action.longitude !== undefined ? action.longitude : undefined,
-      elevation: action.elevation !== undefined ? action.elevation : undefined,
-      windSpeed: action.windSpeed !== undefined ? action.windSpeed : undefined,
-      windDirection: action.windDirection !== undefined ? action.windDirection : undefined,
-      atmosphericModel: action.atmosphericModel || undefined,
+      latitude_deg: action.latitude_deg !== undefined ? action.latitude_deg : action.latitude,
+      longitude_deg: action.longitude_deg !== undefined ? action.longitude_deg : action.longitude,
+      elevation_m: action.elevation_m !== undefined ? action.elevation_m : action.elevation,
+      wind_speed_m_s: action.wind_speed_m_s !== undefined ? action.wind_speed_m_s : action.windSpeed,
+      wind_direction_deg: action.wind_direction_deg !== undefined ? action.wind_direction_deg : action.windDirection,
+      atmospheric_model: action.atmospheric_model || action.atmosphericModel || undefined,
       date: action.date || undefined
     };
     
@@ -434,12 +434,12 @@ export function setWindConditions(action: any) {
     const currentEnv = useRocket.getState().environment;
     const windUpdate = {
       ...currentEnv,
-      windSpeed: action.windSpeed !== undefined ? action.windSpeed : currentEnv.windSpeed,
-      windDirection: action.windDirection !== undefined ? action.windDirection : currentEnv.windDirection
+      wind_speed_m_s: action.wind_speed_m_s !== undefined ? action.wind_speed_m_s : (action.windSpeed !== undefined ? action.windSpeed : currentEnv.wind_speed_m_s),
+      wind_direction_deg: action.wind_direction_deg !== undefined ? action.wind_direction_deg : (action.windDirection !== undefined ? action.windDirection : currentEnv.wind_direction_deg)
     };
     
     setEnvironment(windUpdate);
-    console.log(`✅ Wind conditions: ${windUpdate.windSpeed} m/s @ ${windUpdate.windDirection}°`);
+    console.log(`✅ Wind conditions: ${windUpdate.wind_speed_m_s} m/s @ ${windUpdate.wind_direction_deg}°`);
     
   } catch (error) {
     console.error('❌ Failed to set wind conditions:', error);
@@ -456,13 +456,13 @@ export function setAtmosphericConditions(action: any) {
     const currentEnv = useRocket.getState().environment;
     const atmosphericUpdate = {
       ...currentEnv,
-      atmosphericModel: action.atmosphericModel || currentEnv.atmosphericModel,
-      elevation: action.elevation !== undefined ? action.elevation : currentEnv.elevation,
+      atmospheric_model: action.atmosphericModel || currentEnv.atmospheric_model,
+      elevation_m: action.elevation !== undefined ? action.elevation : currentEnv.elevation_m,
       date: action.date || currentEnv.date
     };
     
     setEnvironment(atmosphericUpdate);
-    console.log(`✅ Atmospheric model: ${atmosphericUpdate.atmosphericModel}`);
+    console.log(`✅ Atmospheric model: ${atmosphericUpdate.atmospheric_model}`);
     
   } catch (error) {
     console.error('❌ Failed to set atmospheric conditions:', error);
@@ -505,25 +505,25 @@ export function analyzeEnvironmentalImpact(action: any) {
     let recommendations = [];
     
     // Wind analysis
-    if (environment.windSpeed > 10) {
-      warnings.push(`High wind speed (${environment.windSpeed} m/s) may affect flight stability`);
+    if (environment.wind_speed_m_s > 10) {
+      warnings.push(`High wind speed (${environment.wind_speed_m_s} m/s) may affect flight stability`);
       recommendations.push('Consider postponing launch or using wind-resistant design');
-    } else if (environment.windSpeed > 5) {
-      analysis.push(`Moderate wind (${environment.windSpeed} m/s) will cause some drift`);
+    } else if (environment.wind_speed_m_s > 5) {
+      analysis.push(`Moderate wind (${environment.wind_speed_m_s} m/s) will cause some drift`);
       recommendations.push('Account for wind drift in recovery planning');
     } else {
-      analysis.push(`Low wind conditions (${environment.windSpeed} m/s) - ideal for flight`);
+      analysis.push(`Low wind conditions (${environment.wind_speed_m_s} m/s) - ideal for flight`);
     }
     
     // Elevation analysis
-    if (environment.elevation > 1500) {
-      analysis.push(`High altitude launch (${environment.elevation}m) - reduced air density will increase altitude`);
+    if (environment.elevation_m > 1500) {
+      analysis.push(`High altitude launch (${environment.elevation_m}m) - reduced air density will increase altitude`);
       recommendations.push('Expect 5-15% altitude increase due to thin air');
-    } else if (environment.elevation < 0) {
-      analysis.push(`Below sea level launch (${environment.elevation}m) - increased air density will reduce altitude`);
+    } else if (environment.elevation_m < 0) {
+      analysis.push(`Below sea level launch (${environment.elevation_m}m) - increased air density will reduce altitude`);
       recommendations.push('Expect 2-8% altitude decrease due to dense air');
     } else {
-      analysis.push(`Launch elevation (${environment.elevation}m) within normal range`);
+      analysis.push(`Launch elevation (${environment.elevation_m}m) within normal range`);
     }
     
     // Launch angle analysis
@@ -550,18 +550,18 @@ export function analyzeEnvironmentalImpact(action: any) {
     }
     
     // Atmospheric model analysis
-    if (environment.atmosphericModel === "standard") {
+    if (environment.atmospheric_model === "standard") {
       analysis.push("Using standard atmosphere model - good for general predictions");
-    } else if (environment.atmosphericModel === "forecast") {
+    } else if (environment.atmospheric_model === "forecast") {
       analysis.push("Using weather forecast data for enhanced accuracy");
       recommendations.push("Real-time weather data will improve simulation precision");
-    } else if (environment.atmosphericModel === "custom") {
+    } else if (environment.atmospheric_model === "custom") {
       analysis.push("Using custom atmospheric model for specialized conditions");
     }
     
     // Combined wind and launch analysis
-    if (environment.windSpeed > 0 && launchParameters.inclination !== undefined) {
-      const crosswindComponent = environment.windSpeed * Math.sin(Math.PI * (90 - launchParameters.inclination) / 180);
+    if (environment.wind_speed_m_s > 0 && launchParameters.inclination !== undefined) {
+      const crosswindComponent = environment.wind_speed_m_s * Math.sin(Math.PI * (90 - launchParameters.inclination) / 180);
       if (crosswindComponent > 5) {
         warnings.push(`High crosswind component (${crosswindComponent.toFixed(1)} m/s) for ${launchParameters.inclination}° launch`);
         recommendations.push(`Consider adjusting launch angle or postponing if wind exceeds safety limits`);
@@ -605,20 +605,19 @@ export async function runMonteCarloSimulation(action: any) {
                         (rocket.fins?.[0]?.thickness_m ?? 0.005) * 4;
     
     const iterations = action.iterations || 100;
-    // Provide default variations if not specified by the agent action
     const variations = action.variations || [
       {
-        parameter: "environment.windSpeed",
+        parameter: "environment.wind_speed_m_s",
         distribution: "uniform",
         parameters: [0, 10]
       },
       {
         parameter: "rocket.Cd",
         distribution: "normal",
-        parameters: [estimatedCd, estimatedCd * 0.1] // Use the estimated Cd
+        parameters: [estimatedCd, estimatedCd * 0.1]
       },
       {
-        parameter: "launch.inclination",
+        parameter: "launch.inclination_deg",
         distribution: "normal",
         parameters: [85, 2]
       }
@@ -675,12 +674,12 @@ export function syncEnvironmentFromGlobal() {
       const globalEnv = (window as any).environmentConditions;
       
       const storeEnvironment = {
-        latitude: globalEnv.latitude || 0,
-        longitude: globalEnv.longitude || 0,
-        elevation: globalEnv.elevation || 0,
-        windSpeed: globalEnv.windSpeed || 0,
-        windDirection: globalEnv.windDirection || 0,
-        atmosphericModel: globalEnv.atmosphericModel as "standard" | "forecast" | "custom" || "standard",
+        latitude_deg: globalEnv.latitude || 0,
+        longitude_deg: globalEnv.longitude || 0,
+        elevation_m: globalEnv.elevation || 0,
+        wind_speed_m_s: globalEnv.wind_speed_m_s || globalEnv.windSpeed || 0,
+        wind_direction_deg: globalEnv.wind_direction_deg || globalEnv.windDirection || 0,
+        atmospheric_model: globalEnv.atmosphericModel as "standard" | "forecast" | "custom" || "standard",
         date: globalEnv.date || new Date().toISOString()
       };
       
@@ -707,7 +706,7 @@ export function toggleRealTimeWeather(action: any) {
     const currentEnv = useRocket.getState().environment;
     const atmosphericModel: "standard" | "forecast" | "custom" = action.enabled ? "forecast" : "standard";
     
-    setEnvironment({ ...currentEnv, atmosphericModel });
+    setEnvironment({ ...currentEnv, atmospheric_model: atmosphericModel });
     
     if (action.enabled) {
       syncEnvironmentFromGlobal();
@@ -795,7 +794,7 @@ export function analyzeComprehensiveEnvironment(action: any) {
     
     const fullAnalysis = [
       `=== COMPREHENSIVE ENVIRONMENTAL ANALYSIS ===`,
-      `Location: ${storeEnv.latitude}°, ${storeEnv.longitude}° @ ${storeEnv.elevation}m`,
+      `Location: ${storeEnv.latitude_deg}°, ${storeEnv.longitude_deg}° @ ${storeEnv.elevation_m}m`,
       '',
       ...analysis,
       ...(warnings.length > 0 ? ['', '⚠️ WARNINGS:', ...warnings] : [])
@@ -817,12 +816,12 @@ export function updateEnvironmentFromWeather(action: any) {
     const { setEnvironment } = useRocket.getState();
     
     const environmentUpdate: Partial<EnvironmentConfig> = {
-      latitude: action.location?.latitude || action.lat,
-      longitude: action.location?.longitude || action.lon,
-      elevation: action.location?.elevation || action.elevation || 0,
-      windSpeed: action.current?.windSpeed || action.wind?.speed || 0,
-      windDirection: action.current?.windDirection || action.wind?.direction || 0,
-      atmosphericModel: "forecast",
+      latitude_deg: action.location?.latitude || action.lat,
+      longitude_deg: action.location?.longitude || action.lon,
+      elevation_m: action.location?.elevation || action.elevation || 0,
+      wind_speed_m_s: action.current?.windSpeed || action.wind?.speed || 0,
+      wind_direction_deg: action.current?.windDirection || action.wind?.direction || 0,
+      atmospheric_model: "forecast",
       date: action.validTime || action.timestamp || new Date().toISOString(),
       atmospheric_profile: action.atmospheric 
     };
@@ -840,7 +839,7 @@ export function updateEnvironmentFromWeather(action: any) {
       (window as any).environmentConditions = {
         ...(window as any).environmentConditions,
         ...action,
-        atmosphericModel: "forecast"
+        atmospheric_model: "forecast"
       };
     }
     

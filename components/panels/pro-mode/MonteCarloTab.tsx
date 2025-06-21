@@ -192,9 +192,9 @@ export default function MonteCarloTab() {
   const [isRunning, setIsRunning] = useState(false);
   const [iterations, setIterations] = useState(100);
   const [selectedVariations, setSelectedVariations] = useState([
-    'environment.windSpeed',
+    'environment.wind_speed_m_s',
     'rocket.Cd',
-    'launch.inclination'
+    'launch.inclination_deg'
   ]);
 
   const runMonteCarloAnalysis = async () => {
@@ -237,7 +237,7 @@ export default function MonteCarloTab() {
       
       const variations = [
         {
-          parameter: "environment.windSpeed",
+          parameter: "environment.wind_speed_m_s",
           distribution: "uniform",
           parameters: [0, 10]
         },
@@ -247,7 +247,7 @@ export default function MonteCarloTab() {
           parameters: [rocketCd, rocketCd * 0.1]
         },
         {
-          parameter: "launch.inclination",
+          parameter: "launch.inclination_deg",
           distribution: "normal",
           parameters: [85, 2]
         }
@@ -485,7 +485,7 @@ export default function MonteCarloTab() {
                 <div className="grid grid-cols-1 gap-3">
                   {[
                     { 
-                      id: 'environment.windSpeed', 
+                      id: 'environment.wind_speed_m_s', 
                       label: 'Wind Speed Variation', 
                       description: 'Random wind speeds (0-10 m/s)',
                       icon: '💨',
@@ -499,7 +499,7 @@ export default function MonteCarloTab() {
                       color: 'text-orange-400'
                     },
                     { 
-                      id: 'launch.inclination', 
+                      id: 'launch.inclination_deg', 
                       label: 'Launch Angle Variation', 
                       description: 'Launch setup precision (85° ±2°)',
                       icon: '🎯',

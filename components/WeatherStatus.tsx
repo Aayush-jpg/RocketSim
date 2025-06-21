@@ -14,6 +14,8 @@ import {
 import { weatherService, type LocationData, type WeatherForecast } from '@/lib/services/weather';
 import LocationPermissionDialog from './LocationPermissionDialog';
 import { useRocket } from '@/lib/store';
+import AtmosphericModelSelector from './AtmosphericModelSelector';
+import AtmosphericDataIndicator from './ui/AtmosphericDataIndicator';
 
 interface WeatherStatusProps {
   className?: string;
@@ -716,13 +718,31 @@ export default function WeatherStatus({ className = '', compact = false, onClose
               />
           </div>
 
+            {/* Atmospheric Model Settings */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.45 }}
+            >
+              <AtmosphericModelSelector />
+            </motion.div>
+
+            {/* Atmospheric Data Quality Indicator */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
+            >
+              <AtmosphericDataIndicator />
+            </motion.div>
+
             {/* Wind Conditions */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-white">Wind Conditions</h4>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.5 }}
+                transition={{ duration: 0.4, delay: 0.55 }}
                 className="glass-strong rounded-xl p-4 bg-slate-800/50 border border-white/5"
               >
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -759,7 +779,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
                 unit=" km"
                 color="text-green-400"
                 status={getEnvironmentStatus(weather.current.visibility, { good: [10, 50], caution: [5, 100] })}
-                delay={0.6}
+                delay={0.65}
               />
               <EnvironmentMetric
                 label="Cloud Cover"
@@ -767,7 +787,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
                 unit="%"
                 color="text-blue-400"
                 status={getEnvironmentStatus(weather.current.cloudCover, { good: [0, 30], caution: [30, 70] })}
-                delay={0.7}
+                delay={0.75}
               />
             </div>
           </div>
@@ -897,11 +917,20 @@ export default function WeatherStatus({ className = '', compact = false, onClose
 
         {selectedView === "analysis" && (
           <div className="space-y-6">
-            {/* Impact Analysis */}
+            {/* Atmospheric Model Selector */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
+            >
+              <AtmosphericModelSelector />
+            </motion.div>
+
+            {/* Impact Analysis */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
               className="glass-strong rounded-xl p-6 bg-slate-800/50 border border-white/5"
             >
               <h4 className="text-sm font-medium text-white mb-4">Environmental Impact on Flight</h4>
@@ -937,7 +966,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
               className="glass-strong rounded-xl p-6 bg-slate-800/50 border border-white/5"
             >
               <h4 className="text-sm font-medium text-white mb-4">Launch Recommendations</h4>
@@ -973,7 +1002,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
               className="glass-strong rounded-xl p-6 bg-slate-800/50 border border-white/5"
             >
               <h4 className="text-sm font-medium text-white mb-4">Safety Considerations</h4>

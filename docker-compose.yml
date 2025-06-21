@@ -75,6 +75,7 @@ services:
       start_period: 40s
     volumes:
       - ./lib/data:/app/lib/data:ro
+      - geomagindices-data:/home/rocket/.geomagindices
 
 networks:
   rocket-network:
@@ -82,4 +83,6 @@ networks:
 
 volumes:
   rocket-data:
+    driver: local
+  geomagindices-data:
     driver: local 

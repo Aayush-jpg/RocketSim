@@ -4,6 +4,7 @@ import { useState } from "react"
 import { motion } from "framer-motion"
 import { useRocket } from '@/lib/store';
 import { cn } from "@/lib/utils"
+import AtmosphericDataIndicator from '@/components/ui/AtmosphericDataIndicator'
 
 interface SimulationAnalysisProps {
   onClose?: () => void
@@ -164,6 +165,9 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
     }
     
     try {
+      // CRITICAL FIX: Use environment and launchParameters from store instead of hardcoded values
+      const { environment, launchParameters } = useRocket.getState();
+      
       const response = await fetch('/api/simulate', {
         method: 'POST',
         headers: {
@@ -172,15 +176,15 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
         body: JSON.stringify({
           rocket,
           fidelity,
-          environment: {
-            latitude: 0,
-            longitude: 0,
-            elevation: 0,
-            windSpeed: 0,
-            windDirection: 0,
-            atmosphericModel: "standard"
+          environment: environment || {
+            latitude_deg: 0.0,
+            longitude_deg: 0.0,
+            elevation_m: 0.0,
+            wind_speed_m_s: 0.0,
+            wind_direction_deg: 0.0,
+            atmospheric_model: "standard"
           },
-          launchParameters: {
+          launchParameters: launchParameters || {
             railLength: 5.0,
             inclination: 85.0,
             heading: 0.0
@@ -298,6 +302,15 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
             <p className="text-gray-400 text-sm">
               Run a simulation to analyze your rocket's performance and flight characteristics
             </p>
+          </motion.div>
+
+          {/* Atmospheric Data Status */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+          >
+            <AtmosphericDataIndicator compact={true} />
           </motion.div>
 
           {/* Simulation Options */}

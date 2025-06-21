@@ -40,8 +40,10 @@ function cleanEnvironmentData(environment: any): any {
     latitude: typeof environment.latitude === 'number' ? environment.latitude : 0.0,
     longitude: typeof environment.longitude === 'number' ? environment.longitude : 0.0,
     elevation: typeof environment.elevation === 'number' ? environment.elevation : 0.0,
-    windSpeed: typeof environment.windSpeed === 'number' ? environment.windSpeed : 0.0,
-    windDirection: typeof environment.windDirection === 'number' ? environment.windDirection : 0.0
+    windSpeed: typeof environment.wind_speed_m_s === 'number' ? environment.wind_speed_m_s : 
+               typeof environment.windSpeed === 'number' ? environment.windSpeed : 0.0,
+    windDirection: typeof environment.wind_direction_deg === 'number' ? environment.wind_direction_deg : 
+                   typeof environment.windDirection === 'number' ? environment.windDirection : 0.0
   };
 }
 
