@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+
 interface TrajectoryPointProps {
   time: number;
   altitude: number;
@@ -26,16 +27,61 @@ export default function TrajectoryTab() {
   const [selectedPhase, setSelectedPhase] = useState<'all' | 'powered' | 'coast' | 'descent'>('all');
   const [showDetailed, setShowDetailed] = useState(false);
 
-  // Generate trajectory data from simulation results
+  // ✅ USE REAL TRAJECTORY DATA from backend simulation
   const generateTrajectoryData = () => {
+    // ✅ CRITICAL FIX: Use real trajectory data from enhanced 6-DOF simulation
+    if (sim?.trajectory?.time && sim.trajectory.time.length > 0) {
+      console.log("🚀 Using REAL trajectory data from enhanced 6-DOF simulation");
+      
+      const realTrajectory = sim.trajectory;
+      const points = [];
+      
+      for (let i = 0; i < realTrajectory.time.length; i++) {
+        const time = realTrajectory.time[i];
+        
+        // Extract real 3D position data
+        const position = realTrajectory.position[i] || [0, 0, 0];
+        const altitude = position[2]; // Z-component is altitude
+        
+        // Extract real 3D velocity data  
+        const velocity3d = realTrajectory.velocity[i] || [0, 0, 0];
+        const velocity = Math.sqrt(velocity3d[0]**2 + velocity3d[1]**2 + velocity3d[2]**2);
+        
+        // Extract real 3D acceleration data
+        const acceleration3d = realTrajectory.acceleration[i] || [0, 0, 0];
+        const acceleration = Math.sqrt(acceleration3d[0]**2 + acceleration3d[1]**2 + acceleration3d[2]**2);
+        
+        // Determine flight phase based on real data
+        let phase = 'coast';
+        if (time <= 3) phase = 'powered';  // Motor burn phase
+        else if (time > (sim.apogeeTime || 10)) phase = 'descent';
+        
+        points.push({
+          time,
+          altitude: Math.max(0, altitude),
+          velocity,
+          acceleration,
+          phase,
+          position: position,  // Store full 3D position
+          velocity3d: velocity3d,  // Store full 3D velocity
+          acceleration3d: acceleration3d  // Store full 3D acceleration
+        });
+      }
+      
+      return points;
+    }
+    
+    // ⚠️ FALLBACK: Generate synthetic data only if NO real trajectory available
     if (!sim?.maxAltitude) return null;
-
+    
+    console.warn("⚠️ No real trajectory data available, generating synthetic approximation");
+    
     const apogeeTime = sim.apogeeTime || 10;
     const maxAltitude = sim.maxAltitude;
     const maxVelocity = sim.maxVelocity || 100;
     const maxAcceleration = sim.maxAcceleration || 50;
 
-    // Generate trajectory points
+    // Generate synthetic trajectory points (fallback only)
     const points = [];
     const totalTime = apogeeTime * 2; // Approximate total flight time
     const timeStep = 0.5;
@@ -63,7 +109,10 @@ export default function TrajectoryTab() {
         altitude: Math.max(0, altitude),
         velocity,
         acceleration,
-        phase: t <= 3 ? 'powered' : t <= apogeeTime ? 'coast' : 'descent'
+        phase: t <= 3 ? 'powered' : t <= apogeeTime ? 'coast' : 'descent',
+        position: [0, 0, altitude],  // Synthetic 3D position
+        velocity3d: [0, 0, velocity],  // Synthetic 3D velocity  
+        acceleration3d: [0, 0, acceleration]  // Synthetic 3D acceleration
       });
     }
 
@@ -153,7 +202,18 @@ export default function TrajectoryTab() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-semibold text-white">Flight Trajectory</h3>
-            <p className="text-sm text-gray-400">Real-time flight path analysis</p>
+            <div className="flex items-center space-x-2">
+              <p className="text-sm text-gray-400">Real-time flight path analysis</p>
+              {sim?.trajectory?.time ? (
+                <span className="px-2 py-1 bg-green-600/20 text-green-400 text-xs rounded-full border border-green-600/30">
+                  ✅ Real 6-DOF Data ({sim.trajectory.time.length} points)
+                </span>
+              ) : (
+                <span className="px-2 py-1 bg-orange-600/20 text-orange-400 text-xs rounded-full border border-orange-600/30">
+                  ⚠️ Synthetic Data
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center space-x-3">
             <Button

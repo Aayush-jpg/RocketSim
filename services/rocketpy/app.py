@@ -4157,12 +4157,12 @@ class EnhancedSimulationRocket(SimulationRocket):
         if not hasattr(self.config, 'nose_cone') or not self.config.nose_cone:
             return 0.0
         
-            nose = self.config.nose_cone
-            length = nose.length_m
-            base_radius = nose.base_radius_m or self._calculate_enhanced_radius()
-            wall_thickness = nose.wall_thickness_m
-            material_density = nose.material_density_kg_m3
-            
+        nose = self.config.nose_cone
+        length = nose.length_m
+        base_radius = nose.base_radius_m or self._calculate_enhanced_radius()
+        wall_thickness = nose.wall_thickness_m
+        material_density = nose.material_density_kg_m3
+        
         # Nose cone mass based on volume and material
         volume = np.pi * base_radius**2 * length / 3  # Cone volume
         shell_mass = volume * (wall_thickness / base_radius) * material_density
