@@ -4159,7 +4159,23 @@ class EnhancedSimulationRocket(SimulationRocket):
         
         nose = self.config.nose_cone
         length = nose.length_m
-        base_radius = nose.base_radius_m or self._calculate_enhanced_radius()
+        
+        # ✅ CRITICAL FIX: Ensure base_radius is always defined
+        try:
+            base_radius = nose.base_radius_m if nose.base_radius_m is not None else self._calculate_enhanced_radius()
+        except Exception as e:
+            logger.warning(f"Failed to calculate base radius: {e}, using fallback")
+            # Fallback to body tube radius if available
+            if self.config.body_tubes and len(self.config.body_tubes) > 0:
+                base_radius = self.config.body_tubes[0].outer_radius_m
+            else:
+                base_radius = 0.025  # 50mm diameter fallback
+        
+        # ✅ Additional safety check
+        if base_radius <= 0:
+            logger.warning("Invalid base_radius, using default value")
+            base_radius = 0.025  # 50mm diameter default
+            
         wall_thickness = nose.wall_thickness_m
         material_density = nose.material_density_kg_m3
         
