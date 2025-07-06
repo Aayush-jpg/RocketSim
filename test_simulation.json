@@ -1,0 +1,67 @@
+{
+  "rocket": {
+    "id": "test-rocket",
+    "name": "Test Rocket",
+    "nose_cone": {
+      "id": "nose1",
+      "shape": "ogive",
+      "length_m": 0.35,
+      "base_radius_m": 0.055,
+      "wall_thickness_m": 0.002,
+      "material_density_kg_m3": 1600,
+      "surface_roughness_m": 0.00001
+    },
+    "body_tubes": [
+      {
+        "id": "body1",
+        "length_m": 1.2,
+        "outer_radius_m": 0.055,
+        "wall_thickness_m": 0.002,
+        "material_density_kg_m3": 1600,
+        "surface_roughness_m": 0.00001
+      }
+    ],
+    "fins": [
+      {
+        "id": "fins1",
+        "fin_count": 4,
+        "root_chord_m": 0.12,
+        "tip_chord_m": 0.06,
+        "span_m": 0.08,
+        "thickness_m": 0.003,
+        "material_density_kg_m3": 650,
+        "cant_angle_deg": 0
+      }
+    ],
+    "motor": {
+      "id": "motor1",
+      "motor_database_id": "mini-motor"
+    },
+    "parachutes": [
+      {
+        "id": "para1",
+        "name": "Main",
+        "cd_s_m2": 1.0,
+        "trigger": "apogee",
+        "sampling_rate_hz": 105,
+        "lag_s": 1.3,
+        "noise_bias": 0,
+        "noise_deviation": 0,
+        "noise_correlation": 0,
+        "position_from_tail_m": 1.0
+      }
+    ],
+    "coordinate_system": "tail_to_nose"
+  },
+  "environment": {
+    "latitude_deg": 32.990254,
+    "longitude_deg": -106.975056,
+    "elevation_m": 1400
+  },
+  "launchParameters": {
+    "rail_length_m": 5.0,
+    "inclination_deg": 85.0,
+    "heading_deg": 0.0
+  },
+  "simulationMode": "standard"
+}

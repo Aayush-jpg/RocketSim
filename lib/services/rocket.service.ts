@@ -53,6 +53,7 @@ import { supabase, supabaseAdmin } from '@/lib/database/supabase';
 import type { Rocket, NewRocket, UpdateRocket } from '@/lib/database/supabase';
 import { Rocket as StoreRocket } from '@/types/rocket';
 import { cache } from '@/lib/cache';
+import { MATERIALS } from '../data/materials';
 
 export class RocketService {
   /**
@@ -850,7 +851,7 @@ export class RocketService {
         length_m: 0.1,
         base_radius_m: 0.05,
         wall_thickness_m: 0.002,
-        material_density_kg_m3: 1600.0,
+        material_density_kg_m3: MATERIALS.DENSITY_FIBERGLASS,
         surface_roughness_m: 1e-5,
         color: '#FFFFFF'
       },

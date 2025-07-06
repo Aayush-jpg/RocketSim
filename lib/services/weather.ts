@@ -51,7 +51,7 @@ class WeatherService {
 
   // API Keys (should be set in environment variables)
   private readonly OPENWEATHER_API_KEY = process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY;
-  private readonly NOAA_API_KEY = process.env.NEXT_PUBLIC_NOAA_API_KEY;
+  //private readonly NOAA_API_KEY = process.env.NEXT_PUBLIC_NOAA_API_KEY;
 
   static getInstance(): WeatherService {
     if (!WeatherService.instance) {

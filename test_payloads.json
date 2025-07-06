@@ -1,0 +1,311 @@
+{
+  "solid_motor_test": {
+    "rocket": {
+      "id": "solid-test-rocket",
+      "name": "Estes C6-5 Test Rocket",
+      "nose_cone": {
+        "id": "nose1",
+        "shape": "ogive",
+        "length_m": 0.1,
+        "base_radius_m": 0.025,
+        "wall_thickness_m": 0.002,
+        "material_density_kg_m3": 1600.0,
+        "surface_roughness_m": 1e-5
+      },
+      "body_tubes": [
+        {
+          "id": "body1",
+          "outer_radius_m": 0.025,
+          "length_m": 0.4,
+          "wall_thickness_m": 0.003,
+          "material_density_kg_m3": 1600.0,
+          "surface_roughness_m": 1e-5
+        }
+      ],
+      "fins": [
+        {
+          "id": "fins1",
+          "fin_count": 3,
+          "root_chord_m": 0.08,
+          "tip_chord_m": 0.04,
+          "span_m": 0.06,
+          "sweep_length_m": 0.02,
+          "thickness_m": 0.006,
+          "material_density_kg_m3": 650.0,
+          "airfoil": "symmetric",
+          "cant_angle_deg": 0.0
+        }
+      ],
+      "motor": {
+        "id": "motor1",
+        "motor_database_id": "estes_c6_5",
+        "position_from_tail_m": 0.05
+      },
+      "parachutes": [
+        {
+          "id": "main_chute",
+          "name": "Main Parachute",
+          "cd_s_m2": 0.5,
+          "trigger": "apogee",
+          "sampling_rate_hz": 105.0,
+          "lag_s": 1.5,
+          "noise_bias": 0.0,
+          "noise_deviation": 8.3,
+          "noise_correlation": 0.5,
+          "position_from_tail_m": 0.35
+        }
+      ]
+    },
+    "environment": {
+      "latitude_deg": 45.0,
+      "longitude_deg": -93.0,
+      "elevation_m": 300.0,
+      "wind_speed_m_s": 5.0,
+      "wind_direction_deg": 90.0,
+      "atmospheric_model": "standard",
+      "temperature_offset_k": 0.0,
+      "pressure_offset_pa": 0.0
+    },
+    "launchParameters": {
+      "rail_length_m": 3.0,
+      "inclination_deg": 85.0,
+      "heading_deg": 0.0,
+      "rail_inclination_deg": 0.0
+    }
+  },
+  "seb_liquid_motor_test": {
+    "rocket": {
+      "id": "seb-liquid-rocket",
+      "name": "SEB EUREKA-1 Liquid Rocket",
+      "nose_cone": {
+        "id": "nose_eureka",
+        "shape": "ogive",
+        "length_m": 0.3,
+        "base_radius_m": 0.08,
+        "wall_thickness_m": 0.003,
+        "material_density_kg_m3": 2700.0,
+        "surface_roughness_m": 1e-5
+      },
+      "body_tubes": [
+        {
+          "id": "body_eureka",
+          "outer_radius_m": 0.08,
+          "length_m": 2.5,
+          "wall_thickness_m": 0.005,
+          "material_density_kg_m3": 2700.0,
+          "surface_roughness_m": 1e-5
+        }
+      ],
+      "fins": [
+        {
+          "id": "fins_eureka",
+          "fin_count": 4,
+          "root_chord_m": 0.25,
+          "tip_chord_m": 0.15,
+          "span_m": 0.2,
+          "sweep_length_m": 0.08,
+          "thickness_m": 0.008,
+          "material_density_kg_m3": 1500.0,
+          "airfoil": "symmetric",
+          "cant_angle_deg": 0.0
+        }
+      ],
+      "motor": {
+        "id": "seb_liquid_motor",
+        "motor_database_id": "seb_eureka_lox_lpg",
+        "position_from_tail_m": 0.1,
+        "chamber_pressure_pa": 2068400.0
+      },
+      "parachutes": [
+        {
+          "id": "drogue_chute",
+          "name": "Drogue Parachute",
+          "cd_s_m2": 1.2,
+          "trigger": "apogee",
+          "sampling_rate_hz": 105.0,
+          "lag_s": 1.0,
+          "noise_bias": 0.0,
+          "noise_deviation": 5.0,
+          "noise_correlation": 0.7,
+          "position_from_tail_m": 2.2
+        },
+        {
+          "id": "main_chute",
+          "name": "Main Parachute",
+          "cd_s_m2": 8.5,
+          "trigger": 150.0,
+          "sampling_rate_hz": 105.0,
+          "lag_s": 1.5,
+          "noise_bias": 0.0,
+          "noise_deviation": 8.3,
+          "noise_correlation": 0.5,
+          "position_from_tail_m": 2.0
+        }
+      ]
+    },
+    "environment": {
+      "latitude_deg": 47.6,
+      "longitude_deg": -122.3,
+      "elevation_m": 56.0,
+      "wind_speed_m_s": 3.0,
+      "wind_direction_deg": 270.0,
+      "atmospheric_model": "nrlmsise",
+      "temperature_offset_k": 5.0,
+      "pressure_offset_pa": 0.0
+    },
+    "launchParameters": {
+      "rail_length_m": 8.0,
+      "inclination_deg": 88.0,
+      "heading_deg": 45.0,
+      "rail_inclination_deg": 2.0
+    }
+  },
+  "hybrid_motor_test": {
+    "rocket": {
+      "id": "hybrid-test-rocket",
+      "name": "Hybrid Motor Test Rocket",
+      "nose_cone": {
+        "id": "nose_hybrid",
+        "shape": "conical",
+        "length_m": 0.2,
+        "base_radius_m": 0.055,
+        "wall_thickness_m": 0.004,
+        "material_density_kg_m3": 1500.0,
+        "surface_roughness_m": 1e-5
+      },
+      "body_tubes": [
+        {
+          "id": "body_hybrid",
+          "outer_radius_m": 0.055,
+          "length_m": 1.8,
+          "wall_thickness_m": 0.004,
+          "material_density_kg_m3": 1500.0,
+          "surface_roughness_m": 1e-5
+        }
+      ],
+      "fins": [
+        {
+          "id": "fins_hybrid",
+          "fin_count": 3,
+          "root_chord_m": 0.15,
+          "tip_chord_m": 0.08,
+          "span_m": 0.12,
+          "sweep_length_m": 0.04,
+          "thickness_m": 0.008,
+          "material_density_kg_m3": 650.0,
+          "airfoil": "symmetric",
+          "cant_angle_deg": 2.0
+        }
+      ],
+      "motor": {
+        "id": "hybrid_motor",
+        "motor_database_id": "cesaroni_m1378_hybrid",
+        "position_from_tail_m": 0.08
+      },
+      "parachutes": [
+        {
+          "id": "main_chute",
+          "name": "Main Parachute",
+          "cd_s_m2": 2.8,
+          "trigger": "apogee",
+          "sampling_rate_hz": 105.0,
+          "lag_s": 1.5,
+          "noise_bias": 0.0,
+          "noise_deviation": 8.3,
+          "noise_correlation": 0.5,
+          "position_from_tail_m": 1.5
+        }
+      ]
+    },
+    "environment": {
+      "latitude_deg": 35.0,
+      "longitude_deg": -106.5,
+      "elevation_m": 1200.0,
+      "wind_speed_m_s": 8.0,
+      "wind_direction_deg": 180.0,
+      "atmospheric_model": "standard",
+      "temperature_offset_k": -10.0,
+      "pressure_offset_pa": -5000.0
+    },
+    "launchParameters": {
+      "rail_length_m": 6.0,
+      "inclination_deg": 82.0,
+      "heading_deg": 90.0,
+      "rail_inclination_deg": 8.0
+    }
+  },
+  "extreme_environment_test": {
+    "rocket": {
+      "id": "extreme-env-rocket",
+      "name": "High Altitude Test Rocket",
+      "nose_cone": {
+        "id": "nose_extreme",
+        "shape": "elliptical",
+        "length_m": 0.25,
+        "base_radius_m": 0.06,
+        "wall_thickness_m": 0.003,
+        "material_density_kg_m3": 1600.0,
+        "surface_roughness_m": 5e-6
+      },
+      "body_tubes": [
+        {
+          "id": "body_extreme",
+          "outer_radius_m": 0.06,
+          "length_m": 2.0,
+          "wall_thickness_m": 0.004,
+          "material_density_kg_m3": 1600.0,
+          "surface_roughness_m": 5e-6
+        }
+      ],
+      "fins": [
+        {
+          "id": "fins_extreme",
+          "fin_count": 4,
+          "root_chord_m": 0.18,
+          "tip_chord_m": 0.09,
+          "span_m": 0.15,
+          "sweep_length_m": 0.06,
+          "thickness_m": 0.008,
+          "material_density_kg_m3": 650.0,
+          "airfoil": "symmetric",
+          "cant_angle_deg": 0.0
+        }
+      ],
+      "motor": {
+        "id": "extreme_motor",
+        "motor_database_id": "estes_c6_5",
+        "position_from_tail_m": 0.1
+      },
+      "parachutes": [
+        {
+          "id": "main_chute",
+          "name": "Main Parachute",
+          "cd_s_m2": 1.8,
+          "trigger": "apogee",
+          "sampling_rate_hz": 105.0,
+          "lag_s": 1.5,
+          "noise_bias": 0.0,
+          "noise_deviation": 8.3,
+          "noise_correlation": 0.5,
+          "position_from_tail_m": 1.7
+        }
+      ]
+    },
+    "environment": {
+      "latitude_deg": 28.5,
+      "longitude_deg": -80.6,
+      "elevation_m": 3300.0,
+      "wind_speed_m_s": 15.0,
+      "wind_direction_deg": 45.0,
+      "atmospheric_model": "nrlmsise",
+      "temperature_offset_k": -20.0,
+      "pressure_offset_pa": -10000.0
+    },
+    "launchParameters": {
+      "rail_length_m": 10.0,
+      "inclination_deg": 90.0,
+      "heading_deg": 180.0,
+      "rail_inclination_deg": 0.0
+    }
+  }
+} 

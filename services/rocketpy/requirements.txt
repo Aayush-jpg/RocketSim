@@ -8,28 +8,47 @@ pandas>=2.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.7.0
-rocketpy>=1.2.0
+# Standard RocketPy for rocket simulation
+rocketpy>=1.10.0
+ipywidgets>=8.0.0  # Required for RocketPy import
 python-dotenv>=1.0.0
 httpx>=0.25.0
 requests>=2.31.0
 msise00
 multiprocess>=0.70.0
 
+# ✅ CRITICAL PRODUCTION FIXES FROM BLUEPRINT (Compatible versions)
+jax[cpu]>=0.4.20          # Solves LSODA threading issues - CPU only for cost efficiency
+prometheus-client>=0.18.0  # Production metrics
+structlog>=23.0.0         # Structured logging for production
+tenacity>=8.2.0           # Retry mechanisms for stability
+memory-profiler>=0.61.0   # Memory monitoring
+timeout-decorator>=0.5.0  # Function timeouts
+gunicorn>=21.0.0          # Production WSGI server
+
+# SPECIALIZED LIBRARIES (Install what's available)
+dask[distributed]>=2023.5.0  # Parallel computing framework  
+scikit-learn>=1.3.0      # Statistical analysis tools
+netCDF4>=1.6.0           # Atmospheric data processing
+xarray>=2023.1.0         # Multi-dimensional data processing
+
+# DEVELOPMENT AND TESTING
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0            # For async testing
+
 # SPACE-GRADE LIBRARIES (AFTER CORE DEPENDENCIES)
 nrlmsise00>=0.0.4        # Thread-safe NRLMSISE-00 atmospheric model
 numba>=0.58.0            # JIT compilation for performance
-dask>=2023.0.0           # Distributed computing framework
 cloudpickle>=2.2.0       # Enhanced serialization for distributed computing
 
 # ENHANCED NUMERICAL LIBRARIES
-scikit-learn>=1.3.0      # Advanced statistical analysis
 sympy>=1.12              # Symbolic mathematics for analytical solutions
 
 # PROFESSIONAL MONITORING
 psutil>=5.9.0            # System monitoring for performance optimization
 
 # ADVANCED ATMOSPHERIC DATA
-xarray>=2023.8.0         # Professional atmospheric data processing
 netcdf4>=1.6.4           # NetCDF file support for atmospheric data
 
 # ADVANCED STIFF ODE SOLVERS (REQUIRES NUMPY/SCIPY FIRST)
