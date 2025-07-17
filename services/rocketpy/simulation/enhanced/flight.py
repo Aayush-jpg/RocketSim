@@ -344,10 +344,25 @@ class EnhancedSimulationFlight(SimulationFlight):
             # Basic impact metrics
             impact_velocity = getattr(self.flight, 'impact_velocity', None)
             if impact_velocity is None:
-                # Calculate impact velocity from final velocity components
-                final_vx = float(self.flight.vx[-1]) if len(self.flight.vx) > 0 else 0.0
-                final_vy = float(self.flight.vy[-1]) if len(self.flight.vy) > 0 else 0.0
-                final_vz = float(self.flight.vz[-1]) if len(self.flight.vz) > 0 else 0.0
+                # ✅ CRITICAL FIX: Calculate impact velocity from final velocity components with scalar conversion
+                if len(self.flight.vx) > 0:
+                    final_vx_raw = self.flight.vx[-1]
+                    final_vx = float(np.asarray(final_vx_raw).item()) if hasattr(final_vx_raw, '__len__') else float(final_vx_raw)
+                else:
+                    final_vx = 0.0
+                    
+                if len(self.flight.vy) > 0:
+                    final_vy_raw = self.flight.vy[-1]
+                    final_vy = float(np.asarray(final_vy_raw).item()) if hasattr(final_vy_raw, '__len__') else float(final_vy_raw)
+                else:
+                    final_vy = 0.0
+                    
+                if len(self.flight.vz) > 0:
+                    final_vz_raw = self.flight.vz[-1]
+                    final_vz = float(np.asarray(final_vz_raw).item()) if hasattr(final_vz_raw, '__len__') else float(final_vz_raw)
+                else:
+                    final_vz = 0.0
+                    
                 impact_velocity = np.sqrt(final_vx**2 + final_vy**2 + final_vz**2)
             
             # Drift analysis
@@ -367,13 +382,15 @@ class EnhancedSimulationFlight(SimulationFlight):
             return {
                 'impact_velocity': float(impact_velocity),
                 'drift_distance': float(drift_distance),
-                'impact_coordinates': [float(impact_x), float(impact_y)],
                 'impact_angle_deg': impact_angle,
                 'impact_energy_j': impact_energy,
                 'landing_dispersion': landing_dispersion,
                 'safety_assessment': safety_assessment,
                 'wind_drift_analysis': wind_drift_analysis,
-                'recovery_zone_radius_m': float(drift_distance * 1.5)  # 50% safety margin
+                'impact_coordinates': {
+                    'x_m': float(impact_x),
+                    'y_m': float(impact_y)
+                }
             }
             
         except Exception as e:
@@ -381,7 +398,8 @@ class EnhancedSimulationFlight(SimulationFlight):
             return {
                 'impact_velocity': 0.0,
                 'drift_distance': 0.0,
-                'safety_assessment': 'unknown'
+                'impact_angle_deg': 45.0,
+                'impact_energy_j': 0.0
             }
     
     def _analyze_enhanced_thrust(self) -> Dict[str, Any]:
@@ -472,14 +490,24 @@ class EnhancedSimulationFlight(SimulationFlight):
             
             for i, t in enumerate(time_points):
                 try:
-                    # Velocity and dynamic pressure
-                    vx = self.flight.vx[i]
-                    vy = self.flight.vy[i]
-                    vz = self.flight.vz[i]
+                    # ✅ CRITICAL FIX: Ensure all trajectory values are scalars, not arrays
+                    # Extract velocity components and convert to scalars
+                    vx_raw = self.flight.vx[i] if hasattr(self.flight.vx, '__getitem__') else self.flight.vx(t)
+                    vy_raw = self.flight.vy[i] if hasattr(self.flight.vy, '__getitem__') else self.flight.vy(t)
+                    vz_raw = self.flight.vz[i] if hasattr(self.flight.vz, '__getitem__') else self.flight.vz(t)
+                    
+                    # Convert to scalars (handle both array and scalar cases)
+                    vx = float(np.asarray(vx_raw).item()) if hasattr(vx_raw, '__len__') else float(vx_raw)
+                    vy = float(np.asarray(vy_raw).item()) if hasattr(vy_raw, '__len__') else float(vy_raw)
+                    vz = float(np.asarray(vz_raw).item()) if hasattr(vz_raw, '__len__') else float(vz_raw)
+                    
                     velocity_magnitude = np.sqrt(vx**2 + vy**2 + vz**2)
                     
-                    # Atmospheric properties at altitude
-                    altitude = self.flight.z[i]
+                    # ✅ CRITICAL FIX: Extract altitude and convert to scalar
+                    altitude_raw = self.flight.z[i] if hasattr(self.flight.z, '__getitem__') else self.flight.z(t)
+                    altitude = float(np.asarray(altitude_raw).item()) if hasattr(altitude_raw, '__len__') else float(altitude_raw)
+                    
+                    # Now atmospheric properties calculations will work with scalars
                     air_density = self._calculate_air_density_at_altitude(altitude)
                     dynamic_pressure = 0.5 * air_density * velocity_magnitude**2
                     
@@ -495,7 +523,7 @@ class EnhancedSimulationFlight(SimulationFlight):
                     
                     # Reynolds number
                     rocket_length = self.rocket._calculate_total_length()
-                    reynolds_number = air_density * velocity_magnitude * rocket_length / 1.8e-5  # Air viscosity
+                    reynolds_number = air_density * velocity_magnitude * rocket_length / 1.8e-5
                     
                     aerodynamic_data.append({
                         'time': float(t),
@@ -509,8 +537,9 @@ class EnhancedSimulationFlight(SimulationFlight):
                         'air_density': float(air_density)
                     })
                     
-                except:
-                    # Skip invalid data points
+                except Exception as data_error:
+                    # Skip invalid data points with detailed error logging
+                    logger.debug(f"Skipping aerodynamic data point {i} at t={t}: {data_error}")
                     continue
             
             # Overall aerodynamic metrics
@@ -537,6 +566,7 @@ class EnhancedSimulationFlight(SimulationFlight):
                     'fineness_ratio': float(self.rocket._calculate_total_length() / (2 * self.rocket._calculate_radius()))
                 }
             else:
+                logger.warning("No valid aerodynamic data points collected")
                 return {'drag_coefficient': 0.5, 'aerodynamic_efficiency': 0.0}
                 
         except Exception as e:
@@ -698,9 +728,20 @@ class EnhancedSimulationFlight(SimulationFlight):
         try:
             flight_data = {'flight': self.flight}
             physics_utils = RocketPhysicsUtils(flight_data)
-            # Get velocity and altitude at time index
-            velocity = self.flight.vz[time_index] if time_index < len(self.flight.vz) else 0
-            altitude = self.flight.z[time_index] if time_index < len(self.flight.z) else 0
+            
+            # ✅ CRITICAL FIX: Get velocity and altitude and ensure they are scalars
+            if time_index < len(self.flight.vz):
+                velocity_raw = self.flight.vz[time_index]
+                velocity = float(np.asarray(velocity_raw).item()) if hasattr(velocity_raw, '__len__') else float(velocity_raw)
+            else:
+                velocity = 0.0
+                
+            if time_index < len(self.flight.z):
+                altitude_raw = self.flight.z[time_index]
+                altitude = float(np.asarray(altitude_raw).item()) if hasattr(altitude_raw, '__len__') else float(altitude_raw)
+            else:
+                altitude = 0.0
+                
             return physics_utils.estimate_drag_force(velocity, altitude)
         except Exception as e:
             logger.warning(f"Error estimating drag force: {e}")
