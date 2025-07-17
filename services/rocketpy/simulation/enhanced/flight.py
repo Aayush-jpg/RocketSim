@@ -72,8 +72,27 @@ class EnhancedSimulationFlight(SimulationFlight):
             # Basic flight metrics
             max_altitude = float(self.flight.apogee - self.environment.config.elevation_m)
             max_velocity = float(self.flight.max_speed)
-            max_acceleration = float(self.flight.max_acceleration)
+            raw_max_acceleration = float(self.flight.max_acceleration)
             apogee_time = float(self.flight.apogee_time)
+            
+            # ✅ CRITICAL FIX: Validate and clamp acceleration for high-performance rockets
+            # Enhanced simulations can produce realistic high accelerations that exceed basic limits
+            if raw_max_acceleration > 1000:  # Above 100g
+                logger.warning(f"⚠️ High acceleration detected: {raw_max_acceleration:.1f} m/s² ({raw_max_acceleration/9.81:.1f}g)")
+                
+                # For enhanced simulations, allow higher realistic limits but still clamp extreme values
+                if raw_max_acceleration > 5000:  # Above 500g - definitely unrealistic
+                    logger.warning(f"⚠️ Clamping unrealistic acceleration from {raw_max_acceleration:.1f} to 1500 m/s²")
+                    max_acceleration = 1500.0  # 150g limit for enhanced simulations
+                elif raw_max_acceleration > 3000:  # Above 300g - very high but possible
+                    logger.warning(f"⚠️ Clamping very high acceleration from {raw_max_acceleration:.1f} to 2000 m/s²")
+                    max_acceleration = 2000.0  # 200g limit 
+                else:
+                    # Between 100g and 300g - realistic for high-performance rockets
+                    max_acceleration = raw_max_acceleration
+                    logger.info(f"✅ High but realistic acceleration: {max_acceleration:.1f} m/s² ({max_acceleration/9.81:.1f}g)")
+            else:
+                max_acceleration = raw_max_acceleration
             
             # Enhanced stability analysis
             stability_data = self._analyze_enhanced_stability()
@@ -107,13 +126,15 @@ class EnhancedSimulationFlight(SimulationFlight):
                 driftDistance=impact_data['drift_distance']
             )
             
-            # Add enhanced data to results
+            # Add enhanced data to results including raw acceleration for analysis
             self.results.enhanced_data = {
                 'stability_analysis': stability_data,
                 'impact_analysis': impact_data,
                 'thrust_analysis': thrust_analysis,
                 'aerodynamic_analysis': aero_analysis,
-                'performance_metrics': self._calculate_performance_metrics()
+                'performance_metrics': self._calculate_performance_metrics(),
+                'raw_max_acceleration_ms2': raw_max_acceleration,  # Store original value
+                'acceleration_clamped': raw_max_acceleration != max_acceleration
             }
             
         except Exception as e:

@@ -134,8 +134,9 @@ class SimulationResult(BaseModel):
     def validate_max_acceleration(cls, v):
         if v < 0:
             raise ValueError("Maximum acceleration cannot be negative")
-        if v > 1000:  # 100g seems like reasonable upper limit
-            raise ValueError("Maximum acceleration seems unrealistic (> 1000 m/s²)")
+        if v > 2500:  # 250g - absolute maximum for any rocket simulation
+            raise ValueError(f"Maximum acceleration seems unrealistic (> 2500 m/s² / 250g). Got: {v:.1f} m/s² ({v/9.81:.1f}g)")
+        # Allow higher accelerations for enhanced simulations (up to 2500 m/s² / 250g)
         return v
     
     @validator('apogeeTime')

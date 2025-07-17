@@ -382,6 +382,9 @@ class RocketPhysicsUtils:
             Air density in kg/m³
         """
         try:
+            # ✅ FIXED: Ensure altitude is scalar to prevent numpy array ambiguity
+            altitude = float(np.asarray(altitude).item()) if hasattr(altitude, '__len__') else float(altitude)
+            
             # Standard atmosphere model
             if altitude <= 11000:  # Troposphere
                 temperature = TEMPERATURE_SEA_LEVEL - LAPSE_RATE * altitude
@@ -389,6 +392,12 @@ class RocketPhysicsUtils:
                 density = AIR_DENSITY_SEA_LEVEL * pressure_ratio * (TEMPERATURE_SEA_LEVEL / temperature)
             else:  # Simplified stratosphere
                 density = AIR_DENSITY_SEA_LEVEL * np.exp(-altitude / SCALE_HEIGHT)
+            
+            # ✅ FIXED: Ensure density is finite and positive
+            density = float(density)
+            if not np.isfinite(density) or density <= 0:
+                logger.warning(f"Invalid density calculated: {density}, using fallback")
+                return max(0.1, 1.225 * np.exp(-altitude / 8400))
             
             return float(max(0.001, density))  # Minimum density to avoid division by zero
             
@@ -407,10 +416,19 @@ class RocketPhysicsUtils:
             Temperature in Kelvin
         """
         try:
+            # ✅ FIXED: Ensure altitude is scalar to prevent numpy array ambiguity
+            altitude = float(np.asarray(altitude).item()) if hasattr(altitude, '__len__') else float(altitude)
+            
             if altitude <= 11000:  # Troposphere
                 temperature = TEMPERATURE_SEA_LEVEL - LAPSE_RATE * altitude
             else:  # Stratosphere (simplified)
                 temperature = 216.65  # Constant temperature
+            
+            # ✅ FIXED: Ensure temperature is finite and within realistic bounds
+            temperature = float(temperature)
+            if not np.isfinite(temperature):
+                logger.warning(f"Invalid temperature calculated: {temperature}, using fallback")
+                return max(180.0, 288.15 - 0.0065 * altitude)
             
             return float(max(180.0, temperature))
             
