@@ -9,12 +9,13 @@ from .environment import SimulationEnvironment
 from .motor import SimulationMotor
 from .rocket import SimulationRocket
 from .flight import SimulationFlight
-from .monte_carlo import ThreadSafeRocketPyMonteCarlo
+# NOTE: ThreadSafeRocketPyMonteCarlo not auto-imported to avoid circular dependencies
+# Import directly: from simulation.core.monte_carlo import ThreadSafeRocketPyMonteCarlo
 
 __all__ = [
     'SimulationEnvironment',
     'SimulationMotor',
     'SimulationRocket', 
-    'SimulationFlight',
-    'ThreadSafeRocketPyMonteCarlo'
+    'SimulationFlight'
+    # 'ThreadSafeRocketPyMonteCarlo'  # Available but not auto-imported
 ]

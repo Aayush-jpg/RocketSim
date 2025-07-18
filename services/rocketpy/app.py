@@ -51,7 +51,7 @@ async def startup_event():
     logger.info(f"   Motor Database Loaded: {len(MOTOR_DATABASE)} motors")
     logger.info("🚀 Service ready for rocket simulations!")
 
-@app.on_event("shutdown") 
+@app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on application shutdown"""
     logger.info("🛑 RocketPy Professional Simulation Service shutting down...")
@@ -66,4 +66,4 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
         log_level="info"
-    )
+    ) 

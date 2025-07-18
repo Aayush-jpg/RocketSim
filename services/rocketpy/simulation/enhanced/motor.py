@@ -159,7 +159,7 @@ class EnhancedSimulationMotor(SimulationMotor):
                 initial_liquid_mass=oxidizer_mass_kg,
                 initial_gas_mass=enhanced_safe_gas_mass,  # Reduced gas mass
                 liquid_mass_flow_rate_in=0,
-                liquid_mass_flow_rate_out=lambda t: oxidizer_mass_kg / self.spec["burn_time_s"] * np.exp(-0.1 * t),  # Exponential decay
+                liquid_mass_flow_rate_out=lambda t: oxidizer_mass_kg / self.spec["burn_time_s"], # removed exponential decay because  it was causing the rocketpy to hang * np.exp(-0.1 * t)
                 gas_mass_flow_rate_in=0,
                 gas_mass_flow_rate_out=0,
                 liquid=oxidizer_liq,
@@ -174,7 +174,7 @@ class EnhancedSimulationMotor(SimulationMotor):
                 initial_liquid_mass=fuel_mass_kg,
                 initial_gas_mass=enhanced_safe_gas_mass,  # Reduced gas mass
                 liquid_mass_flow_rate_in=0,
-                liquid_mass_flow_rate_out=lambda t: fuel_mass_kg / self.spec["burn_time_s"] * np.exp(-0.1 * t),  # Exponential decay
+                liquid_mass_flow_rate_out=lambda t: fuel_mass_kg / self.spec["burn_time_s"],  # removed exponential decay because  it was causing the rocketpy to hang * np.exp(-0.1 * t), 
                 gas_mass_flow_rate_in=0,
                 gas_mass_flow_rate_out=lambda t: enhanced_safe_gas_mass / self.spec["burn_time_s"] * np.exp(-0.1 * t),  # Gas flow out
                 liquid=fuel_liq,

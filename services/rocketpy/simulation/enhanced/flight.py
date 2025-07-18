@@ -39,10 +39,23 @@ class EnhancedSimulationFlight(SimulationFlight):
     def _run_enhanced_simulation(self):
         """Run enhanced flight simulation with advanced options"""
         try:
-            # Enhanced simulation parameters
-            rtol = self.analysis_options.get('rtol', 1e-8)
-            atol = self.analysis_options.get('atol', 1e-12)
+            # ✅ CRITICAL FIX: Use more reasonable tolerances for liquid motors
+            motor_type = self.rocket.motor.spec.get("type", "solid")
+            
+            if motor_type == "liquid":
+                # Liquid motors need more relaxed tolerances due to complex tank dynamics
+                rtol = self.analysis_options.get('rtol', 1e-6)  # More reasonable for liquid motors
+                atol = self.analysis_options.get('atol', 1e-9)  # More reasonable for liquid motors
+                logger.info(f"🔧 Using liquid motor tolerances: rtol={rtol}, atol={atol}")
+            else:
+                # Solid/hybrid motors can use tighter tolerances
+                rtol = self.analysis_options.get('rtol', 1e-8)
+                atol = self.analysis_options.get('atol', 1e-12)
+                logger.info(f"🔧 Using solid motor tolerances: rtol={rtol}, atol={atol}")
+            
             max_time = self.analysis_options.get('max_time', 300)  # 5 minutes max
+            
+            logger.info(f"🚀 Starting enhanced flight simulation for {motor_type} motor...")
             
             self.flight = Flight(
                 rocket=self.rocket.rocket,
@@ -57,6 +70,7 @@ class EnhancedSimulationFlight(SimulationFlight):
                 verbose=False
             )
             
+            logger.info(f"✅ Enhanced flight simulation completed for {motor_type} motor")
             self._extract_enhanced_results()
             
         except Exception as e:

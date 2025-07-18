@@ -23,10 +23,8 @@ from .motor import SimulationMotor
 from .rocket import SimulationRocket
 from .flight import SimulationFlight
 
-# Import simulation functions from higher level
-import importlib.util
-if importlib.util.find_spec("app"):
-    from app import simulate_rocket_6dof
+# Import simulation functions from parent engine module
+# from ..engine import simulate_rocket_6dof
 
 if ROCKETPY_AVAILABLE:
     from rocketpy import MonteCarlo, StochasticRocket, StochasticEnvironment, StochasticFlight, Flight
@@ -89,7 +87,7 @@ class ThreadSafeRocketPyMonteCarlo:
         
         try:
             # Create baseline simulation first
-            baseline_result = await self._create_rocketpy_baseline()
+            # Do not create the baseline simulation here, it causes LSODA error
             
             # Set up stochastic rocket components with RocketPy native classes
             stochastic_rocket = self._create_stochastic_rocket()
@@ -105,6 +103,8 @@ class ThreadSafeRocketPyMonteCarlo:
                 iterations = await self._run_sequential_thread_safe_montecarlo(
                     stochastic_rocket, stochastic_environment
                 )
+            #create the baseline After the process isolation to avoid LSODA conflicts
+            baseline_result = await self._create_rocketpy_baseline()
             
             return self._calculate_native_statistics(baseline_result, iterations)
             
@@ -325,6 +325,14 @@ class ThreadSafeRocketPyMonteCarlo:
             os.environ['OMP_NUM_THREADS'] = '1'
             os.environ['OPENBLAS_NUM_THREADS'] = '1'
             os.environ['MKL_NUM_THREADS'] = '1'
+
+            # clear any existing LSODA state in this process
+            try:
+                import scipy.integrate
+                if hasattr(scipy.integrate, '_lsoda_state'):
+                    scipy.integrate._lsoda_state = None
+            except:
+                pass
             
             results = []
             for i in range(num_iterations):
@@ -344,6 +352,9 @@ class ThreadSafeRocketPyMonteCarlo:
     async def _create_rocketpy_baseline(self) -> SimulationResult:
         """Create baseline simulation using RocketPy native classes"""
         try:
+            # Import at runtime to avoid circular dependency
+            from ..engine import simulate_rocket_6dof
+            
             # Use existing simulation pipeline for baseline
             rocket_config = self.base_request.rocket
             environment_config = self.base_request.environment or EnvironmentModel()

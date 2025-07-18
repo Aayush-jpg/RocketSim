@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from config import ROCKETPY_AVAILABLE, MOTOR_DATABASE, logger
 from models.rocket import RocketModel
 from models.environment import EnvironmentModel, LaunchParametersModel
-from models.simulation import SimulationRequestModel, SimulationResult, MotorSpec
+from models.simulation import SimulationRequestModel, SimulationResult
+from models.components import MotorSpec
 from models.monte_carlo import MonteCarloRequest, MonteCarloResult
 from simulation import (
     simulate_rocket_6dof,
@@ -87,7 +88,7 @@ def register_routes(app: FastAPI):
             result = await simulate_rocket_6dof(
                 request.rocket,
                 request.environment,
-                request.launch_params
+                request.launchParameters
             )
             return result
         except Exception as e:
@@ -96,12 +97,12 @@ def register_routes(app: FastAPI):
 
     @app.post("/simulate/hifi", response_model=SimulationResult)
     async def simulate_high_fidelity(request: SimulationRequestModel):
-        """High-fidelity simulation requiring RocketPy library"""
+        """High-fidelity simulation with enhanced physics"""
+        logger.info(f"🚀 High-fidelity simulation request for rocket: {request.rocket.name}")
+        
         if not ROCKETPY_AVAILABLE:
-            raise HTTPException(
-                status_code=503, 
-                detail="High-fidelity simulation requires RocketPy library. Service will fall back to simplified physics simulation."
-            )
+            logger.warning("RocketPy not available, using simplified fallback")
+            return await simulate_simplified_fallback(request.rocket)
         
         try:
             validate_body_tubes(request.rocket)
@@ -109,7 +110,7 @@ def register_routes(app: FastAPI):
             result = await simulate_rocket_6dof(
                 request.rocket,
                 request.environment,
-                request.launch_params
+                request.launchParameters
             )
             return result
         except Exception as e:
@@ -118,12 +119,18 @@ def register_routes(app: FastAPI):
 
     @app.post("/simulate/monte-carlo", response_model=MonteCarloResult)
     async def simulate_monte_carlo(request: MonteCarloRequest):
-        """Thread-safe RocketPy native Monte Carlo simulation with LSODA isolation"""
+        """Monte Carlo simulation with uncertainty analysis"""
+        logger.info(f"🎲 Monte Carlo simulation request with {request.iterations} iterations")
+        
+        if not ROCKETPY_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Monte Carlo simulation requires RocketPy library"
+            )
+        
         try:
-            validate_body_tubes(request.rocket)
-            
-            monte_carlo = ThreadSafeRocketPyMonteCarlo(request.rocket, request.environment)
-            result = await monte_carlo.run_monte_carlo(request.launch_params, request.num_simulations)
+            monte_carlo = ThreadSafeRocketPyMonteCarlo(request)
+            result = await monte_carlo.run_native_montecarlo_simulation()
             return result
         except Exception as e:
             logger.error(f"Monte Carlo simulation failed: {e}")
@@ -177,7 +184,7 @@ def register_routes(app: FastAPI):
             result = await simulate_rocket_6dof_enhanced(
                 request.rocket,
                 request.environment,
-                request.launch_params,
+                request.launchParameters,
                 analysis_options
             )
             return result
@@ -213,7 +220,7 @@ def register_routes(app: FastAPI):
             result = await simulate_rocket_6dof_enhanced(
                 request.rocket,
                 request.environment,
-                request.launch_params,
+                request.launchParameters,
                 analysis_options
             )
             return result
@@ -252,7 +259,7 @@ def register_routes(app: FastAPI):
             result = await simulate_rocket_6dof_enhanced(
                 request.rocket,
                 request.environment,
-                request.launch_params,
+                request.launchParameters,
                 analysis_options
             )
             return result
@@ -280,7 +287,7 @@ def register_routes(app: FastAPI):
                     result = await simulate_rocket_6dof_enhanced(
                         request.rocket,
                         request.environment,
-                        request.launch_params,
+                        request.launchParameters,
                         {"stability_analysis_only": True}
                     )
                     static_margin = getattr(result, 'stabilityMargin', static_margin)

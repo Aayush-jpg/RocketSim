@@ -40,9 +40,11 @@ from .core import (
     SimulationEnvironment,
     SimulationMotor, 
     SimulationRocket,
-    SimulationFlight,
-    ThreadSafeRocketPyMonteCarlo
+    SimulationFlight
 )
+
+# Monte Carlo class imported separately to avoid circular dependencies
+from .core.monte_carlo import ThreadSafeRocketPyMonteCarlo
 
 # Enhanced simulation classes
 from .enhanced import (

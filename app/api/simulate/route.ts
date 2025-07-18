@@ -1,72 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
 export const maxDuration = 1800; // 30 minutes maximum duration for simulations
 
-// ✅ CRITICAL: Transform legacy rocket format to component-based format
-function transformLegacyRocketToComponents(legacyRocket: any): any {
-  // If already in component format, return as-is
-  if (legacyRocket.nose_cone && legacyRocket.body_tubes && legacyRocket.fins) {
-    return legacyRocket;
+// ✅ Validate component-based rocket data and fix any invalid fin parameters
+function validateRocketComponents(rocket: any): any {
+  const validatedRocket = { ...rocket };
+  
+  // ✅ FIX: Validate and correct fin parameters to prevent RocketPy validation errors
+  if (validatedRocket.fins && Array.isArray(validatedRocket.fins)) {
+    validatedRocket.fins = validatedRocket.fins.map((fin: any) => {
+      const correctedFin = { ...fin };
+  
+      // Ensure sweep_length_m <= span_m (RocketPy requirement)
+      if (correctedFin.sweep_length_m > correctedFin.span_m) {
+        console.warn(`⚠️ Fixing invalid fin: sweep_length_m (${correctedFin.sweep_length_m}) > span_m (${correctedFin.span_m})`);
+        correctedFin.sweep_length_m = Math.min(correctedFin.sweep_length_m, correctedFin.span_m * 0.8); // 80% of span max
+      }
+      
+      // Ensure span_m is reasonable (at least 0.05m for small rockets)
+      if (correctedFin.span_m < 0.05) {
+        console.warn(`⚠️ Fixing invalid fin: span_m too small (${correctedFin.span_m}), setting to 0.133m`);
+        correctedFin.span_m = 0.133;
+        correctedFin.sweep_length_m = Math.min(correctedFin.sweep_length_m, 0.05);
+      }
+      
+      // Ensure tip_chord_m <= root_chord_m
+      if (correctedFin.tip_chord_m > correctedFin.root_chord_m) {
+        console.warn(`⚠️ Fixing invalid fin: tip_chord_m (${correctedFin.tip_chord_m}) > root_chord_m (${correctedFin.root_chord_m})`);
+        correctedFin.tip_chord_m = correctedFin.root_chord_m * 0.8;
+      }
+      
+      return correctedFin;
+    });
   }
   
-  // Transform legacy format to component-based format
-  const rocketId = legacyRocket.id || randomUUID();
-  const rocketName = legacyRocket.name || "Default Rocket";
-  
-  // Use legacy Cd or default
-  const dragCoefficient = legacyRocket.Cd || 0.5;
-  
-  return {
-    id: rocketId,
-    name: rocketName,
-    nose_cone: {
-      id: "nose-1",
-      shape: "ogive",
-      length_m: 0.325,
-      wall_thickness_m: 0.002,
-      material_density_kg_m3: 1600.0,
-      surface_roughness_m: 0.00001
-    },
-    body_tubes: [{
-      id: "body-1", 
-      outer_radius_m: 0.0508, // 4 inch diameter
-      length_m: 1.3,
-      wall_thickness_m: 0.003,
-      material_density_kg_m3: 1600.0,
-      surface_roughness_m: 0.00001
-    }],
-    fins: [{
-      id: "fins-1",
-      fin_count: 3,
-      root_chord_m: 0.17,
-      tip_chord_m: 0.08,
-      span_m: 0.133,
-      sweep_length_m: 0.05,
-      thickness_m: 0.006,
-      material_density_kg_m3: 650.0,
-      cant_angle_deg: 0.0
-    }],
-    motor: {
-      id: "motor-1",
-      motor_database_id: "I284-6-M",
-      position_from_tail_m: 0.0
-    },
-    parachutes: [{
-      id: "parachute-1",
-      name: "Recovery Parachute",
-      cd_s_m2: 1.8,
-      trigger: "apogee",
-      position_from_tail_m: 1.4,
-      lag_s: 1.5,
-      sampling_rate_hz: 105.0,
-      noise_bias: 0.0,
-      noise_deviation: 8.3,
-      noise_correlation: 0.5
-    }],
-    coordinate_system: "tail_to_nose"
-  };
+  return validatedRocket;
 }
 
 // Helper function to validate and fix atmospheric model values
@@ -210,24 +179,25 @@ export async function POST(req: NextRequest) {
     try {
           console.log(`🔵 [${requestId}] Preparing request payload...`);
     
-    // ✅ CRITICAL FIX: Transform legacy rocket format to component-based format
-    const transformedRocket = transformLegacyRocketToComponents(rocket);
-    console.log(`🔵 [${requestId}] Rocket transformation:`, {
+    // ✅ Validate rocket components and fix any invalid parameters
+    const validatedRocket = validateRocketComponents(rocket);
+    console.log(`🔵 [${requestId}] Rocket validation:`, {
       original: rocket.name,
-      hasComponents: !!(transformedRocket.nose_cone && transformedRocket.body_tubes && transformedRocket.fins),
+      hasComponents: !!(validatedRocket.nose_cone && validatedRocket.body_tubes && validatedRocket.fins),
       componentCount: {
-        body_tubes: transformedRocket.body_tubes?.length || 0,
-        fins: transformedRocket.fins?.length || 0,
-        parachutes: transformedRocket.parachutes?.length || 0
+        body_tubes: validatedRocket.body_tubes?.length || 0,
+        fins: validatedRocket.fins?.length || 0,
+        parachutes: validatedRocket.parachutes?.length || 0
       }
     });
     
-    const payload = {
-      rocket: transformedRocket,
+    // Prepare the request data for RocketPy service
+    const requestData = {
+      rocket: validatedRocket,
       environment: cleanEnvironment,
       launchParameters: cleanLaunchParameters
     };
-    console.log(`🔵 [${requestId}] Payload size: ${JSON.stringify(payload).length} bytes`);
+    console.log(`🔵 [${requestId}] Payload size: ${JSON.stringify(requestData).length} bytes`);
       console.log(`🔵 [${requestId}] Making fetch request to ${rocketpyUrl}${rocketpyEndpoint}...`);
       
       const response = await fetch(`${rocketpyUrl}${rocketpyEndpoint}`, {
@@ -236,7 +206,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
           "Connection": "keep-alive",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestData),
         signal: controller.signal,
         // Add keepalive and disable default timeouts
         keepalive: true,
