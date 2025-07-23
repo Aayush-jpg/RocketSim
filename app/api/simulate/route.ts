@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     // Determine the appropriate RocketPy endpoint based on fidelity
     let rocketpyEndpoint = "/simulate";
-    if (fidelity === "enhanced" || fidelity === "hifi") {
+    if (fidelity === "enhanced" || fidelity === "hifi") { 
       rocketpyEndpoint = "/simulate/enhanced";
     } else if (fidelity === "professional") {
       rocketpyEndpoint = "/simulate/professional";
@@ -103,12 +103,12 @@ export async function POST(req: NextRequest) {
     // Clean and validate environment data - Map frontend field names to backend format
     const cleanEnvironment = environment ? {
       // Map frontend field names to backend expected names
-      latitude_deg: environment.latitude || 0,
-      longitude_deg: environment.longitude || 0,
-      elevation_m: environment.elevation || 0,
+      latitude_deg: environment.latitude_deg || environment.latitude || 0,
+      longitude_deg: environment.longitude_deg || environment.longitude || 0,
+      elevation_m: environment.elevation_m || environment.elevation || 0,
       wind_speed_m_s: environment.wind_speed_m_s || environment.windSpeed || 0,
       wind_direction_deg: environment.wind_direction_deg || environment.windDirection || 0,
-      atmospheric_model: validateAtmosphericModel(environment.atmosphericModel),
+      atmospheric_model: validateAtmosphericModel(environment.atmospheric_model || environment.atmosphericModel),
       date: environment.date || new Date().toISOString(),
       timezone: environment.timezone || "UTC",
       temperature_offset_k: environment.temperature_offset_k || 0.0,

@@ -85,7 +85,8 @@ class EnhancedSimulationMotor(SimulationMotor):
             total_propellant_kg = self.spec["mass"]["propellant_kg"]
             
             # Use rocket motor configuration for propellant ratios if available
-            if rocket_motor.get("nozzle_expansion_ratio") or rocket_motor.get("chamber_pressure_pa"):
+            # ✅ ROBUSTNESS FIX: Explicitly check for the presence of keys, preventing numpy array ambiguity
+            if "nozzle_expansion_ratio" in rocket_motor or "chamber_pressure_pa" in rocket_motor:
                 # Advanced configuration - calculate ratios based on rocket motor config
                 chamber_pressure = rocket_motor.get("chamber_pressure_pa", 2000000)  # Default 20 bar
                 expansion_ratio = rocket_motor.get("nozzle_expansion_ratio", 10)
@@ -147,9 +148,30 @@ class EnhancedSimulationMotor(SimulationMotor):
             
             # Define tank geometry with enhanced height calculation
             tank_geometry = CylindricalTank(radius=tank_radius, height=tank_height, spherical_caps=True)
-            
-            # CRITICAL FIX: Calculate safe gas mass for enhanced motor
-            enhanced_safe_gas_mass = 0.001  # Even smaller for enhanced precision
+
+            # ✅ CRITICAL FIX 2: Calculate a realistic initial gas mass based on ullage pressure
+            # This prevents numerical instability at t=0 from near-zero tank pressures.
+            def calculate_initial_gas_mass(tank_geometry, liquid_mass, liquid_density, gas_density, ullage_pressure=5e5):
+                total_volume = tank_geometry.volume
+                liquid_volume = liquid_mass / liquid_density
+                ullage_volume = total_volume - liquid_volume
+                
+                if ullage_volume <= 0:
+                    raise ValueError("Tank is overfilled! Increase tank size or reduce propellant mass.")
+                
+                # Using a simplified ideal gas law approximation for initial mass
+                # A more realistic model would use the gas properties object
+                # For N2O gas, R is approx 188.9 J/kg·K
+                R_gas = 188.9  # J/kg·K for N2O
+                temperature_K = 298  # Assume 25°C
+                
+                # m = PV/RT
+                gas_mass = (ullage_pressure * ullage_volume) / (R_gas * temperature_K)
+                logger.info(f"Calculated initial gas mass: {gas_mass:.4f} kg for ullage volume {ullage_volume:.6f} m³ at {ullage_pressure/1e5:.1f} bar")
+                return max(gas_mass, 0.001) # Ensure a minimum mass
+
+            initial_oxidizer_gas_mass = calculate_initial_gas_mass(tank_geometry, oxidizer_mass_kg, oxidizer_liq.density, oxidizer_gas.density)
+            initial_fuel_gas_mass = calculate_initial_gas_mass(tank_geometry, fuel_mass_kg, fuel_liq.density, fuel_gas.density, ullage_pressure=3e5) # Lower pressure for fuel tank
             
             # Create oxidizer tank with proper mass flow rates
             oxidizer_tank = MassFlowRateBasedTank(
@@ -157,26 +179,26 @@ class EnhancedSimulationMotor(SimulationMotor):
                 geometry=tank_geometry,
                 flux_time=self.spec["burn_time_s"],
                 initial_liquid_mass=oxidizer_mass_kg,
-                initial_gas_mass=enhanced_safe_gas_mass,  # Reduced gas mass
+                initial_gas_mass=initial_oxidizer_gas_mass,
                 liquid_mass_flow_rate_in=0,
-                liquid_mass_flow_rate_out=lambda t: oxidizer_mass_kg / self.spec["burn_time_s"], # removed exponential decay because  it was causing the rocketpy to hang * np.exp(-0.1 * t)
+                liquid_mass_flow_rate_out=lambda t: oxidizer_mass_kg / self.spec["burn_time_s"] if t < self.spec["burn_time_s"] else 0,
                 gas_mass_flow_rate_in=0,
                 gas_mass_flow_rate_out=0,
                 liquid=oxidizer_liq,
                 gas=oxidizer_gas,
             )
-            
+
             # Create fuel tank with proper mass flow rates
             fuel_tank = MassFlowRateBasedTank(
                 name="fuel tank",
                 geometry=tank_geometry,
                 flux_time=self.spec["burn_time_s"],
                 initial_liquid_mass=fuel_mass_kg,
-                initial_gas_mass=enhanced_safe_gas_mass,  # Reduced gas mass
+                initial_gas_mass=initial_fuel_gas_mass,
                 liquid_mass_flow_rate_in=0,
-                liquid_mass_flow_rate_out=lambda t: fuel_mass_kg / self.spec["burn_time_s"],  # removed exponential decay because  it was causing the rocketpy to hang * np.exp(-0.1 * t), 
+                liquid_mass_flow_rate_out=lambda t: fuel_mass_kg / self.spec["burn_time_s"] if t < self.spec["burn_time_s"] else 0,
                 gas_mass_flow_rate_in=0,
-                gas_mass_flow_rate_out=lambda t: enhanced_safe_gas_mass / self.spec["burn_time_s"] * np.exp(-0.1 * t),  # Gas flow out
+                gas_mass_flow_rate_out=lambda t: (initial_fuel_gas_mass / self.spec["burn_time_s"]) if t < self.spec["burn_time_s"] else 0,
                 liquid=fuel_liq,
                 gas=fuel_gas,
             )
@@ -201,9 +223,9 @@ class EnhancedSimulationMotor(SimulationMotor):
             
         except Exception as e:
             logger.warning(f"❌ Enhanced liquid motor creation failed: {e}")
-            logger.info("🔄 Using enhanced solid motor fallback for liquid motor")
-            # ✅ Fallback to enhanced solid motor instead of broken liquid motor
-            self._create_enhanced_solid_motor()
+            logger.info("🔄 Using basic solid motor fallback for liquid motor")
+            # ✅ Fallback to basic solid motor instead of broken liquid motor
+            self._create_solid_motor()
     
     def _create_enhanced_hybrid_motor(self):
         """Create enhanced hybrid motor with regression modeling"""
@@ -306,3 +328,34 @@ class EnhancedSimulationMotor(SimulationMotor):
         
         curve.append((burn_time + 0.1, 0))
         return curve
+
+    def _generate_liquid_thrust_curve(self) -> List[Tuple[float, float]]:
+        """
+        Generate a realistic thrust curve for a liquid motor, including a ramp-up
+        phase to ensure numerical stability for the solver.
+        """
+        burn_time = self.spec["burn_time_s"]
+        avg_thrust = self.spec["avg_thrust_n"]
+        
+        # Define ramp-up time (e.g., 0.8 seconds for a smoother start)
+        ramp_up_time = 0.8
+        
+        # Create a more detailed time array
+        time_points = np.linspace(0, burn_time, 100)
+        thrust_curve = []
+        
+        for t in time_points:
+            if t < ramp_up_time:
+                # Gentle ramp-up using a sine curve for smoothness
+                thrust = avg_thrust * np.sin((np.pi / 2) * (t / ramp_up_time))
+            else:
+                # Sustained thrust
+                thrust = avg_thrust
+            
+            thrust_curve.append((t, max(0, thrust)))
+            
+        # Ensure thrust goes to zero after burnout
+        thrust_curve.append((burn_time + 0.1, 0))
+        
+        logger.info(f"Generated liquid thrust curve with {ramp_up_time}s ramp-up.")
+        return thrust_curve

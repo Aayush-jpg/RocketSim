@@ -208,12 +208,21 @@ class SimulationMotor:
         """Create hybrid motor"""
         thrust_curve = self._generate_hybrid_thrust_curve()
         
+        propellant_mass = self.spec["mass"]["propellant_kg"]
+        motor_length = self.spec["dimensions"]["length_m"]
+        motor_radius = self.spec["dimensions"]["outer_diameter_m"] / 2
+        
         self.motor = GenericMotor(
             thrust_source=thrust_curve,
-            dry_mass=self.spec["mass"]["total_kg"] - self.spec["mass"]["propellant_kg"],
+            dry_mass=self.spec["mass"]["total_kg"] - propellant_mass,
             dry_inertia=(0.15, 0.15, 0.002),
-            nozzle_radius=self.spec["dimensions"]["outer_diameter_m"] / 2,
-            burn_time=self.spec["burn_time_s"]
+            nozzle_radius=motor_radius,
+            burn_time=self.spec["burn_time_s"],
+            # ✅ ADD: Missing required parameters for hybrid motors
+            chamber_radius=motor_radius * 0.8,  # 80% of outer radius
+            chamber_height=motor_length * 0.7,  # 70% of motor length
+            chamber_position=motor_length / 2,  # Centered in the motor
+            propellant_initial_mass=propellant_mass
         )
     
     def _generate_thrust_curve(self) -> List[Tuple[float, float]]:

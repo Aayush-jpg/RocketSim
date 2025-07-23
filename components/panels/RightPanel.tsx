@@ -47,8 +47,12 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
   const [activeAnalysis, setActiveAnalysis] = useState<string | null>(null);
   
   // Get rocket and simulation data from store
-  const simData = useRocket(state => state.sim);
-  const rocket = useRocket(state => state.rocket);
+  const { sim: simData, rocket, environment, setEnvironment } = useRocket(state => ({
+    sim: state.sim,
+    rocket: state.rocket,
+    environment: state.environment,
+    setEnvironment: state.setEnvironment
+  }));
   
   // Simple mass estimation from components
   const estimateRocketMass = (rocket: any): number => {
@@ -203,7 +207,7 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
       case "motor":
         return <MotorTab />
       case "environment":
-        return <EnvironmentTab />
+        return <EnvironmentTab environment={environment} setEnvironment={setEnvironment} />
       case "versions":
         return <VersionHistoryTab />
       default:
@@ -400,8 +404,19 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
   );
 }
 
+import { EnvironmentConfig } from '@/types/rocket';
+
+// ... (rest of the imports)
+
+// ... (RightPanel component)
+
 // Environment Tab Component
-function EnvironmentTab() {
+interface EnvironmentTabProps {
+  environment: EnvironmentConfig;
+  setEnvironment: (env: EnvironmentConfig) => void;
+}
+
+function EnvironmentTab({ environment, setEnvironment }: EnvironmentTabProps) {
   return (
     <div className="h-full p-6 space-y-6 overflow-y-auto w-full">
       {/* Close button */}
@@ -421,7 +436,7 @@ function EnvironmentTab() {
       <WeatherStatus />
 
       {/* Atmospheric Model Selector */}
-      <AtmosphericModelSelector />
+      <AtmosphericModelSelector environment={environment} setEnvironment={setEnvironment} />
       
       {/* Environment Configuration */}
       <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">
@@ -436,14 +451,14 @@ function EnvironmentTab() {
             <div>
               <p className="text-gray-400">Atmospheric Model</p>
               <p className="font-medium text-white">
-                {window.environmentConditions?.atmosphericModel || 'Standard'}
+                {environment.atmospheric_model || 'Standard'}
               </p>
             </div>
             
             <div>
               <p className="text-gray-400">Data Source</p>
               <p className="font-medium text-white">
-                {window.environmentConditions?.atmosphericModel === 'forecast' ? 'Real-time' : 'Standard ISA'}
+                {environment.atmospheric_model === 'forecast' ? 'Real-time' : 'Standard ISA'}
               </p>
             </div>
           </div>
@@ -455,12 +470,12 @@ function EnvironmentTab() {
             </h4>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${
-                window.environmentConditions?.atmosphericModel === 'forecast' 
+                environment.atmospheric_model === 'forecast' 
                   ? 'bg-green-400' 
                   : 'bg-yellow-400'
               }`} />
               <span className="text-sm text-blue-200">
-                {window.environmentConditions?.atmosphericModel === 'forecast' 
+                {environment.atmospheric_model === 'forecast' 
                   ? 'High accuracy with real atmospheric data'
                   : 'Standard accuracy with ISA model'
                 }
@@ -494,12 +509,12 @@ function EnvironmentTab() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-300">Use real-time weather data</span>
             <div className={`w-10 h-6 rounded-full transition-colors ${
-              window.environmentConditions?.atmosphericModel === 'forecast' 
+              environment.atmospheric_model === 'forecast' 
                 ? 'bg-green-500' 
                 : 'bg-gray-600'
             }`}>
               <div className={`w-4 h-4 bg-white rounded-full mt-1 transition-transform ${
-                window.environmentConditions?.atmosphericModel === 'forecast' 
+                environment.atmospheric_model === 'forecast' 
                   ? 'translate-x-5' 
                   : 'translate-x-1'
               }`} />

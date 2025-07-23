@@ -43,10 +43,10 @@ class EnhancedSimulationFlight(SimulationFlight):
             motor_type = self.rocket.motor.spec.get("type", "solid")
             
             if motor_type == "liquid":
-                # Liquid motors need more relaxed tolerances due to complex tank dynamics
-                rtol = self.analysis_options.get('rtol', 1e-6)  # More reasonable for liquid motors
-                atol = self.analysis_options.get('atol', 1e-9)  # More reasonable for liquid motors
-                logger.info(f"🔧 Using liquid motor tolerances: rtol={rtol}, atol={atol}")
+                # Liquid motors need more relaxed tolerances due to complex tank dynamics and high thrust
+                rtol = self.analysis_options.get('rtol', 1e-5)  # Relaxed relative tolerance
+                atol = self.analysis_options.get('atol', 1e-8)  # Relaxed absolute tolerance
+                logger.info(f"🔧 Using relaxed liquid motor tolerances: rtol={rtol}, atol={atol}")
             else:
                 # Solid/hybrid motors can use tighter tolerances
                 rtol = self.analysis_options.get('rtol', 1e-8)
@@ -55,7 +55,10 @@ class EnhancedSimulationFlight(SimulationFlight):
             
             max_time = self.analysis_options.get('max_time', 300)  # 5 minutes max
             
-            logger.info(f"🚀 Starting enhanced flight simulation for {motor_type} motor...")
+            # ✅ ROBUSTNESS FIX: Use a solver better suited for stiff problems like liquid motors
+            ode_solver = 'LSODA' if motor_type == 'liquid' else 'RK45'
+            
+            logger.info(f"🚀 Starting enhanced flight simulation for {motor_type} motor using {ode_solver} solver...")
             
             self.flight = Flight(
                 rocket=self.rocket.rocket,
@@ -67,10 +70,19 @@ class EnhancedSimulationFlight(SimulationFlight):
                 atol=atol,
                 max_time=max_time,
                 terminate_on_apogee=False,  # Continue to ground impact
-                verbose=False
+                verbose=True,
+                ode_solver=ode_solver,
+                max_time_step=0.1, # Refined max_time_step
+                min_time_step=1e-4 # Prevent excessively small steps
             )
             
             logger.info(f"✅ Enhanced flight simulation completed for {motor_type} motor")
+
+            # ✅ ROBUSTNESS FIX: Check if simulation produced valid results
+            if not hasattr(self.flight, 'apogee'):
+                logger.error("❌ Simulation ran but failed to produce a valid trajectory. Check motor configuration and flight parameters.")
+                raise ValueError("Simulation failed to converge and produce a valid trajectory.")
+
             self._extract_enhanced_results()
             
         except Exception as e:
@@ -140,16 +152,19 @@ class EnhancedSimulationFlight(SimulationFlight):
                 driftDistance=impact_data['drift_distance']
             )
             
-            # Add enhanced data to results including raw acceleration for analysis
-            self.results.enhanced_data = {
+            # Create a dictionary with all enhanced data
+            enhanced_data_raw = {
                 'stability_analysis': stability_data,
                 'impact_analysis': impact_data,
                 'thrust_analysis': thrust_analysis,
                 'aerodynamic_analysis': aero_analysis,
                 'performance_metrics': self._calculate_performance_metrics(),
-                'raw_max_acceleration_ms2': raw_max_acceleration,  # Store original value
-                'acceleration_clamped': raw_max_acceleration != max_acceleration
+                'raw_max_acceleration_ms2': raw_max_acceleration,
+                'acceleration_clamped': (raw_max_acceleration != max_acceleration)
             }
+
+            # ✅ CRITICAL FIX: Recursively sanitize all data to prevent serialization errors
+            self.results.enhanced_data = self._sanitize_for_serialization(enhanced_data_raw)
             
         except Exception as e:
             logger.error(f"Failed to extract enhanced results: {e}")
@@ -356,29 +371,33 @@ class EnhancedSimulationFlight(SimulationFlight):
         
         try:
             # Basic impact metrics
-            impact_velocity = getattr(self.flight, 'impact_velocity', None)
-            if impact_velocity is None:
-                # ✅ CRITICAL FIX: Calculate impact velocity from final velocity components with scalar conversion
+            impact_velocity_raw = getattr(self.flight, 'impact_velocity', None)
+            
+            if impact_velocity_raw is None:
+                # Fallback to calculating from final velocity components
                 if len(self.flight.vx) > 0:
                     final_vx_raw = self.flight.vx[-1]
-                    final_vx = float(np.asarray(final_vx_raw).item()) if hasattr(final_vx_raw, '__len__') else float(final_vx_raw)
+                    final_vx = float(np.asarray(final_vx_raw).item())
                 else:
                     final_vx = 0.0
                     
                 if len(self.flight.vy) > 0:
                     final_vy_raw = self.flight.vy[-1]
-                    final_vy = float(np.asarray(final_vy_raw).item()) if hasattr(final_vy_raw, '__len__') else float(final_vy_raw)
+                    final_vy = float(np.asarray(final_vy_raw).item())
                 else:
                     final_vy = 0.0
                     
                 if len(self.flight.vz) > 0:
                     final_vz_raw = self.flight.vz[-1]
-                    final_vz = float(np.asarray(final_vz_raw).item()) if hasattr(final_vz_raw, '__len__') else float(final_vz_raw)
+                    final_vz = float(np.asarray(final_vz_raw).item())
                 else:
                     final_vz = 0.0
                     
                 impact_velocity = np.sqrt(final_vx**2 + final_vy**2 + final_vz**2)
-            
+            else:
+                # ✅ ROBUSTNESS FIX: Ensure impact velocity is a scalar and non-negative
+                impact_velocity = abs(float(np.asarray(impact_velocity_raw).item()))
+
             # Drift analysis
             impact_x = float(self.flight.x_impact) if hasattr(self.flight, 'x_impact') else 0.0
             impact_y = float(self.flight.y_impact) if hasattr(self.flight, 'y_impact') else 0.0
@@ -503,23 +522,33 @@ class EnhancedSimulationFlight(SimulationFlight):
             aerodynamic_data = []
             
             for i, t in enumerate(time_points):
+                # Define raw value holders for enhanced error logging
+                vx_raw, vy_raw, vz_raw, altitude_raw, drag_force_raw = None, None, None, None, None
+                # Define raw value holders for enhanced error logging
+                vx_raw, vy_raw, vz_raw, altitude_raw, drag_force_raw = None, None, None, None, None
                 try:
-                    # ✅ CRITICAL FIX: Ensure all trajectory values are scalars, not arrays
-                    # Extract velocity components and convert to scalars
-                    vx_raw = self.flight.vx[i] if hasattr(self.flight.vx, '__getitem__') else self.flight.vx(t)
-                    vy_raw = self.flight.vy[i] if hasattr(self.flight.vy, '__getitem__') else self.flight.vy(t)
-                    vz_raw = self.flight.vz[i] if hasattr(self.flight.vz, '__getitem__') else self.flight.vz(t)
-                    
-                    # Convert to scalars (handle both array and scalar cases)
-                    vx = float(np.asarray(vx_raw).item()) if hasattr(vx_raw, '__len__') else float(vx_raw)
-                    vy = float(np.asarray(vy_raw).item()) if hasattr(vy_raw, '__len__') else float(vy_raw)
-                    vz = float(np.asarray(vz_raw).item()) if hasattr(vz_raw, '__len__') else float(vz_raw)
+                    # Get raw values from flight object - RocketPy may return callables that give [time, value] pairs
+                    vx_raw = self.flight.vx(t) if callable(self.flight.vx) else self.flight.vx[i]
+                    vy_raw = self.flight.vy(t) if callable(self.flight.vy) else self.flight.vy[i]
+                    vz_raw = self.flight.vz(t) if callable(self.flight.vz) else self.flight.vz[i]
+                    altitude_raw = self.flight.z(t) if callable(self.flight.z) else self.flight.z[i]
+
+                    # ✅ ROBUSTNESS FIX v3: Handle RocketPy's inconsistent return types (scalar, array, or [t, val] pair)
+                    def get_scalar(value: Any) -> float:
+                        """Safely extracts a scalar float from a value that could be a scalar, a 1-element array, or a [time, value] pair."""
+                        arr = np.asarray(value)
+                        if arr.ndim == 0 or arr.size == 1:
+                            return float(arr.item())
+                        else:
+                            # It's a pair like [time, value], return the actual value (the last element)
+                            return float(arr[-1])
+
+                    vx = get_scalar(vx_raw)
+                    vy = get_scalar(vy_raw)
+                    vz = get_scalar(vz_raw)
+                    altitude = get_scalar(altitude_raw)
                     
                     velocity_magnitude = np.sqrt(vx**2 + vy**2 + vz**2)
-                    
-                    # ✅ CRITICAL FIX: Extract altitude and convert to scalar
-                    altitude_raw = self.flight.z[i] if hasattr(self.flight.z, '__getitem__') else self.flight.z(t)
-                    altitude = float(np.asarray(altitude_raw).item()) if hasattr(altitude_raw, '__len__') else float(altitude_raw)
                     
                     # Now atmospheric properties calculations will work with scalars
                     air_density = self._calculate_air_density_at_altitude(altitude)
@@ -527,11 +556,13 @@ class EnhancedSimulationFlight(SimulationFlight):
                     
                     # Mach number
                     temperature = self._calculate_temperature_at_altitude(altitude)
-                    speed_of_sound = np.sqrt(1.4 * 287 * temperature)  # m/s
+                    speed_of_sound = np.sqrt(1.4 * 287 * temperature)
                     mach_number = velocity_magnitude / speed_of_sound if speed_of_sound > 0 else 0.0
                     
                     # Drag force and coefficient
-                    drag_force = self._estimate_drag_force(i)
+                    drag_force_raw = self._estimate_drag_force(i)
+                    drag_force = get_scalar(drag_force_raw)
+                    
                     reference_area = np.pi * self.rocket._calculate_radius()**2
                     drag_coefficient = drag_force / (dynamic_pressure * reference_area) if dynamic_pressure > 0 else 0.0
                     
@@ -552,8 +583,17 @@ class EnhancedSimulationFlight(SimulationFlight):
                     })
                     
                 except Exception as data_error:
-                    # Skip invalid data points with detailed error logging
-                    logger.debug(f"Skipping aerodynamic data point {i} at t={t}: {data_error}")
+                    # Enhanced error logging to show problematic data
+                    raw_values = {
+                        "vx": vx_raw, "vy": vy_raw, "vz": vz_raw, 
+                        "altitude": altitude_raw, "drag_force": drag_force_raw
+                    }
+                    problematic_data = {k: v for k, v in raw_values.items() if v is not None}
+                    
+                    logger.debug(
+                        f"Skipping aerodynamic data point {i} at t={t}: {data_error}. "
+                        f"The error likely occurred converting one of these raw values: {problematic_data}"
+                    )
                     continue
             
             # Overall aerodynamic metrics
@@ -738,27 +778,41 @@ class EnhancedSimulationFlight(SimulationFlight):
             return max(180.0, 288.15 - 0.0065 * altitude)
     
     def _estimate_drag_force(self, time_index: int) -> float:
-        """Estimate drag force at given time index"""
+        """Estimate drag force at given time index, ensuring scalar inputs to physics utils."""
+        velocity_raw, altitude_raw = None, None
         try:
-            flight_data = {'flight': self.flight}
-            physics_utils = RocketPhysicsUtils(flight_data)
+            # ✅ ROBUSTNESS FIX: Ensure velocity and altitude are scalars before passing to the physics utility.
+            # This prevents "can only convert an array of size 1 to a Python scalar" errors inside the helper.
             
-            # ✅ CRITICAL FIX: Get velocity and altitude and ensure they are scalars
+            # Define a safe scalar extraction utility
+            def get_scalar(value: Any) -> float:
+                arr = np.asarray(value)
+                return float(arr.item()) if arr.size == 1 else float(arr[-1])
+
+            # Extract and convert velocity and altitude to scalars first
             if time_index < len(self.flight.vz):
                 velocity_raw = self.flight.vz[time_index]
-                velocity = float(np.asarray(velocity_raw).item()) if hasattr(velocity_raw, '__len__') else float(velocity_raw)
+                velocity = get_scalar(velocity_raw)
             else:
                 velocity = 0.0
                 
             if time_index < len(self.flight.z):
                 altitude_raw = self.flight.z[time_index]
-                altitude = float(np.asarray(altitude_raw).item()) if hasattr(altitude_raw, '__len__') else float(altitude_raw)
+                altitude = get_scalar(altitude_raw)
             else:
                 altitude = 0.0
-                
+
+            # Now call the physics utility with guaranteed scalar values
+            physics_utils = RocketPhysicsUtils({'flight': self.flight})
             return physics_utils.estimate_drag_force(velocity, altitude)
+
         except Exception as e:
-            logger.warning(f"Error estimating drag force: {e}")
+            raw_values = {"velocity": velocity_raw, "altitude": altitude_raw}
+            problematic_data = {k: v for k, v in raw_values.items() if v is not None}
+            logger.warning(
+                f"Error estimating drag force at index {time_index}: {e}. "
+                f"Problematic raw values: {problematic_data}"
+            )
             return 50.0
     
     def _calculate_aerodynamic_efficiency(self) -> float:
@@ -867,6 +921,25 @@ class EnhancedSimulationFlight(SimulationFlight):
         except Exception as e:
             logger.warning(f"Error estimating mission success probability: {e}")
             return min(1.0, max(0.0, (performance_score / 100.0 + stability_margin / 2.0) / 2.0))
+
+    def _sanitize_for_serialization(self, data: Any) -> Any:
+        """
+        Recursively traverses a data structure and converts numpy types to native 
+        Python types to ensure JSON serialization compatibility.
+        """
+        if isinstance(data, dict):
+            return {key: self._sanitize_for_serialization(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._sanitize_for_serialization(element) for element in data]
+        elif isinstance(data, np.bool_):
+            return bool(data)
+        elif isinstance(data, np.floating):
+            return float(data)
+        elif isinstance(data, np.integer):
+            return int(data)
+        elif isinstance(data, np.ndarray):
+            return self._sanitize_for_serialization(data.tolist())
+        return data
     
     def _extract_enhanced_events(self) -> List[FlightEvent]:
         """Extract enhanced flight events with more detail"""

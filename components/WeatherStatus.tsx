@@ -724,7 +724,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.45 }}
             >
-              <AtmosphericModelSelector />
+              <AtmosphericModelSelector environment={environment} setEnvironment={setEnvironment} />
             </motion.div>
 
             {/* Atmospheric Data Quality Indicator */}
@@ -923,7 +923,7 @@ export default function WeatherStatus({ className = '', compact = false, onClose
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <AtmosphericModelSelector />
+              <AtmosphericModelSelector environment={environment} setEnvironment={setEnvironment} />
             </motion.div>
 
             {/* Impact Analysis */}

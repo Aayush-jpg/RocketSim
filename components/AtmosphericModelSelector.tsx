@@ -13,6 +13,13 @@ interface AtmosphericModelsData {
   requirements: Record<string, string>;
 }
 
+import { EnvironmentConfig } from '@/types/rocket';
+
+interface AtmosphericModelSelectorProps {
+  environment: EnvironmentConfig;
+  setEnvironment: (env: EnvironmentConfig) => void;
+}
+
 const ATMOSPHERE_MODELS = [
   { value: 'standard', label: 'Standard Atmosphere', description: 'ISA model, good for general use.' },
   { value: 'forecast', label: 'Live Weather Forecast', description: 'Real-time GFS data for launch day.' },
@@ -20,8 +27,7 @@ const ATMOSPHERE_MODELS = [
   { value: 'custom', label: 'Custom Profile', description: 'User-defined atmospheric data.' },
 ];
 
-export default function AtmosphericModelSelector() {
-  const { environment, setEnvironment } = useRocket();
+export default function AtmosphericModelSelector({ environment, setEnvironment }: AtmosphericModelSelectorProps) {
   const [modelsData, setModelsData] = useState<AtmosphericModelsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

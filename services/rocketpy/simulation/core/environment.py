@@ -201,35 +201,33 @@ class SimulationEnvironment:
                     try:
                         self._apply_atmospheric_profile_to_rocketpy(environment.atmospheric_profile)
                         logger.info("✅ Forecast atmospheric profile applied")
-                        return
                     except Exception as e:
                         logger.warning(f"⚠️ Forecast profile failed: {e}, using standard atmosphere")
-                        
-                # CRITICAL FIX: Respect frontend atmospheric model choice
-                if environment.atmospheric_model == "standard":
-                    logger.info("🌍 Using standard atmosphere as requested by frontend")
-                    self.env.set_atmospheric_model(type='standard_atmosphere')
+                        self.env.set_atmospheric_model(type='standard_atmosphere')
                 else:
-                    logger.error(f"❌ Frontend requested {environment.atmospheric_model} but no profile available")
-                    raise ValueError(f"Frontend atmospheric model '{environment.atmospheric_model}' requires atmospheric profile data")
+                    # If no profile, still attempt to set forecast, RocketPy will use forecast data
+                    # for the given coordinates and date.
+                    logger.info("📝 No atmospheric profile provided, using forecast model with location data.")
+                    self.env.set_atmospheric_model(type='forecast')
                 return
                 
-            else:
-                # CRITICAL FIX: Handle custom atmospheric models properly
-                if environment.atmospheric_model == "custom":
-                    if hasattr(environment, 'atmospheric_profile') and environment.atmospheric_profile:
-                        logger.info("🌍 Using custom atmospheric profile from frontend")
-                        self._apply_atmospheric_profile_to_rocketpy(environment.atmospheric_profile)
-                    else:
-                        logger.error("❌ Frontend requested custom atmospheric model but no profile provided")
-                        raise ValueError("Custom atmospheric model requires atmospheric profile data from frontend")
-                elif environment.atmospheric_model == "standard":
-                    logger.info("🌍 Using standard atmosphere as requested by frontend")
-                    self.env.set_atmospheric_model(type='standard_atmosphere')
+            elif environment.atmospheric_model == "custom":
+                if hasattr(environment, 'atmospheric_profile') and environment.atmospheric_profile:
+                    logger.info("🌍 Using custom atmospheric profile from frontend")
+                    self._apply_atmospheric_profile_to_rocketpy(environment.atmospheric_profile)
                 else:
-                    logger.error(f"❌ Unsupported atmospheric model: {environment.atmospheric_model}")
-                    raise ValueError(f"Atmospheric model '{environment.atmospheric_model}' not supported")
+                    logger.error("❌ Frontend requested custom atmospheric model but no profile provided")
+                    raise ValueError("Custom atmospheric model requires atmospheric profile data from frontend")
                 return
+
+            elif environment.atmospheric_model == "standard":
+                logger.info("🌍 Using standard atmosphere as requested by frontend")
+                self.env.set_atmospheric_model(type='standard_atmosphere')
+                return
+
+            else:
+                logger.error(f"❌ Unsupported atmospheric model: {environment.atmospheric_model}")
+                raise ValueError(f"Atmospheric model '{environment.atmospheric_model}' not supported")
                 
         except Exception as e:
             logger.error(f"❌ Atmospheric model application failed: {e}")

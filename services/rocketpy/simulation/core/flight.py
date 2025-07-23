@@ -56,14 +56,14 @@ class SimulationFlight:
                 rtol = 1e-4   # Reduced precision for speed
                 atol = 1e-6   # Reduced precision for speed  
                 max_time = 120.0  # Shorter max time
-                verbose = False
+                verbose = True
                 logger.debug(f"🎲 Thread {thread_id}: Monte Carlo flight simulation starting")
             else:
                 # ✅ HIGH-FIDELITY SINGLE SIMULATION MODE
                 rtol = 1e-6   # Full precision
                 atol = 1e-9   # Full precision
                 max_time = 300.0  # Full simulation time
-                verbose = False
+                verbose = True
                 logger.info(f"🔍 Thread {thread_id}: High-fidelity flight simulation starting")
             
             # ✅ LOCK-FREE FLIGHT CREATION: Each thread gets its own Flight instance

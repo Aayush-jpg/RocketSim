@@ -70,7 +70,9 @@ class SimulationRocket:
     
     def _calculate_dry_mass(self) -> float:
         """Calculate dry mass from components using material properties"""
-        total_mass = 0.1  # Base structural mass
+        # ✅ FIXED: Use a realistic base mass for structural components not modeled.
+        # The previous value of 0.1kg was far too low, causing unrealistic apogees.
+        total_mass = 2.5  # Base structural mass in kg
         
         # Nose cone mass
         if hasattr(self.config, 'nose_cone') and self.config.nose_cone:
