@@ -11,9 +11,8 @@ import numpy as np
 from typing import List, Tuple
 
 from config import ROCKETPY_AVAILABLE, MOTOR_DATABASE, logger, dbg_enter, dbg_exit
-from models.simulation import SimulationResult, TrajectoryData
+from models.simulation import SimulationResult, TrajectoryData, FlightEvent
 from models.environment import LaunchParametersModel
-from rocket_physics_utils import FlightEvent
 from .rocket import SimulationRocket
 from .environment import SimulationEnvironment
 
@@ -398,7 +397,7 @@ class SimulationFlight:
             return None
     
     def _extract_events(self) -> List[FlightEvent]:
-        """Extract flight events"""
+        """Extract flight events with velocity data"""
         if not self.flight:
             return []
         
@@ -407,34 +406,42 @@ class SimulationFlight:
         try:
             # Motor burnout
             if hasattr(self.flight, 'motor_burn_out_time'):
+                burnout_time = float(self.flight.motor_burn_out_time)
                 events.append(FlightEvent(
                     name="Motor Burnout",
-                    time=float(self.flight.motor_burn_out_time),
-                    altitude=float(self.flight.z(self.flight.motor_burn_out_time))
+                    time=burnout_time,
+                    altitude=float(self.flight.z(burnout_time)),
+                    velocity=float(self.flight.speed(burnout_time))
                 ))
             
             # Apogee
+            apogee_time = float(self.flight.apogee_time)
             events.append(FlightEvent(
                 name="Apogee",
-                time=float(self.flight.apogee_time),
-                altitude=float(self.flight.apogee)
+                time=apogee_time,
+                altitude=float(self.flight.apogee),
+                velocity=float(self.flight.speed(apogee_time))
             ))
             
             # Parachute deployment
             for parachute in self.rocket.rocket.parachutes:
                 if hasattr(parachute, 'triggering_event'):
+                    event_time = float(parachute.triggering_event.t)
                     events.append(FlightEvent(
                         name=f"Parachute Deployment ({parachute.name})",
-                        time=float(parachute.triggering_event.t),
-                        altitude=float(parachute.triggering_event.altitude)
+                        time=event_time,
+                        altitude=float(parachute.triggering_event.altitude),
+                        velocity=float(self.flight.speed(event_time))
                     ))
             
             # Impact
             if hasattr(self.flight, 'impact_time'):
+                impact_time = float(self.flight.impact_time)
                 events.append(FlightEvent(
                     name="Impact",
-                    time=float(self.flight.impact_time),
-                    altitude=float(self.environment.config.elevation_m)
+                    time=impact_time,
+                    altitude=float(self.environment.config.elevation_m),
+                    velocity=float(self.flight.impact_velocity)
                 ))
                 
         except Exception as e:
