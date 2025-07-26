@@ -94,6 +94,7 @@ def _run_enhanced_simulation_sync(rocket_config: RocketModel,
         
         if flight.results:
             logger.info(f"🔴 Simulation successful - returning results")
+            logger.info(f"ENHANCED SIMULATION RESULT: {flight.results.dict()}")
             return flight.results
         else:
             logger.error(f"🔴 ❌ Enhanced simulation failed to produce results")

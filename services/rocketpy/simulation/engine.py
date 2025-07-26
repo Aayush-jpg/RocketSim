@@ -65,6 +65,11 @@ def _run_simulation_sync(rocket_config: RocketModel,
     flight = SimulationFlight(rocket, environment, launch_params)
     
     if flight.results:
+        # ✅ ADDED: Explicitly populate flightEvents for standard simulation
+        if not flight.results.flightEvents:
+            flight.results.flightEvents = flight._extract_events()
+            
+        logger.info(f"STANDARD SIMULATION RESULT: {flight.results.dict()}")
         return flight.results
     else:
         raise Exception("Simulation failed to produce results")

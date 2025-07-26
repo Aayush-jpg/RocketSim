@@ -165,8 +165,20 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
     }
     
     try {
-      // CRITICAL FIX: Use environment and launchParameters from store instead of hardcoded values
       const { environment, launchParameters } = useRocket.getState();
+
+      // ✅ Guard clause to prevent simulation with incomplete data
+      if (!environment || !launchParameters) {
+        window.dispatchEvent(new CustomEvent('notification', {
+          detail: { 
+            message: "Environment or launch data not yet available. Please wait.", 
+            type: 'warning' 
+          }
+        }));
+        setIsRunningSimulation(false);
+        useRocket.getState().setSimulating(false);
+        return;
+      }
       
       const response = await fetch('/api/simulate', {
         method: 'POST',
@@ -176,19 +188,8 @@ export default function SimulationTab({ onClose }: SimulationAnalysisProps = {})
         body: JSON.stringify({
           rocket,
           fidelity,
-          environment: environment || {
-            latitude_deg: 0.0,
-            longitude_deg: 0.0,
-            elevation_m: 0.0,
-            wind_speed_m_s: 0.0,
-            wind_direction_deg: 0.0,
-            atmospheric_model: "standard"
-          },
-          launchParameters: launchParameters || {
-            railLength: 5.0,
-            inclination: 85.0,
-            heading: 0.0
-          }
+          environment,
+          launchParameters
         }),
       });
 

@@ -12,6 +12,10 @@ interface TrajectoryPointProps {
   altitude: number;
   velocity: number;
   acceleration: number;
+  phase: 'powered' | 'coast' | 'descent';
+  position: number[];
+  velocity3d: number[];
+  acceleration3d: number[];
   isHighlight?: boolean;
 }
 
@@ -27,34 +31,39 @@ export default function TrajectoryTab() {
   const [selectedPhase, setSelectedPhase] = useState<'all' | 'powered' | 'coast' | 'descent'>('all');
   const [showDetailed, setShowDetailed] = useState(false);
 
-  // ✅ USE REAL TRAJECTORY DATA from backend simulation
-  const generateTrajectoryData = () => {
-    // ✅ CRITICAL FIX: Use real trajectory data from enhanced 6-DOF simulation
-    if (sim?.trajectory?.time && sim.trajectory.time.length > 0) {
-      console.log("🚀 Using REAL trajectory data from enhanced 6-DOF simulation");
+  const generateTrajectoryData = (): TrajectoryPointProps[] | null => {
+    // Guard for real trajectory data. If this passes, sim and sim.trajectory are defined.
+    if (
+      sim &&
+      (sim.simulationFidelity === 'enhanced' || sim.simulationFidelity === 'professional') &&
+      sim.trajectory &&
+      sim.trajectory.time &&
+      sim.trajectory.time.length > 1 &&
+      sim.trajectory.time[sim.trajectory.time.length - 1] > 0
+    ) {
+      console.log(`🚀 Using REAL ${sim.simulationFidelity} trajectory data from 6-DOF simulation`);
       
       const realTrajectory = sim.trajectory;
-      const points = [];
+      const points: TrajectoryPointProps[] = [];
       
       for (let i = 0; i < realTrajectory.time.length; i++) {
         const time = realTrajectory.time[i];
         
-        // Extract real 3D position data
         const position = realTrajectory.position[i] || [0, 0, 0];
-        const altitude = position[2]; // Z-component is altitude
+        const altitude = position[2];
         
-        // Extract real 3D velocity data  
         const velocity3d = realTrajectory.velocity[i] || [0, 0, 0];
         const velocity = Math.sqrt(velocity3d[0]**2 + velocity3d[1]**2 + velocity3d[2]**2);
         
-        // Extract real 3D acceleration data
         const acceleration3d = realTrajectory.acceleration[i] || [0, 0, 0];
         const acceleration = Math.sqrt(acceleration3d[0]**2 + acceleration3d[1]**2 + acceleration3d[2]**2);
         
-        // Determine flight phase based on real data
-        let phase = 'coast';
-        if (time <= 3) phase = 'powered';  // Motor burn phase
-        else if (time > (sim.apogeeTime || 10)) phase = 'descent';
+        let phase: 'powered' | 'coast' | 'descent' = 'coast';
+        if (time <= 3) {
+          phase = 'powered';
+        } else if (time > (sim.apogeeTime || 10)) {
+          phase = 'descent';
+        }
         
         points.push({
           time,
@@ -62,46 +71,45 @@ export default function TrajectoryTab() {
           velocity,
           acceleration,
           phase,
-          position: position,  // Store full 3D position
-          velocity3d: velocity3d,  // Store full 3D velocity
-          acceleration3d: acceleration3d  // Store full 3D acceleration
+          position,
+          velocity3d,
+          acceleration3d
         });
       }
       
       return points;
     }
     
-    // ⚠️ FALLBACK: Generate synthetic data only if NO real trajectory available
-    if (!sim?.maxAltitude) return null;
+    // Fallback to synthetic data generation
+    if (!sim?.maxAltitude) {
+      return null;
+    }
     
     console.warn("⚠️ No real trajectory data available, generating synthetic approximation");
     
-    const apogeeTime = sim.apogeeTime || 10;
-    const maxAltitude = sim.maxAltitude;
-    const maxVelocity = sim.maxVelocity || 100;
-    const maxAcceleration = sim.maxAcceleration || 50;
+    const { apogeeTime = 10, maxAltitude, maxVelocity = 100, maxAcceleration = 50 } = sim;
 
-    // Generate synthetic trajectory points (fallback only)
-    const points = [];
-    const totalTime = apogeeTime * 2; // Approximate total flight time
+    const points: TrajectoryPointProps[] = [];
+    const totalTime = apogeeTime * 2;
     const timeStep = 0.5;
 
     for (let t = 0; t <= totalTime; t += timeStep) {
       let altitude, velocity, acceleration;
+      let phase: 'powered' | 'coast' | 'descent';
 
       if (t <= apogeeTime) {
-        // Ascent phase
         const progress = t / apogeeTime;
         altitude = maxAltitude * (2 * progress - progress * progress);
         velocity = maxVelocity * (1 - progress);
-        acceleration = t < 3 ? maxAcceleration * (1 - t / 3) : -9.81; // Motor burn then gravity
+        acceleration = t < 3 ? maxAcceleration * (1 - t / 3) : -9.81;
+        phase = t <= 3 ? 'powered' : 'coast';
       } else {
-        // Descent phase
         const descentTime = t - apogeeTime;
         const descentProgress = Math.min(descentTime / apogeeTime, 1);
         altitude = maxAltitude * (1 - descentProgress * descentProgress);
-        velocity = -30 * descentProgress; // Negative for descent
-        acceleration = -9.81; // Gravity
+        velocity = -30 * descentProgress;
+        acceleration = -9.81;
+        phase = 'descent';
       }
 
       points.push({
@@ -109,10 +117,10 @@ export default function TrajectoryTab() {
         altitude: Math.max(0, altitude),
         velocity,
         acceleration,
-        phase: t <= 3 ? 'powered' : t <= apogeeTime ? 'coast' : 'descent',
-        position: [0, 0, altitude],  // Synthetic 3D position
-        velocity3d: [0, 0, velocity],  // Synthetic 3D velocity  
-        acceleration3d: [0, 0, acceleration]  // Synthetic 3D acceleration
+        phase,
+        position: [0, 0, altitude],
+        velocity3d: [0, 0, velocity],
+        acceleration3d: [0, 0, acceleration]
       });
     }
 
@@ -126,14 +134,21 @@ export default function TrajectoryTab() {
     if (selectedPhase === 'all') return true;
     return point.phase === selectedPhase;
   }) || [];
-
-  // Find key events
-  const keyEvents = trajectoryData ? [
-    { name: 'Liftoff', time: 0, altitude: 0, type: 'launch' },
-    { name: 'Motor Burnout', time: 3, altitude: trajectoryData.find(p => p.time >= 3)?.altitude || 0, type: 'burnout' },
-    { name: 'Apogee', time: sim?.apogeeTime || 10, altitude: sim?.maxAltitude || 0, type: 'apogee' },
-    { name: 'Landing', time: trajectoryData[trajectoryData.length - 1]?.time || 20, altitude: 0, type: 'landing' }
-  ] : [];
+  // ✅ Use flight events from the backend if available, otherwise generate them
+  const keyEvents = sim?.flightEvents && sim.flightEvents.length > 0
+    ? sim.flightEvents.map(event => ({
+        name: event.name,
+        time: event.time,
+        altitude: event.altitude,
+        type: event.name.toLowerCase().includes('burnout') ? 'burnout' :
+              event.name.toLowerCase().includes('apogee') ? 'apogee' :
+              event.name.toLowerCase().includes('landing') || event.name.toLowerCase().includes('impact') ? 'landing' : 'launch'
+      }))
+    : trajectoryData ? [
+      { name: 'Liftoff', time: 0, altitude: 0, type: 'launch' },
+      { name: 'Apogee', time: sim?.apogeeTime || 10, altitude: sim?.maxAltitude || 0, type: 'apogee' },
+      { name: 'Landing', time: trajectoryData[trajectoryData.length - 1]?.time || 20, altitude: 0, type: 'landing' }
+    ] : [];
 
   if (!sim?.maxAltitude) {
     return (

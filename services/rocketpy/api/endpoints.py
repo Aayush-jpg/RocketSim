@@ -1,3 +1,4 @@
+
 """
 API endpoints for RocketPy simulation service.
 
@@ -5,6 +6,7 @@ This module contains all REST API endpoints for rocket simulation,
 analysis, and configuration.
 """
 
+import json
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -82,6 +84,7 @@ def register_routes(app: FastAPI):
     @app.post("/simulate", response_model=SimulationResult)
     async def simulate_standard(request: SimulationRequestModel):
         """Standard simulation with component-based models"""
+        logger.info("Received standard simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         try:
             validate_body_tubes(request.rocket)
             
@@ -99,6 +102,7 @@ def register_routes(app: FastAPI):
     async def simulate_high_fidelity(request: SimulationRequestModel):
         """High-fidelity simulation with enhanced physics"""
         logger.info(f"🚀 High-fidelity simulation request for rocket: {request.rocket.name}")
+        logger.info("Received high-fidelity simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         
         if not ROCKETPY_AVAILABLE:
             logger.warning("RocketPy not available, using simplified fallback")
@@ -121,6 +125,7 @@ def register_routes(app: FastAPI):
     async def simulate_monte_carlo(request: MonteCarloRequest):
         """Monte Carlo simulation with uncertainty analysis"""
         logger.info(f"🎲 Monte Carlo simulation request with {request.iterations} iterations")
+        logger.info("Received Monte Carlo simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         
         if not ROCKETPY_AVAILABLE:
             raise HTTPException(
@@ -142,12 +147,7 @@ def register_routes(app: FastAPI):
         background_tasks: BackgroundTasks
     ):
         """Batch simulation with background processing (max 50 simulations)"""
-        if len(requests) > 50:
-            raise HTTPException(
-                status_code=400, 
-                detail="Maximum 50 simulations per batch allowed"
-            )
-        
+        logger.info(f"Received batch simulation request with {len(requests)} simulations.")
         try:
             # Validate all requests
             for req in requests:
@@ -169,6 +169,7 @@ def register_routes(app: FastAPI):
     @app.post("/simulate/enhanced", response_model=SimulationResult)
     async def simulate_enhanced_6dof(request: SimulationRequestModel):
         """Enhanced high-fidelity 6-DOF simulation"""
+        logger.info("Received enhanced simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         try:
             validate_body_tubes(request.rocket)
             
@@ -195,6 +196,7 @@ def register_routes(app: FastAPI):
     @app.post("/simulate/professional", response_model=SimulationResult)
     async def simulate_professional_grade(request: SimulationRequestModel):
         """Professional-grade simulation with maximum precision settings"""
+        logger.info("Received professional-grade simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         if not ROCKETPY_AVAILABLE:
             raise HTTPException(
                 status_code=503,
@@ -231,6 +233,7 @@ def register_routes(app: FastAPI):
     @app.post("/simulate/high-altitude", response_model=SimulationResult)
     async def simulate_high_altitude_6dof(request: SimulationRequestModel):
         """Specialized high-altitude simulation (50-100 km) with bijective atmospheric protection"""
+        logger.info("Received high-altitude simulation request. Payload:\n%s", request.model_dump_json(indent=2))
         if not ROCKETPY_AVAILABLE:
             raise HTTPException(
                 status_code=503,
