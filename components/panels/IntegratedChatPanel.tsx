@@ -118,7 +118,7 @@ function InlineMetricsSummary({ metrics, isExpanded, onToggle }: {
             <div className="px-3 pb-3 space-y-3">
               {/* Performance grid with better responsive layout */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <MetricCard title="Apogee" value={metrics.apogee} unit="m" color="bg-blue-500/20" />
+                <MetricCard title="Apogee" value={metrics.apogee} unit="m" color="bg-gray-800/80" />
                 <MetricCard title="Max Speed" value={metrics.velocity} unit="m/s" color="bg-green-500/20" />
                 <MetricCard title="Thrust" value={metrics.thrust} unit="N" color="bg-orange-500/20" />
                 <MetricCard title="Mass" value={metrics.mass} unit="kg" color="bg-purple-500/20" />

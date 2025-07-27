@@ -464,8 +464,8 @@ function EnvironmentTab({ environment, setEnvironment }: EnvironmentTabProps) {
           </div>
 
           {/* Environment Quality Indicator */}
-          <div className="bg-blue-500/10 rounded-lg p-3 border border-blue-500/20">
-            <h4 className="font-medium text-blue-100 mb-2">
+          <div className="bg-black/40 rounded-lg p-3 border border-gray-600/30">
+            <h4 className="font-medium text-gray-100 mb-2">
               Simulation Accuracy
             </h4>
             <div className="flex items-center gap-2">
@@ -474,7 +474,7 @@ function EnvironmentTab({ environment, setEnvironment }: EnvironmentTabProps) {
                   ? 'bg-green-400' 
                   : 'bg-yellow-400'
               }`} />
-              <span className="text-sm text-blue-200">
+              <span className="text-sm text-gray-200">
                 {environment.atmospheric_model === 'forecast' 
                   ? 'High accuracy with real atmospheric data'
                   : 'Standard accuracy with ISA model'

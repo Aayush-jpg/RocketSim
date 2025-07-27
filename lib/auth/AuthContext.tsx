@@ -30,6 +30,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [userSession, setUserSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [minLoadingTime, setMinLoadingTime] = useState(true);
+
+  // Ensure minimum loading time for session restoration
+  useEffect(() => {
+    const minLoadingTimer = setTimeout(() => {
+      setMinLoadingTime(false);
+    }, 1500); // Minimum 1.5 seconds to allow session restoration
+
+    return () => clearTimeout(minLoadingTimer);
+  }, []);
 
   useEffect(() => {
     // Timeout references for cleanup

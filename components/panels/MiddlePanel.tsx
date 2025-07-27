@@ -10,9 +10,23 @@ import {
   ContactShadows 
 } from '@react-three/drei'
 import * as THREE from 'three'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRocket } from '@/lib/store'
 import { getDefaultRocket } from '@/lib/data/templates'
+import { cn } from '@/lib/utils'
+import { getMotorOrDefault } from '@/lib/data/motors'
+
+// Import chat and analysis components
+import IntegratedChatPanel from '@/components/panels/IntegratedChatPanel'
+import SimulationTab from './pro-mode/SimulationTab'
+import StabilityTab from './pro-mode/StabilityTab'
+import MonteCarloTab from './pro-mode/MonteCarloTab'
+import MotorTab from './pro-mode/MotorTab'
+import TrajectoryTab from './pro-mode/TrajectoryTab'
+import RecoveryTab from './pro-mode/RecoveryTab'
+import WeatherStatus from '@/components/WeatherStatus'
+import VersionHistoryTab from './pro-mode/VersionHistoryTab'
+import AtmosphericModelSelector from '@/components/AtmosphericModelSelector'
 
 // Flame component for rocket engine
 function RocketFlame({ isLaunched, throttle = 0, preLaunchFire = false, countdownStage = 0 }: { 
@@ -1547,10 +1561,56 @@ function PartLabel({ partName, visible, customStyle = { left: '20px', bottom: '5
   )
 }
 
-export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, isFullScreen = false }) {
+interface MiddlePanelProps {
+  isMobile?: boolean;
+  isSmallDesktop?: boolean;
+  isFullScreen?: boolean;
+  loadSessionId?: string | null;
+  onChatSessionLoad?: (sessionId: string | null) => void;
+  projectId?: string | null;
+}
+
+export default function MiddlePanel({ 
+  isMobile = false, 
+  isSmallDesktop = false, 
+  isFullScreen = false,
+  loadSessionId,
+  onChatSessionLoad,
+  projectId 
+}: MiddlePanelProps) {
   // Add container ref and size state for resize detection
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  
+  // Right panel width state for resizing
+  const [rightPanelWidth, setRightPanelWidth] = useState(520); // 2x the original 320px
+  
+  // Resize functionality for right panel
+  const handleRightDividerDrag = (delta: number) => {
+    const minWidth = 320; // Minimum width
+    const maxWidth = 800; // Maximum width
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, rightPanelWidth - delta));
+    setRightPanelWidth(newWidth);
+  };
+
+  const startRightDividerDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    const startX = e.clientX;
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      handleRightDividerDrag(deltaX);
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
   
   // FORCE RE-RENDER MECHANISM - Add state to force component re-render
   const [forceRenderKey, setForceRenderKey] = useState(0);
@@ -1578,6 +1638,23 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   const [view, setView] = useState<'top' | 'side' | 'perspective'>('perspective');
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
   const [isLaunched, setIsLaunched] = useState(false);
+  
+  // Analysis and chat state (integrated from RightPanel)
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
+  const [activeAnalysis, setActiveAnalysis] = useState<string | null>(null);
+  
+  // Analysis types configuration
+  const analysisTypes = [
+    { id: "simulation", label: "Simulation", icon: "🚀", description: "Flight performance" },
+    { id: "trajectory", label: "Trajectory", icon: "📈", description: "Flight path analysis" },
+    { id: "stability", label: "Stability", icon: "⚖️", description: "Center of pressure analysis" },
+    { id: "recovery", label: "Recovery", icon: "🪂", description: "Parachute deployment" },
+    { id: "monte-carlo", label: "Monte Carlo", icon: "🎲", description: "Statistical analysis" },
+    { id: "motor", label: "Motor", icon: "🔥", description: "Engine performance" },
+    { id: "environment", label: "Environment", icon: "🌍", description: "Weather conditions" },
+    { id: "versions", label: "Versions", icon: "🕐", description: "Design history" },
+  ];
+  
   const [throttle, setThrottle] = useState(0.8);
   const [resetTrigger, setResetTrigger] = useState(false);
   
@@ -1609,6 +1686,88 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   
   // Show loading state when project is loading
   const isProjectLoading = currentProject && rocket.project_id !== currentProject.id;
+  
+  // Get rocket and simulation data from store for metrics
+  const { sim: simData, environment, setEnvironment } = useRocket(state => ({
+    sim: state.sim,
+    environment: state.environment,
+    setEnvironment: state.setEnvironment
+  }));
+  
+  // Rocket metrics calculation (integrated from RightPanel)
+  const estimateRocketMass = (rocket: any): number => {
+    let totalMass = 0.5; // Base mass
+    if (rocket.nose_cone) totalMass += 0.1;
+    totalMass += rocket.body_tubes.length * 0.2;
+    totalMass += rocket.fins.length * 0.05;
+    totalMass += rocket.parachutes.length * 0.03;
+    return totalMass;
+  };
+  
+  const calculateStability = (rocket: any): number => {
+    const finCount = rocket.fins.reduce((sum: number, fin: any) => sum + (fin.fin_count || 3), 0);
+    return 1.0 + finCount * 0.3;
+  };
+  
+  // Calculate rocket metrics
+  const mass = estimateRocketMass(displayRocket);
+  const motorSpec = getMotorOrDefault(displayRocket.motor?.motor_database_id || 'default-motor');
+  const motorThrust = motorSpec.avgThrust_N;
+  const burnTime = motorSpec.burnTime_s;
+  const motorIsp = motorSpec.isp_s;
+  const thrustToWeight = motorThrust / (mass * 9.81);
+  
+  const exhaustVelocity = motorIsp * 9.81;
+  const totalMass = mass + motorSpec.mass.propellant_kg;
+  const dryMass = mass + (motorSpec.mass.total_kg - motorSpec.mass.propellant_kg);
+  const deltaV = exhaustVelocity * Math.log(totalMass / dryMass);
+  const estimatedAltitude = (deltaV * deltaV) / (2 * 9.81) * 0.7;
+  const estimatedVelocity = deltaV * 0.8;
+  const estimatedRecoveryTime = (estimatedAltitude / 5) + 30;
+  
+  const metrics = {
+    thrust: motorThrust,
+    isp: motorIsp,
+    mass: mass,
+    altitude: simData?.maxAltitude || estimatedAltitude,
+    velocity: simData?.maxVelocity || estimatedVelocity,
+    stability: simData?.stabilityMargin || calculateStability(displayRocket),
+    dragCoefficient: 0.4,
+    apogee: simData?.maxAltitude || estimatedAltitude,
+    burnTime: burnTime,
+    thrustToWeight: thrustToWeight,
+    deltaV: deltaV,
+    recoveryTime: estimatedRecoveryTime,
+    motorId: displayRocket.motor?.motor_database_id || 'default-motor',
+  };
+  
+  // Analysis handlers
+  const handleAnalysisClick = (analysisId: string) => {
+    setActiveAnalysis(activeAnalysis === analysisId ? null : analysisId);
+  };
+  
+  const renderAnalysisComponent = () => {
+    switch (activeAnalysis) {
+      case "simulation":
+        return <SimulationTab />
+      case "trajectory":
+        return <TrajectoryTab />
+      case "stability":
+        return <StabilityTab />
+      case "recovery":
+        return <RecoveryTab />
+      case "monte-carlo":
+        return <MonteCarloTab />
+      case "motor":
+        return <MotorTab />
+      case "environment":
+        return <EnvironmentTab environment={environment} setEnvironment={setEnvironment} />
+      case "versions":
+        return <VersionHistoryTab />
+      default:
+        return null
+    }
+  };
   
   // FORCE RE-RENDER: Monitor rocket state changes aggressively
   useEffect(() => {
@@ -1876,145 +2035,353 @@ export default function MiddlePanel({ isMobile = false, isSmallDesktop = false, 
   return (
     <div 
       ref={containerRef}
-      className="flex-1 min-w-0 h-full overflow-hidden relative bg-gradient-to-b from-gray-900 to-black"
+      className="flex-1 min-w-0 h-full overflow-hidden flex bg-gradient-to-b from-gray-900 to-black"
     >
-      {/* Canvas first - responsive size */}
-      <div className="absolute inset-0 w-full h-full overflow-hidden">
-        <Canvas 
-          shadows
-          key={`canvas-${containerSize.width}-${containerSize.height}`}
-          style={{ width: '100%', height: '100%', background: 'transparent' }}
-        >
-          {/* Add global mouse position handler */}
-          <MousePositionHandler />
-          
-          <DynamicCamera 
-        isLaunched={isLaunched} 
-            target={position}
-            view={view}
-          />
-          
-          {/* Use regular OrbitControls instead of CustomOrbitControls */}
-          <OrbitControls 
-            enableDamping={true}
-            dampingFactor={0.2}
-            minDistance={1.5} 
-            maxDistance={50}
-            rotateSpeed={0.8}
-            target={[position[0], position[1], position[2]]}
-          />
+      {/* Left side: 3D Visualization */}
+      <div className="flex-1 min-w-0 h-full overflow-hidden relative">
+        {/* Floating Analysis Tabs - positioned over 3D area */}
+        <div className="absolute top-6 right-6 z-30">
+          <div className="flex flex-col space-y-3">
+            {analysisTypes.map((analysis, index) => (
+              <motion.div
+                key={analysis.id}
+                className={cn(
+                  "group relative transition-all duration-300 ease-out",
+                  activeAnalysis === analysis.id ? "scale-110" : "hover:scale-105",
+                )}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <button
+                  onClick={() => handleAnalysisClick(analysis.id)}
+                  className={cn(
+                    "w-12 h-12 rounded-full transition-all duration-300 flex items-center justify-center text-lg backdrop-blur-xl border shadow-lg relative overflow-hidden",
+                    activeAnalysis === analysis.id
+                      ? "bg-white text-black border-white/20 shadow-white/20"
+                      : "bg-black/40 text-white border-white/10 hover:bg-white/10 hover:border-white/20",
+                  )}
+                >
+                  <span className="relative z-10">{analysis.icon}</span>
+                  {activeAnalysis === analysis.id && (
+                    <motion.div
+                      className="absolute inset-0 bg-white"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  )}
+                </button>
 
-          {/* Scene lighting */}
-          <ambientLight intensity={0.35} /> 
-          <directionalLight 
-            position={[8, 10, 5]} 
-            intensity={0.8} 
-            castShadow 
-            shadow-mapSize={[1024, 1024]}
-            shadow-camera-far={50}
-            shadow-camera-left={-10}
-            shadow-camera-right={10}
-            shadow-camera-top={10}
-            shadow-camera-bottom={-10}
-          />
-          <directionalLight position={[-6, 3, -5]} intensity={0.3} />
-          <spotLight 
-            position={[0, -2, 10]} 
-            intensity={0.5} 
-            angle={0.6} 
-            penumbra={0.5} 
-            distance={20}
-            color="#94a3b8"
-          />
-          
-          {/* Launch light - adjusted to match ground position */}
-          {isLaunched && (
-            <pointLight 
+                {/* Enhanced Tooltip */}
+                <div className="absolute right-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none">
+                  <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-lg px-3 py-2 text-sm whitespace-nowrap">
+                    <div className="font-medium text-white">{analysis.label}</div>
+                    <div className="text-gray-400 text-xs">{analysis.description}</div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* Canvas first - responsive size */}
+        <div className="absolute inset-0 w-full h-full overflow-hidden">
+          <Canvas 
+            shadows
+            key={`canvas-${containerSize.width}-${containerSize.height}`}
+            style={{ width: '100%', height: '100%', background: 'transparent' }}
+          >
+            {/* Add global mouse position handler */}
+            <MousePositionHandler />
+            
+            <DynamicCamera 
+          isLaunched={isLaunched} 
+              target={position}
+              view={view}
+            />
+            
+            {/* Use regular OrbitControls instead of CustomOrbitControls */}
+            <OrbitControls 
+              enableDamping={true}
+              dampingFactor={0.2}
+              minDistance={1.5} 
+              maxDistance={50}
+              rotateSpeed={0.8}
+              target={[position[0], position[1], position[2]]}
+              enableZoom={true}
+              enablePan={true}
+              enableRotate={true}
+            />
+            
+            <ambientLight intensity={0.6} />
+            <directionalLight 
+              position={[10, 10, 5]} 
+              intensity={1.2} 
+              castShadow={true}
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-camera-near={0.1}
+              shadow-camera-far={50}
+              shadow-camera-left={-10}
+              shadow-camera-right={10}
+              shadow-camera-top={10}
+              shadow-camera-bottom={-10}
+            />
+            
+            <Grid 
+              args={[50, 50]} 
               position={[0, GROUND_Y, 0]} 
-              intensity={2} 
-              distance={15} 
-              color="#ff8866"
-              decay={2}
+              visible={true}
+              sectionColor="#06b6d4"
             />
-          )}
-          
-          {/* Remove Environment preset for custom gradient background */}
-          {/* Fixed contact shadows at exactly ground level */}
-          <ContactShadows 
-            position={[0, GROUND_Y + 0.01, 0]} 
-            opacity={0.5} 
-            scale={15} 
-            blur={2.5} 
-            far={5} 
-            resolution={512}
-            color="#1f2937"
-            frames={1} // Render once and cache for better performance
+            <Suspense fallback={null}>
+              {/* FORCE RE-RENDER: Use finalRenderKey to force re-creation when actions are dispatched */}
+              <RocketSimulation 
+                key={`rocket-${isLaunched ? 'launched' : 'idle'}-${resetTrigger ? 'reset' : 'normal'}-${finalRenderKey}`}
+                selected={selectedPart !== null} 
+                isLaunched={isLaunched} 
+                throttle={throttle}
+                resetTrigger={resetTrigger}
+                setFlightData={updateFlightData}
+                highlightedPart={selectedPart || hoveredPart}
+                onHoverPart={handleHoverPart}
+                displayRocket={displayRocket}
+              />
+            </Suspense>
+          </Canvas>
+        </div>
+        
+        {/* UI elements - absolutely positioned over the canvas */}
+        <div className={viewportControlsClass}>
+          <ViewportControls view={view} setView={setView} isMobile={isMobile} />
+        </div>
+        
+        {/* Display part label outside of the 3D canvas for better stability */}
+        <PartLabel 
+          partName={hoveredPart} 
+          visible={!isLaunched && hoveredPart !== null}
+          customStyle={labelPositionStyle}
+        />
+        
+        {/* Component tree panel */}
+        <div className={componentTreeClass}>
+          <ComponentTree 
+            selectedPart={selectedPart} 
+            setSelectedPart={setSelectedPart} 
+            hoveredPart={hoveredPart}
           />
-          
-          {/* Absolutely fixed grid that never moves */}
-          <Grid 
-            infiniteGrid 
-            cellSize={0.5} 
-            cellThickness={0.5} 
-            sectionSize={2} 
-            sectionThickness={1} 
-            fadeDistance={30} 
-            fadeStrength={1.5}
-            cellColor="#475569" 
-            sectionColor="#06b6d4"
-            position={[0, GROUND_Y, 0]}
-          />
-          <Suspense fallback={null}>
-            {/* FORCE RE-RENDER: Use finalRenderKey to force re-creation when actions are dispatched */}
-            <RocketSimulation 
-              key={`rocket-${isLaunched ? 'launched' : 'idle'}-${resetTrigger ? 'reset' : 'normal'}-${finalRenderKey}`}
-              selected={selectedPart !== null} 
-              isLaunched={isLaunched} 
-              throttle={throttle}
-              resetTrigger={resetTrigger}
-              setFlightData={updateFlightData}
-              highlightedPart={selectedPart || hoveredPart}
-              onHoverPart={handleHoverPart}
-              displayRocket={displayRocket}
-            />
-          </Suspense>
-        </Canvas>
-      </div>
-      
-      {/* UI elements - absolutely positioned over the canvas */}
-      <div className={viewportControlsClass}>
-        <ViewportControls view={view} setView={setView} isMobile={isMobile} />
-      </div>
-      
-      {/* Display part label outside of the 3D canvas for better stability */}
-      <PartLabel 
-        partName={hoveredPart} 
-        visible={!isLaunched && hoveredPart !== null}
-        customStyle={labelPositionStyle}
-      />
-      
-      {/* Component tree panel */}
-      <div className={componentTreeClass}>
-        <ComponentTree 
-          selectedPart={selectedPart} 
-          setSelectedPart={setSelectedPart} 
-          hoveredPart={hoveredPart}
+        </div>
+        
+        <LaunchData
+          isLaunched={isLaunched}
+          setIsLaunched={setIsLaunched}
+          throttle={throttle}
+          setThrottle={setThrottle}
+          resetRocket={resetRocket}
+          launchRocket={launchRocket}
+          speed={isNaN(speed) ? 0 : speed}
+          altitude={isNaN(altitude) ? 0 : altitude}
+          maxSpeed={isNaN(maxSpeed) ? 0 : maxSpeed}
+          maxAltitude={isNaN(maxAltitude) ? 0 : maxAltitude}
+          isMobile={isMobile}
         />
       </div>
       
-      <LaunchData
-        isLaunched={isLaunched}
-        setIsLaunched={setIsLaunched}
-        throttle={throttle}
-        setThrottle={setThrottle}
-        resetRocket={resetRocket}
-        launchRocket={launchRocket}
-        speed={isNaN(speed) ? 0 : speed}
-        altitude={isNaN(altitude) ? 0 : altitude}
-        maxSpeed={isNaN(maxSpeed) ? 0 : maxSpeed}
-        maxAltitude={isNaN(maxAltitude) ? 0 : maxAltitude}
-        isMobile={isMobile}
-      />
+      {/* Panel Divider for resizing */}
+      <div 
+        className="w-1 h-full cursor-col-resize flex-shrink-0 bg-white/5 hover:bg-cyan-500/20 transition-colors relative z-10"
+        onMouseDown={startRightDividerDrag}
+      >
+        <div className="absolute inset-0 w-3 -translate-x-1/2 hover:bg-cyan-500 hover:bg-opacity-20" />
+      </div>
+      
+      {/* Right side: AI Assistant Chat Only */}
+      <div 
+        className="h-full flex-shrink-0 bg-black border-l border-white/10"
+        style={{ width: `${rightPanelWidth}px` }}
+      >
+        <div className="w-full h-full flex flex-col relative bg-black min-w-0">
+          {/* Header */}
+          <div className="p-6 border-b border-white/5 backdrop-blur-xl bg-black/50 w-full">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-white">AI Assistant</h2>
+                <p className="text-sm text-gray-400">Advanced rocket design intelligence</p>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-gray-400">Neural network active</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Content - Chat or Analysis */}
+          <div className="flex-1 relative overflow-hidden w-full min-w-0">
+            {/* Chat View */}
+            <div
+              className={cn(
+                "absolute inset-0 transition-all duration-500 ease-in-out w-full min-w-0",
+                activeAnalysis ? "opacity-0 translate-x-full" : "opacity-100 translate-x-0",
+              )}
+            >
+              <IntegratedChatPanel 
+                metrics={metrics}
+                metricsExpanded={metricsExpanded}
+                onToggleMetrics={() => setMetricsExpanded(!metricsExpanded)}
+                activeAnalysis={activeAnalysis}
+                onAnalysisClick={handleAnalysisClick}
+                loadSessionId={loadSessionId}
+                projectId={projectId}
+              />
+            </div>
+
+            {/* Analysis Views */}
+            <div
+              className={cn(
+                "absolute inset-0 transition-all duration-500 ease-in-out w-full min-w-0",
+                activeAnalysis ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full",
+              )}
+            >
+              <div className="w-full h-full min-w-0">
+                {renderAnalysisComponent()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
+} 
+
+// Environment Tab Component
+interface EnvironmentTabProps {
+  environment: any;
+  setEnvironment: (env: any) => void;
+}
+
+function EnvironmentTab({ environment, setEnvironment }: EnvironmentTabProps) {
+  return (
+    <div className="h-full p-6 space-y-6 overflow-y-auto w-full">
+      {/* Close button */}
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-white">Environment Analysis</h3>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('closeAnalysis'))}
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Weather Status Component */}
+      <WeatherStatus />
+
+      {/* Atmospheric Model Selector */}
+      <AtmosphericModelSelector environment={environment} setEnvironment={setEnvironment} />
+      
+      {/* Environment Configuration */}
+      <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">
+        <h3 className="font-medium text-white mb-4 flex items-center gap-2">
+          <span>🌍</span>
+          Launch Environment
+        </h3>
+        
+        <div className="space-y-4">
+          {/* Current Environment Display */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-400">Atmospheric Model</p>
+              <p className="font-medium text-white">
+                {environment?.atmospheric_model || 'Standard'}
+              </p>
+            </div>
+            
+            <div>
+              <p className="text-gray-400">Data Source</p>
+              <p className="font-medium text-white">
+                {environment?.atmospheric_model === 'forecast' ? 'Real-time' : 'Standard ISA'}
+              </p>
+            </div>
+          </div>
+
+          {/* Environment Quality Indicator */}
+          <div className="bg-black/40 rounded-lg p-3 border border-gray-600/30">
+            <h4 className="font-medium text-gray-100 mb-2">
+              Simulation Accuracy
+            </h4>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                environment?.atmospheric_model === 'forecast' 
+                  ? 'bg-green-400' 
+                  : 'bg-yellow-400'
+              }`} />
+              <span className="text-sm text-gray-200">
+                {environment?.atmospheric_model === 'forecast' 
+                  ? 'High accuracy with real atmospheric data'
+                  : 'Standard accuracy with ISA model'
+                }
+              </span>
+            </div>
+          </div>
+
+          {/* Launch Recommendations */}
+          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+            <h4 className="font-medium text-white mb-2">
+              Launch Recommendations
+            </h4>
+            <ul className="text-sm text-gray-300 space-y-1">
+              <li>• Check wind conditions before launch</li>
+              <li>• Verify recovery system deployment altitude</li>
+              <li>• Consider atmospheric density effects on drag</li>
+              <li>• Monitor visibility for tracking</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced Environment Settings */}
+      <div className="bg-white/5 backdrop-blur-xl rounded-lg border border-white/10 p-4">
+        <h3 className="font-medium text-white mb-4 flex items-center gap-2">
+          <span>⚙️</span>
+          Advanced Settings
+        </h3>
+        
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-300">Use real-time weather data</span>
+            <div className={`w-10 h-6 rounded-full transition-colors ${
+              environment?.atmospheric_model === 'forecast' 
+                ? 'bg-green-500' 
+                : 'bg-gray-600'
+            }`}>
+              <div className={`w-4 h-4 bg-white rounded-full mt-1 transition-transform ${
+                environment?.atmospheric_model === 'forecast' 
+                  ? 'translate-x-5' 
+                  : 'translate-x-1'
+              }`} />
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-300">High-resolution atmospheric model</span>
+            <div className="w-10 h-6 bg-gray-600 rounded-full">
+              <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-300">Include turbulence effects</span>
+            <div className="w-10 h-6 bg-gray-600 rounded-full">
+              <div className="w-4 h-4 bg-white rounded-full mt-1 translate-x-1" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 } 

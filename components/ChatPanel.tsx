@@ -6,6 +6,7 @@ import { dispatchActions } from '@/lib/ai/actions'
 import { useAuth } from '@/lib/auth/AuthContext'
 import { chatService } from '@/lib/services/chat.service'
 import { getChatHistoryByProject, saveChatToDb } from '@/lib/services/database.service'
+import TextareaAutosize from 'react-textarea-autosize'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
@@ -69,10 +70,22 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     }
   }, [currentProject, user]);
   
-  // Auto-scroll chat to bottom on new messages
+  // Auto-scroll chat to bottom on new messages (improved to preserve scroll position)
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      const container = chatContainerRef.current;
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      
+      // Only auto-scroll if user is already near the bottom (within 100px)
+      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
+      
+      if (isNearBottom) {
+        // Smooth scroll to bottom
+        container.scrollTo({
+          top: scrollHeight,
+          behavior: 'smooth'
+        });
+      }
     }
   }, [messages]);
   
@@ -499,7 +512,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
       {/* Messages */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-6 w-full min-w-0"
+        className="flex-1 overflow-y-auto p-3 space-y-3 w-full min-w-0"
         style={{
           scrollBehavior: 'smooth',
         }}
@@ -507,28 +520,27 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
         {messages.map((message, index) => (
           <motion.div
             key={index}
-            className={cn("flex w-full", message.role === "user" ? "justify-end" : "justify-start")}
+            className={cn("flex w-full", message.role === "user" ? "justify-end" : "justify-stretch")}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: index * 0.1 }}
           >
             <div
               className={cn(
-                "rounded-2xl backdrop-blur-xl relative shadow-lg border transition-all duration-200",
+                "rounded-2xl backdrop-blur-xl relative shadow-sm transition-all duration-200",
                 message.role === "user"
-                  ? "bg-white/95 text-black border-white/20 max-w-[85%] px-4 py-2"
-                  : "bg-white/5 text-white border-white/10 w-full px-5 py-4",
+                  ? "bg-gray-900/95 text-white max-w-[80%] px-3 py-2 text-sm border border-gray-700/30"
+                  : "bg-gray-700/80 text-gray-100 border border-gray-600/40 w-full px-4 py-4",
               )}
               style={{
                 // Ensure proper containment
                 overflowWrap: 'break-word',
                 wordBreak: 'break-word',
                 minWidth: 0,
-                maxWidth: '100%',
               }}
             >
               {message.role === 'assistant' && message.agent && (
-                <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] rounded-full px-2 py-0.5 opacity-80 font-medium">
+                <div className="absolute -top-1.5 -right-1.5 bg-black/90 text-white text-[9px] rounded-full px-1.5 py-0.5 opacity-90 font-medium border border-gray-600/50">
                   {message.agent.replace('_', ' ')}
                 </div>
               )}
@@ -536,6 +548,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
                 <FormattedMessage 
                   content={message.content}
                   role={message.role}
+                  className="text-sm leading-relaxed"
                 />
               </div>
               {/* Show simulation metrics if this is a simulation message */}
@@ -565,39 +578,36 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
             </div>
           </motion.div>
         ))}
-
-        {/* Typing Indicator */}
+        
+        {/* Agent transition indicator */}
+        {currentlyRunningAgent && (
+          <motion.div
+            className="flex justify-center"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+          >
+            <div className="bg-black/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg border border-gray-600/50">
+              🤖 Switching to {currentlyRunningAgent.replace('_', ' ')} agent...
+            </div>
+          </motion.div>
+        )}
+        
+        {/* Typing indicator */}
         {isLoading && (
           <motion.div
             className="flex justify-start"
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-4">
-              <div className="flex flex-col items-center space-y-2">
-                <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce"></div>
-                  <div
-                    className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  ></div>
-                  <div
-                    className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  ></div>
+            <div className="bg-gray-800/90 text-gray-100 max-w-[85%] rounded-2xl px-3 py-2.5 border border-gray-700/50">
+              <div className="flex items-center space-x-2">
+                <div className="flex space-x-1">
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                 </div>
-                {currentlyRunningAgent && (
-                  <div className="flex items-center space-x-2 mt-1">
-                    <div className="w-3 h-3 rounded-full bg-blue-500 animate-ping opacity-75 relative">
-                      <div className="absolute inset-0 rounded-full bg-blue-500 opacity-75"></div>
-                    </div>
-                    <span className="text-xs text-white animate-pulse">
-                      {currentlyRunningAgent === 'router' 
-                        ? 'Choosing best agent...' 
-                        : `${currentlyRunningAgent.replace('_', ' ')} agent running...`}
-                    </span>
-                  </div>
-                )}
+                <span className="text-xs text-gray-400">AI is thinking...</span>
               </div>
             </div>
           </motion.div>
@@ -608,12 +618,23 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
       <div className="p-4 border-t border-white/5 backdrop-blur-xl bg-black/20 w-full min-w-0">
         <div className="flex space-x-4 w-full min-w-0">
           <div className="flex-1 relative min-w-0">
-            <Input
+            <TextareaAutosize
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Describe your rocket design goals..."
-              onKeyPress={(e) => e.key === "Enter" && handleSend()}
-              className="pr-12 bg-white/5 backdrop-blur-xl border-white/10 focus:border-white/20 rounded-full text-white placeholder:text-white/60 w-full min-w-0"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              minRows={1}
+              maxRows={4}
+              className="pr-12 bg-white/5 backdrop-blur-xl border border-white/10 focus:border-white/20 rounded-xl text-white placeholder:text-white/60 w-full min-w-0 px-4 py-3 resize-none outline-none transition-all"
+              style={{
+                lineHeight: '1.5',
+                fontSize: '14px',
+              }}
             />
             <button
               onClick={handleSend}
@@ -638,7 +659,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
             <button
               key={action}
               onClick={() => setInputValue(action)}
-              className="px-4 py-2 text-xs bg-white/5 backdrop-blur-xl border border-white/10 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+              className="px-4 py-2 text-xs bg-white/5 backdrop-blur-xl border border-white/10 rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-all mb-2"
             >
               {action}
             </button>

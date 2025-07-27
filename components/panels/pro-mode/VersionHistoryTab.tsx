@@ -68,8 +68,8 @@ export default function VersionHistoryTab() {
       </div>
 
       {/* Current Project/Rocket Info */}
-      <div className="bg-blue-500/10 rounded-lg border border-blue-500/20 p-4">
-        <h4 className="font-medium text-blue-100 mb-2 flex items-center gap-2">
+      <div className="bg-black/40 rounded-lg border border-gray-600/30 p-4">
+        <h4 className="font-medium text-gray-100 mb-2 flex items-center gap-2">
           {isInProject ? (
             <>
               <FolderOpen className="w-4 h-4" />
@@ -82,8 +82,8 @@ export default function VersionHistoryTab() {
             </>
           )}
         </h4>
-        <p className="text-sm text-blue-200">{rocket.name}</p>
-        <p className="text-xs text-blue-300 mt-1">
+        <p className="text-sm text-gray-200">{rocket.name}</p>
+        <p className="text-xs text-gray-400 mt-1">
           {(rocket.nose_cone ? 1 : 0) + rocket.body_tubes.length + rocket.fins.length + rocket.parachutes.length + (rocket.motor ? 1 : 0)} parts • {rocket.motor.motor_database_id} • {isNewProject ? 'No project' : 'Project rocket'}
         </p>
       </div>

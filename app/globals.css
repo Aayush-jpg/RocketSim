@@ -96,7 +96,250 @@ body {
 }
 
 @layer components {
-  /* Spectacular Space Landing Page Effects */
+  /* ==============================================
+     CHAT MESSAGE FORMATTING - UNIFIED SYSTEM
+     ============================================== */
+  
+  /* Base container for all formatted content */
+  .formatted-content {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+  }
+
+  /* Reset margins for first and last elements */
+  .formatted-content > *:first-child {
+    margin-top: 0 !important;
+  }
+  .formatted-content > *:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Headings - enhanced spacing and readability */
+  .formatted-content h1,
+  .formatted-content h2,
+  .formatted-content h3,
+  .formatted-content h4,
+  .formatted-content h5,
+  .formatted-content h6 {
+    margin: 1.5rem 0 0.75rem 0; /* Better top/bottom spacing */
+    color: #ffffff;
+    font-weight: 600;
+    line-height: 1.3; /* Better line height for headings */
+    letter-spacing: -0.01em; /* Slight letter spacing improvement */
+  }
+
+  .formatted-content h1 { font-size: 1.5rem; }
+  .formatted-content h2 { font-size: 1.35rem; }
+  .formatted-content h3 { font-size: 1.2rem; }
+  .formatted-content h4 { font-size: 1.1rem; }
+  .formatted-content h5 { font-size: 1.05rem; }
+  .formatted-content h6 { font-size: 1rem; }
+
+  /* Paragraphs - improved spacing and readability */
+  .formatted-content p {
+    margin: 0.875rem 0; /* Increased margin for better separation */
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.6; /* Better line height for body text */
+    word-spacing: 0.05em; /* Slight word spacing improvement */
+  }
+  
+  /* First paragraph after headings - reduced top margin */
+  .formatted-content h1 + p,
+  .formatted-content h2 + p,
+  .formatted-content h3 + p,
+  .formatted-content h4 + p,
+  .formatted-content h5 + p,
+  .formatted-content h6 + p {
+    margin-top: 0.5rem;
+  }
+
+  /* Text formatting */
+  .formatted-content strong {
+    font-weight: 600;
+    color: #f0f0f0;
+  }
+
+  .formatted-content em {
+    font-style: italic;
+    color: #d0d0d0;
+  }
+
+  .formatted-content a {
+    color: #60a5fa;
+    text-decoration: underline;
+    transition: color 0.2s ease;
+  }
+
+  .formatted-content a:hover {
+    color: #93c5fd;
+  }
+
+  /* Inline code - enhanced styling */
+  .formatted-content code:not([class*="language-"]) {
+    background: rgba(0, 0, 0, 0.4);
+    color: #22d3ee;
+    padding: 0.2rem 0.4rem; /* More generous padding */
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0 0.1rem; /* Small horizontal margin */
+  }
+
+  /* Code blocks - enhanced spacing */
+  .formatted-content pre {
+    background: rgba(0, 0, 0, 0.4);
+    color: #e5e5e5;
+    padding: 1rem; /* More generous padding */
+    border-radius: 8px; /* More rounded corners */
+    margin: 1.25rem 0; /* Increased margin */
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 0.875em;
+    border: 1px solid rgba(255, 255, 255, 0.15); /* Better border visibility */
+    line-height: 1.5; /* Better line height */
+  }
+
+  /* Lists - removed duplicate, using enhanced version below */
+
+  /* Tables */
+  .formatted-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.875rem;
+  }
+
+  .formatted-content th,
+  .formatted-content td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    word-wrap: break-word;
+  }
+
+  .formatted-content th {
+    background: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .formatted-content tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Blockquotes */
+  .formatted-content blockquote {
+    border-left: 3px solid #60a5fa;
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    background: rgba(96, 165, 250, 0.05);
+    border-radius: 0 6px 6px 0;
+    color: rgba(255, 255, 255, 0.9);
+    font-style: italic;
+  }
+
+  /* Horizontal rules */
+  .formatted-content hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.2), transparent);
+    margin: 1.5rem 0;
+  }
+
+  /* ==============================================
+     KATEX / LATEX MATH RENDERING - ENHANCED
+     ============================================== */
+
+  /* KaTeX display math blocks - improved spacing and readability */
+  .katex-display {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    text-align: center !important;
+    margin: 1.5rem 0 !important; /* Increased margin for better separation */
+    padding: 1rem !important; /* Increased padding */
+    background: rgba(0, 0, 0, 0.3) !important; /* Slightly darker background */
+    border-radius: 8px !important; /* Slightly more rounded */
+    border: 1px solid rgba(255, 255, 255, 0.15) !important; /* Better border visibility */
+    font-size: 1.1em !important; /* Slightly larger for better readability */
+    line-height: 1.4 !important; /* Better line height */
+  }
+  
+  /* KaTeX inline math - improved spacing and contrast */
+  .katex {
+    font-size: 1.05em !important; /* Slightly larger */
+    line-height: 1.3 !important; /* Better line height */
+    word-break: normal !important;
+    background: rgba(0, 0, 0, 0.25) !important; /* Darker background for better contrast */
+    padding: 0.15rem 0.3rem !important; /* More generous padding */
+    border-radius: 4px !important; /* Slightly more rounded */
+    margin: 0 0.2rem !important; /* Better horizontal spacing */
+    color: #e0f2fe !important; /* Better contrast color */
+    vertical-align: middle !important; /* Better alignment with text */
+    display: inline-block !important; /* Better spacing control */
+  }
+  
+  .katex .base {
+    display: inline-block !important;
+    min-height: 1.2em !important; /* Better minimum height */
+  }
+  
+  .katex-html {
+    overflow: visible !important;
+  }
+
+  /* KaTeX color overrides for dark theme - enhanced contrast */
+  .katex .mord {
+    color: #ffffff !important;
+  }
+
+  .katex .mbin,
+  .katex .mrel {
+    color: #7dd3fc !important; /* Better blue for operators */
+  }
+
+  .katex .mfrac .frac-line {
+    border-bottom-color: #ffffff !important;
+    border-bottom-width: 1px !important; /* Ensure visible fraction lines */
+  }
+
+  /* Enhanced spacing for text around math expressions */
+  .formatted-content .katex-display {
+    margin: 2rem 0 !important; /* Generous spacing around display math */
+  }
+
+  .formatted-content .katex-display + p {
+    margin-top: 1.5rem !important; /* Better spacing after display math */
+  }
+
+  .formatted-content p + .katex-display {
+    margin-top: 1.5rem !important; /* Better spacing before display math */
+  }
+
+  /* Improved spacing for inline math within text */
+  .formatted-content p .katex {
+    margin: 0 0.25rem !important; /* Better inline spacing */
+  }
+
+  /* Better spacing for mathematical content after headings */
+  .formatted-content h3 + .katex-display,
+  .formatted-content h4 + .katex-display {
+    margin-top: 1rem !important; /* Better spacing after headings with math */
+  }
+
+  /* ==============================================
+     SPACE/UI THEME COMPONENTS
+     ============================================== */
+
   /* Cosmic glow animation for the entire canvas */
   .cosmic-glow {
     position: relative;
@@ -359,378 +602,103 @@ body {
     background: rgba(255, 255, 255, 0.08);
     position: relative;
   }
-}
 
-/* Chat message specific styling */
-.formatted-content {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  max-width: 100%;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  hyphens: auto;
-  line-height: 1.6;
-}
+  /* Ensure content doesn't break out of containers */
+  .formatted-content * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 
-/* First element top margin reset */
-.formatted-content > *:first-child {
-  margin-top: 0 !important;
-}
+  .writing-mode-vertical {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
 
-/* Last element bottom margin reset */
-.formatted-content > *:last-child {
-  margin-bottom: 0 !important;
-}
+  /* Lists - enhanced spacing and readability */
+  .formatted-content ul, 
+  .formatted-content ol {
+    margin: 1rem 0; /* Increased margin */
+    padding-left: 1.5rem; /* Slightly more indentation */
+  }
 
-.formatted-content h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
-  color: #fff;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0.5rem;
-  line-height: 1.3;
-}
+  .formatted-content li {
+    margin: 0.4rem 0; /* Increased margin between list items */
+    line-height: 1.6; /* Better line height for list items */
+    color: rgba(255, 255, 255, 0.9);
+    display: list-item;
+  }
 
-.formatted-content h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  color: #fff;
-  line-height: 1.3;
-  border-left: 3px solid #60a5fa;
-  padding-left: 0.75rem;
-  background: rgba(96, 165, 250, 0.05);
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-radius: 0 8px 8px 0;
-}
+  .formatted-content ul li {
+    list-style-type: disc;
+  }
 
-.formatted-content h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: #fff;
-  line-height: 1.3;
-}
+  .formatted-content ol li {
+    list-style-type: decimal;
+  }
 
-.formatted-content p {
-  margin-bottom: 1rem;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.9);
-  max-width: 100%;
-  overflow-wrap: break-word;
-}
+  /* Nested lists - improved spacing */
+  .formatted-content li ul,
+  .formatted-content li ol {
+    margin: 0.5rem 0; /* Reduced margin for nested lists */
+    padding-left: 1.25rem;
+  }
 
-.formatted-content p:last-child {
-  margin-bottom: 0;
-}
+  /* Strong emphasis - better visibility */
+  .formatted-content strong,
+  .formatted-content b {
+    color: #ffffff;
+    font-weight: 600;
+  }
 
-.formatted-content strong {
-  font-weight: 600;
-  color: #f0f0f0;
-}
+  /* Emphasis - subtle but visible */
+  .formatted-content em,
+  .formatted-content i {
+    color: #e2e8f0;
+    font-style: italic;
+  }
 
-.formatted-content code {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  background-color: rgba(0, 0, 0, 0.4);
-  color: #a7f3d0;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
+  /* Enhanced section spacing for numbered sections */
+  .formatted-content h2 + p,
+  .formatted-content h3 + p {
+    margin-top: 0.6rem; /* Slightly more space after section headings */
+  }
 
-.formatted-content pre {
-  background-color: rgba(0, 0, 0, 0.4);
-  color: #a7f3d0;
-  padding: 1rem;
-  border-radius: 8px;
-  margin: 1rem 0;
-  overflow-x: auto;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 0.9em;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  line-height: 1.4;
-}
+  /* Better spacing between different content types */
+  .formatted-content ol + h3,
+  .formatted-content ul + h3,
+  .formatted-content p + h3 {
+    margin-top: 2rem; /* More space before new sections */
+  }
 
-.formatted-content .steps-container {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-}
+  .formatted-content ol + h2,
+  .formatted-content ul + h2,
+  .formatted-content p + h2 {
+    margin-top: 2.5rem; /* Even more space before major sections */
+  }
 
-.formatted-content .step-item,
-.formatted-content .bullet-item {
-  position: relative;
-  margin-bottom: 0.75rem;
-  padding-left: 2rem;
-  line-height: 1.6;
-}
+  /* Mathematical variables and symbols - enhanced styling */
+  .formatted-content .katex .mord.mathit {
+    color: #fbbf24 !important; /* Golden color for variables */
+  }
 
-.formatted-content .step-item .step-number {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 50%;
-  background-color: #61dafb;
-  color: #1a1a1a;
-  font-weight: bold;
-  font-size: 0.85rem;
-  margin-right: 0.75rem;
-}
+  .formatted-content .katex .mord.mathrm {
+    color: #ffffff !important; /* White for text in math */
+  }
 
-.formatted-content .bullet-list-container {
-  margin: 1rem 0;
-  padding: 0;
-}
+  /* Better spacing for definition lists (if used) */
+  .formatted-content dl {
+    margin: 1rem 0;
+  }
 
-.formatted-content ul, .formatted-content ol {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-}
+  .formatted-content dt {
+    font-weight: 600;
+    color: #ffffff;
+    margin-top: 0.75rem;
+  }
 
-.formatted-content li {
-  margin-bottom: 0.5rem;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.formatted-content li:last-child {
-  margin-bottom: 0;
-}
-
-.formatted-content em {
-  font-style: italic;
-  color: #d0d0d0;
-}
-
-.formatted-content a {
-  color: #60a5fa;
-  text-decoration: underline;
-  transition: color 0.2s ease;
-}
-
-.formatted-content a:hover {
-  color: #93c5fd;
-}
-
-.formatted-content .highlight-value {
-  background-color: rgba(97, 218, 251, 0.2);
-  padding: 0.1rem 0.3rem;
-  border-radius: 3px;
-  color: #61dafb;
-}
-
-.formatted-content .table-wrapper {
-  overflow-x: auto;
-  margin: 1rem 0;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.formatted-content .data-table {
-  width: 100%;
-  border-collapse: collapse;
-  background-color: rgba(0, 0, 0, 0.2);
-}
-
-.formatted-content .data-table th {
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 0.75rem;
-  text-align: left;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.formatted-content .data-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  vertical-align: top;
-}
-
-.formatted-content .data-table tr:last-child td {
-  border-bottom: none;
-}
-
-.formatted-content .data-table tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
-}
-
-.formatted-content .math-block {
-  margin: 1.5rem 0;
-  text-align: center;
-  padding: 1.25rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-.formatted-content .math-inline {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
-  margin: 0 0.1rem;
-  display: inline-block;
-}
-
-/* Override KaTeX default colors for dark theme */
-.formatted-content .katex {
-  color: #a7f3d0 !important;
-  font-size: 1.1em;
-}
-
-.formatted-content .katex .mord {
-  color: #ffffff !important;
-}
-
-.formatted-content .katex .mbin,
-.formatted-content .katex .mrel {
-  color: #60a5fa !important;
-}
-
-.formatted-content .katex .mfrac .frac-line {
-  border-bottom-color: #ffffff !important;
-}
-
-/* Section separators */
-.formatted-content hr {
-  border: none;
-  height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.2), transparent);
-  margin: 2rem 0;
-}
-
-/* Content blocks */
-.formatted-content blockquote {
-  border-left: 4px solid #60a5fa;
-  margin: 1.5rem 0;
-  padding: 1rem 1.5rem;
-  background: rgba(96, 165, 250, 0.05);
-  border-radius: 0 8px 8px 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-style: italic;
-}
-
-/* Ensure content doesn't break out of containers */
-.formatted-content * {
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-.formatted-content table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.formatted-content th,
-.formatted-content td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  word-wrap: break-word;
-}
-
-.formatted-content th {
-  background: rgba(255, 255, 255, 0.05);
-  font-weight: 600;
-  color: #fff;
-}
-
-.formatted-content tr:last-child td {
-  border-bottom: none;
-}
-
-.writing-mode-vertical {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
-
-/* Bullet list containers and items */
-.formatted-content .bullet-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  padding: 0.25rem 0;
-  color: rgba(255, 255, 255, 0.9);
-  line-height: 1.5;
-}
-
-.formatted-content .bullet-item:before {
-  content: "•";
-  color: #60a5fa;
-  font-weight: bold;
-  font-size: 1.1em;
-  margin-top: 0.1rem;
-  flex-shrink: 0;
-  width: 1rem;
-  text-align: center;
-}
-
-.formatted-content .bullet-item:last-child {
-  margin-bottom: 0;
-}
-
-/* Math equation styles */
-.formatted-content [class*="math"] {
-  color: #a7f3d0;
-  font-family: 'Computer Modern', serif;
-}
-
-/* LaTeX-style math display */
-.formatted-content p:has([class*="math"]) {
-  text-align: center;
-  margin: 1rem 0;
-  padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 0.5rem;
-}
-
-/* KaTeX math styling */
-.formatted-content .math-block {
-  margin: 1.5rem 0;
-  text-align: center;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.formatted-content .math-inline {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.25rem;
-  margin: 0 0.1rem;
-}
-
-/* Override KaTeX default colors for dark theme */
-.formatted-content .katex {
-  color: #a7f3d0 !important;
-}
-
-.formatted-content .katex .mord {
-  color: #ffffff !important;
-}
-
-.formatted-content .katex .mbin,
-.formatted-content .katex .mrel {
-  color: #60a5fa !important;
-}
-
-.formatted-content .katex .mfrac .frac-line {
-  border-bottom-color: #ffffff !important;
+  .formatted-content dd {
+    margin-left: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: rgba(255, 255, 255, 0.9);
+  }
 } 

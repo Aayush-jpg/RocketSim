@@ -4,110 +4,153 @@ import re
 
 def format_response(text: str) -> str:
     """
-    Format the agent's response for better readability.
+    Format the agent's response as clean markdown with comprehensive formatting fixes.
     
     Args:
         text: Raw text from the agent
         
     Returns:
-        str: Formatted HTML text for the frontend
+        str: Clean markdown text for the frontend to render
     """
-    # Remove any existing HTML tags for safety (avoid duplicating formatting)
-    text = re.sub(r'<\/?[^>]+>', '', text)
+    text = text.strip()
     
-    # Remove the CURRENT_ROCKET_JSON block from responses if it's included
+    # Remove the current rocket JSON context that shouldn't be displayed
     text = re.sub(r'CURRENT_ROCKET_JSON:?\s*```json\s*\{.*?\}\s*```', '', text, flags=re.DOTALL)
     
-    # 1. Format tables first as they are distinct blocks
-    if '|' in text and re.search(r'\|[^|]+\|[^|]+\|', text):
-        table_sections = re.finditer(r'([^\n]*\|[^\n]*\n){2,}', text)
-        for section in table_sections:
-            # Process table content here (same as before)
-            table_html = '<div class="table-wrapper"><table class="data-table">'
-            rows = section.group(0).strip().split('\n')
-            has_header = len(rows) > 1 and re.match(r'\s*\|[\s\-:]+\|[\s\-:]+\|', rows[1])
-            for i, row_text in enumerate(rows):
-                if i == 1 and has_header: continue
-                if row_text.strip():
-                    cells = [cell.strip() for cell in row_text.strip().split('|') if cell.strip()]
-                    row_html_tag = '<tr>'
-                    for cell_text in cells:
-                        tag = 'th' if (i == 0 and has_header) else 'td'
-                        row_html_tag += f'<{tag}>{cell_text}</{tag}>'
-                    row_html_tag += '</tr>'
-                    table_html += row_html_tag
-            table_html += '</table></div>'
-            text = text.replace(section.group(0), table_html)
-
-    # 2. Format headings
-    text = re.sub(r'^###\s+(.+?)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
-    text = re.sub(r'^##\s+(.+?)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
-    text = re.sub(r'^#\s+(.+?)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
-
-    # 3. Format numbered lists (e.g., 1. **Title**: Content)
-    def replace_numbered_list(match_obj):
-        list_block = match_obj.group(1)
-        items_html = []
-        item_pattern = r'^(\d+)\.\s+\*\*(.+?)\*\*(?::|\.|\s+)(.+?)$'
-        for line in list_block.strip().split('\n'):
-            item_match = re.match(item_pattern, line.strip())
-            if item_match:
-                num, title, content = item_match.groups()
-                items_html.append(f'<div class="step-item"><span class="step-number">{num}</span><strong>{title.strip()}</strong> {content.strip()}</div>')
-        if not items_html:
-            return match_obj.group(0) # Return original if no items matched (should not happen with outer pattern)
-        return f'<div class="steps-container">{"".join(items_html)}</div>'
+    # Handle action responses - convert raw JSON to human-readable text
+    text = re.sub(r'```json\s*\{"action":\s*"run_simulation"[^}]*\}\s*```', '✅ Simulation completed successfully!', text)
+    text = re.sub(r'\{"action":\s*"run_simulation"[^}]*\}', '🚀 Running simulation...', text)
     
-    numbered_list_block_pattern = r'(^(?:\d+\.\s+\*\*.*?\*\*(?::|\.|\s+).*?(?:\n|$))+)'
-    text = re.sub(numbered_list_block_pattern, replace_numbered_list, text, flags=re.MULTILINE)
-
-    # 4. Format bulleted lists (e.g., - Item content or * Item content)
-    def replace_bulleted_list(match_obj):
-        list_block = match_obj.group(1)
-        items_html = []
-        # Handle both '*' and '-' as bullets, also allow for optional '**bold**' content start
-        item_pattern = r'^[\*\-]\s+(?:\*\*(.+?)\*\*\s*)?(.*)$'
-        for line in list_block.strip().split('\n'):
-            item_match = re.match(item_pattern, line.strip())
-            if item_match:
-                bold_part, rest_part = item_match.groups()
-                content = ""
-                if bold_part:
-                    content += f'<strong>{bold_part.strip()}</strong> '
-                content += rest_part.strip()
-                items_html.append(f'<div class="bullet-item">{content}</div>')
-        if not items_html:
-             return match_obj.group(0)
-        return f'<div class="bullet-list-container">{"".join(items_html)}</div>'
-
-    bullet_list_block_pattern = r'(^(?:[\*\-]\s+.*?(?:\n|$))+)'
-    text = re.sub(bullet_list_block_pattern, replace_bulleted_list, text, flags=re.MULTILINE)
+    text = re.sub(r'```json\s*\{"action":\s*"add_part"[^}]*\}\s*```', '🔧 Adding new rocket component...', text)
+    text = re.sub(r'\{"action":\s*"add_part"[^}]*\}', '🔧 Adding new rocket component...', text)
     
-    # 5. Format data presentations (e.g., "Your current X is Y")
-    text = re.sub(r'Your (current|rocket\'s) (\w+) is ([^\n\.]+)\.?',
-                r'Your \1 <strong>\2</strong> is <span class="highlight-value">\3</span>.', text)
-    text = re.sub(r'The current ([a-z\s]+) is ([^\n\.]+)\.?',
-                 r'The current <strong>\1</strong> is <span class="highlight-value">\2</span>.', text)
-
-    # 6. Format bold and italic text (must come after list processing that uses similar markdown)
-    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'```json\s*\{"action":\s*"update_part"[^}]*\}\s*```', '⚙️ Updating rocket component...', text)
+    text = re.sub(r'\{"action":\s*"update_part"[^}]*\}', '⚙️ Updating rocket component...', text)
     
-    # 7. Format code blocks and inline code
-    text = re.sub(r'```(\w*)\n(.*?)\n```', r'<pre class="code-block \1">\2</pre>', text, flags=re.DOTALL)
-    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    # Remove any remaining standalone JSON action objects
+    text = re.sub(r'\{"action":[^}]+\}', '', text)
     
-    # 8. Format paragraphs (final step)
-    paragraphs = []
-    # Split by double newlines, or single if it's likely a new paragraph start
-    chunks = re.split(r'\n\s*\n|(?<!\n)\n(?!<(?:div|h[1-6]|pre|table|ul|li))', text) 
-    for chunk in chunks:
-        if chunk is None or not chunk.strip():
-            continue
-        # Skip wrapping if chunk already IS a block-level HTML element
-        if re.match(r'^\s*<(div|h[1-6]|pre|table|ul|li)', chunk.strip(), re.IGNORECASE):
-            paragraphs.append(chunk.strip())
+    # Clean up simulation results headers that appear with JSON
+    text = re.sub(r'Simulation Results\s*\{"action"[^}]+\}', '✅ Simulation completed successfully!', text)
+    text = re.sub(r'Simulation Results\s*$', '✅ Simulation completed!', text, flags=re.MULTILINE)
+    
+    # COMPREHENSIVE BULLET POINT FIXES
+    # Fix bullet points that are separated from their content
+    lines = text.split('\n')
+    fixed_lines = []
+    i = 0
+    
+    while i < len(lines):
+        current_line = lines[i].strip()
+        next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
+        
+        # Check for bullet on one line and content on the next
+        if re.match(r'^[\*\-\+]\s*$', current_line) and next_line and not re.match(r'^[\*\-\+]', next_line):
+            # Merge bullet with next line
+            fixed_lines.append(f'* {next_line}')
+            i += 2
+        elif re.match(r'^\d+\.\s*$', current_line) and next_line and not re.match(r'^\d+\.', next_line):
+            # Merge numbered list item with next line
+            fixed_lines.append(f'{current_line} {next_line}')
+            i += 2
         else:
-            paragraphs.append(f'<p>{chunk.strip()}</p>') # Wrap in paragraph tags
+            if current_line:  # Only add non-empty lines
+                fixed_lines.append(current_line)
+            i += 1
     
-    return '\n'.join(paragraphs) 
+    text = '\n'.join(fixed_lines)
+    
+    # Additional bullet point formatting fixes
+    text = re.sub(r'^\*\s*\n(.+)', r'* \1', text, flags=re.MULTILINE)
+    text = re.sub(r'^-\s*\n(.+)', r'- \1', text, flags=re.MULTILINE)
+    text = re.sub(r'^\+\s*\n(.+)', r'+ \1', text, flags=re.MULTILINE)
+    text = re.sub(r'^(\d+)\.\s*\n(.+)', r'\1. \2', text, flags=re.MULTILINE)
+    
+    # Fix LaTeX spacing issues
+    text = re.sub(r'\$\s+', '$', text)  # Remove spaces after opening $
+    text = re.sub(r'\s+\$', '$', text)  # Remove spaces before closing $
+    text = re.sub(r'\$\$\s+', '$$', text)  # Remove spaces after opening $$
+    text = re.sub(r'\s+\$\$', '$$', text)  # Remove spaces before closing $$
+    
+    # ENHANCED: Ensure any mathematical expressions without delimiters are properly wrapped
+    # This is a safety net in case the AI occasionally misses formatting
+    # Look for common LaTeX patterns that might not be wrapped
+    lines = text.split('\n')
+    processed_lines = []
+    
+    for line in lines:
+        # Skip lines that already have math delimiters
+        if '$' in line:
+            processed_lines.append(line)
+            continue
+            
+        # Check for obvious LaTeX expressions that need wrapping
+        if re.search(r'\\(frac|text|mathbf)\{[^}]+\}', line.strip()):
+            # This appears to be a mathematical expression - wrap it
+            if '=' in line and any(cmd in line for cmd in ['\\frac', '\\text', '\\mathbf']):
+                # Likely a mathematical equation
+                processed_lines.append(f'$${line.strip()}$$')
+            else:
+                # Likely inline math
+                processed_lines.append(f'${line.strip()}$')
+        else:
+            processed_lines.append(line)
+    
+    text = '\n'.join(processed_lines)
+    
+    # Ensure proper spacing for markdown elements
+    text = re.sub(r'\n{3,}(#{1,6})', r'\n\n\1', text)
+    text = re.sub(r'(#{1,6}[^\n]+)\n{3,}', r'\1\n\n', text)
+    
+    # Fix code block spacing
+    text = re.sub(r'(?<!\n)\n```', r'\n\n```', text)
+    text = re.sub(r'```\n(?!\n)', r'```\n\n', text)
+    
+    # Fix list spacing - ensure lists are properly separated
+    text = re.sub(r'(?<!\n)\n([\*\-\+]\s)', r'\n\n\1', text)
+    text = re.sub(r'(?<!\n)\n(\d+\.\s)', r'\n\n\1', text)
+    
+    # Add language identifiers to code blocks for better syntax highlighting
+    if 'json' in text.lower() and '```\n{' in text:
+        text = re.sub(r'```\n(\{[^`]+\})', r'```json\n\1', text)
+    if 'python' in text.lower() and '```\ndef ' in text:
+        text = re.sub(r'```\n(def [^`]+)', r'```python\n\1', text)
+    
+    # Ensure proper line spacing between different markdown elements
+    lines = text.split('\n')
+    formatted_lines = []
+    prev_line_type = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            formatted_lines.append('')
+            continue
+        
+        current_line_type = 'paragraph'
+        if line.startswith('#'): 
+            current_line_type = 'heading'
+        elif line.startswith('```'): 
+            current_line_type = 'code_block'
+        elif re.match(r'^[\*\-\+]\s', line): 
+            current_line_type = 'bullet_list'
+        elif re.match(r'^\d+\.\s', line): 
+            current_line_type = 'numbered_list'
+        elif line.startswith('|') and '|' in line[1:]: 
+            current_line_type = 'table'
+        
+        # Add spacing between different types of content
+        if prev_line_type and current_line_type != prev_line_type:
+            if formatted_lines and formatted_lines[-1] != '':
+                formatted_lines.append('')
+        
+        formatted_lines.append(line)
+        prev_line_type = current_line_type
+    
+    result = '\n'.join(formatted_lines)
+    
+    # Final cleanup - remove excessive empty lines but preserve structure
+    result = re.sub(r'\n{4,}', '\n\n\n', result)
+    result = result.strip()
+    
+    return result 

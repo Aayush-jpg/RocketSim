@@ -192,13 +192,13 @@ export default function AtmosphericModelSelector({ environment, setEnvironment }
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="bg-blue-500/10 rounded-lg p-3 border border-blue-500/20"
+          className="bg-black/40 rounded-lg p-3 border border-gray-600/30"
         >
-          <h4 className="font-medium text-blue-100 mb-2 text-sm">💡 Recommendations</h4>
+          <h4 className="font-medium text-gray-100 mb-2 text-sm">💡 Recommendations</h4>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {Object.entries(modelsData.use_cases).map(([useCase, recommendedModel]) => (
               <div key={useCase} className="flex justify-between">
-                <span className="text-blue-200 capitalize">{useCase}:</span>
+                <span className="text-gray-200 capitalize">{useCase}:</span>
                 <span className={`font-medium ${getModelColor(recommendedModel)}`}>
                   {recommendedModel}
                 </span>
