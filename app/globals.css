@@ -112,25 +112,21 @@ body {
   }
 
   /* Reset margins for first and last elements */
-  .formatted-content > *:first-child {
-    margin-top: 0 !important;
-  }
-  .formatted-content > *:last-child {
-    margin-bottom: 0 !important;
-  }
+  .formatted-content > *:first-child { margin-top: 0 !important; }
+  .formatted-content > *:last-child { margin-bottom: 0 !important; }
 
-  /* Headings - enhanced spacing and readability */
+  /* Headings */
   .formatted-content h1,
   .formatted-content h2,
   .formatted-content h3,
   .formatted-content h4,
   .formatted-content h5,
   .formatted-content h6 {
-    margin: 1.5rem 0 0.75rem 0; /* Better top/bottom spacing */
+    margin: 1.5rem 0 0.75rem 0;
     color: #ffffff;
     font-weight: 600;
-    line-height: 1.3; /* Better line height for headings */
-    letter-spacing: -0.01em; /* Slight letter spacing improvement */
+    line-height: 1.3;
+    letter-spacing: -0.01em;
   }
 
   .formatted-content h1 { font-size: 1.5rem; }
@@ -140,15 +136,14 @@ body {
   .formatted-content h5 { font-size: 1.05rem; }
   .formatted-content h6 { font-size: 1rem; }
 
-  /* Paragraphs - improved spacing and readability */
+  /* Paragraphs */
   .formatted-content p {
-    margin: 0.875rem 0; /* Increased margin for better separation */
+    margin: 0.875rem 0;
     color: rgba(255, 255, 255, 0.9);
-    line-height: 1.6; /* Better line height for body text */
-    word-spacing: 0.05em; /* Slight word spacing improvement */
+    line-height: 1.6;
+    word-spacing: 0.05em;
   }
   
-  /* First paragraph after headings - reduced top margin */
   .formatted-content h1 + p,
   .formatted-content h2 + p,
   .formatted-content h3 + p,
@@ -159,55 +154,177 @@ body {
   }
 
   /* Text formatting */
-  .formatted-content strong {
-    font-weight: 600;
-    color: #f0f0f0;
+  .formatted-content strong { font-weight: 600; color: #f0f0f0; }
+  .formatted-content em { font-style: italic; color: #d0d0d0; }
+  .formatted-content a { color: #60a5fa; text-decoration: underline; transition: color 0.2s ease; }
+  .formatted-content a:hover { color: #93c5fd; }
+
+  /* Lists */
+  .formatted-content ul, 
+  .formatted-content ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
   }
 
-  .formatted-content em {
-    font-style: italic;
-    color: #d0d0d0;
+  .formatted-content li {
+    margin: 0.4rem 0;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.9);
+    display: list-item;
   }
 
-  .formatted-content a {
-    color: #60a5fa;
-    text-decoration: underline;
-    transition: color 0.2s ease;
+  .formatted-content ul li { list-style-type: disc; }
+  .formatted-content ol li { list-style-type: decimal; }
+
+  /* Nested lists */
+  .formatted-content li ul,
+  .formatted-content li ol {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
   }
 
-  .formatted-content a:hover {
-    color: #93c5fd;
-  }
+  /* ==============================================
+     CODE BLOCKS - CONSOLIDATED STYLING
+     ============================================== */
 
-  /* Inline code - enhanced styling */
+  /* Inline code */
   .formatted-content code:not([class*="language-"]) {
     background: rgba(0, 0, 0, 0.4);
     color: #22d3ee;
-    padding: 0.2rem 0.4rem; /* More generous padding */
+    padding: 0.2rem 0.4rem;
     border-radius: 4px;
     font-size: 0.9em;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    margin: 0 0.1rem; /* Small horizontal margin */
+    margin: 0 0.1rem;
   }
 
-  /* Code blocks - enhanced spacing */
+  /* Code blocks - main container */
   .formatted-content pre {
     background: rgba(0, 0, 0, 0.4);
     color: #e5e5e5;
-    padding: 1rem; /* More generous padding */
-    border-radius: 8px; /* More rounded corners */
-    margin: 1.25rem 0; /* Increased margin */
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 1.25rem 0;
     overflow-x: auto;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     font-size: 0.875em;
-    border: 1px solid rgba(255, 255, 255, 0.15); /* Better border visibility */
-    line-height: 1.5; /* Better line height */
+    line-height: 1.5;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+    min-width: 100%;
   }
 
-  /* Lists - removed duplicate, using enhanced version below */
+  /* Ensure background extends across scrollable content */
+  .formatted-content pre > div,
+  .formatted-content pre > code {
+    background: rgba(0, 0, 0, 0.4) !important;
+    min-width: 100%;
+    display: block;
+  }
 
-  /* Tables */
+  /* SyntaxHighlighter specific background fix */
+  .formatted-content pre[class*="language-"] {
+    background: rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .formatted-content code[class*="language-"] {
+    background: rgba(0, 0, 0, 0.4) !important;
+    display: block !important;
+    min-width: 100% !important;
+  }
+
+  /* Remove line borders and highlighting */
+  .formatted-content .token-line,
+  .formatted-content span.token-line {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Remove borders but preserve background for other spans */
+  .formatted-content div[class*="language-"] span,
+  .formatted-content pre[class*="language-"] span,
+  .formatted-content code[class*="language-"] span,
+  .formatted-content .react-syntax-highlighter-line-number,
+  .formatted-content .react-syntax-highlighter .token-line,
+  .formatted-content .react-syntax-highlighter span {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Remove margins from syntax highlighter containers */
+  .formatted-content pre > div,
+  .formatted-content pre > span {
+    margin: 0 !important;
+    border: none !important;
+    outline: none !important;
+  }
+
+  /* Force background on all scrollable content */
+  .formatted-content pre *,
+  .formatted-content div[class*="language-"] *,
+  .formatted-content code[class*="language-"] * {
+    background-color: inherit !important;
+  }
+
+  /* Specific fix for horizontal scrolling content */
+  .formatted-content pre > div > div,
+  .formatted-content pre > div > code {
+    background: rgba(0, 0, 0, 0.4) !important;
+    width: max-content !important;
+    min-width: 100% !important;
+  }
+
+  /* Syntax highlighting colors */
+  .formatted-content .token.comment,
+  .formatted-content .token.prolog,
+  .formatted-content .token.doctype,
+  .formatted-content .token.cdata { color: #6a9955; }
+
+  .formatted-content .token.punctuation { color: #d4d4d4; }
+
+  .formatted-content .token.property,
+  .formatted-content .token.tag,
+  .formatted-content .token.constant,
+  .formatted-content .token.symbol,
+  .formatted-content .token.deleted { color: #569cd6; }
+
+  .formatted-content .token.boolean,
+  .formatted-content .token.number { color: #b5cea8; }
+
+  .formatted-content .token.selector,
+  .formatted-content .token.attr-name,
+  .formatted-content .token.string,
+  .formatted-content .token.char,
+  .formatted-content .token.builtin,
+  .formatted-content .token.inserted { color: #ce9178; }
+
+  .formatted-content .token.operator,
+  .formatted-content .token.entity,
+  .formatted-content .token.url { color: #d4d4d4; }
+
+  .formatted-content .token.variable { color: #9cdcfe; }
+
+  .formatted-content .token.atrule,
+  .formatted-content .token.attr-value { color: #ce9178; }
+
+  .formatted-content .token.function { color: #dcdcaa; }
+  .formatted-content .token.class-name { color: #4ec9b0; }
+  .formatted-content .token.keyword { color: #569cd6; }
+
+  .formatted-content .token.regex,
+  .formatted-content .token.important { color: #d16969; }
+
+  /* ==============================================
+     TABLES
+     ============================================== */
+
   .formatted-content table {
     width: 100%;
     border-collapse: collapse;
@@ -233,11 +350,12 @@ body {
     color: #fff;
   }
 
-  .formatted-content tr:last-child td {
-    border-bottom: none;
-  }
+  .formatted-content tr:last-child td { border-bottom: none; }
 
-  /* Blockquotes */
+  /* ==============================================
+     BLOCKQUOTES & HORIZONTAL RULES
+     ============================================== */
+
   .formatted-content blockquote {
     border-left: 3px solid #60a5fa;
     margin: 0.75rem 0;
@@ -248,7 +366,6 @@ body {
     font-style: italic;
   }
 
-  /* Horizontal rules */
   .formatted-content hr {
     border: none;
     height: 1px;
@@ -257,90 +374,56 @@ body {
   }
 
   /* ==============================================
-     KATEX / LATEX MATH RENDERING - ENHANCED
+     KATEX / LATEX MATH RENDERING
      ============================================== */
 
-  /* KaTeX display math blocks - improved spacing and readability */
   .katex-display {
     overflow-x: auto !important;
     overflow-y: hidden !important;
     text-align: center !important;
-    margin: 1.5rem 0 !important; /* Increased margin for better separation */
-    padding: 1rem !important; /* Increased padding */
-    background: rgba(0, 0, 0, 0.3) !important; /* Slightly darker background */
-    border-radius: 8px !important; /* Slightly more rounded */
-    border: 1px solid rgba(255, 255, 255, 0.15) !important; /* Better border visibility */
-    font-size: 1.1em !important; /* Slightly larger for better readability */
-    line-height: 1.4 !important; /* Better line height */
+    margin: 1.5rem 0 !important;
+    padding: 1rem !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    font-size: 1.1em !important;
+    line-height: 1.4 !important;
   }
   
-  /* KaTeX inline math - improved spacing and contrast */
   .katex {
-    font-size: 1.05em !important; /* Slightly larger */
-    line-height: 1.3 !important; /* Better line height */
+    font-size: 1.05em !important;
+    line-height: 1.3 !important;
     word-break: normal !important;
-    background: rgba(0, 0, 0, 0.25) !important; /* Darker background for better contrast */
-    padding: 0.15rem 0.3rem !important; /* More generous padding */
-    border-radius: 4px !important; /* Slightly more rounded */
-    margin: 0 0.2rem !important; /* Better horizontal spacing */
-    color: #e0f2fe !important; /* Better contrast color */
-    vertical-align: middle !important; /* Better alignment with text */
-    display: inline-block !important; /* Better spacing control */
-  }
-  
-  .katex .base {
+    background: rgba(0, 0, 0, 0.25) !important;
+    padding: 0.15rem 0.3rem !important;
+    border-radius: 4px !important;
+    margin: 0 0.2rem !important;
+    color: #e0f2fe !important;
+    vertical-align: middle !important;
     display: inline-block !important;
-    min-height: 1.2em !important; /* Better minimum height */
   }
   
-  .katex-html {
-    overflow: visible !important;
-  }
+  .katex .base { display: inline-block !important; min-height: 1.2em !important; }
+  .katex-html { overflow: visible !important; }
 
-  /* KaTeX color overrides for dark theme - enhanced contrast */
-  .katex .mord {
-    color: #ffffff !important;
-  }
+  .katex .mord { color: #ffffff !important; }
+  .katex .mbin, .katex .mrel { color: #7dd3fc !important; }
+  .katex .mfrac .frac-line { border-bottom-color: #ffffff !important; border-bottom-width: 1px !important; }
+  .katex .mord.mathit { color: #fbbf24 !important; }
+  .katex .mord.mathrm { color: #ffffff !important; }
 
-  .katex .mbin,
-  .katex .mrel {
-    color: #7dd3fc !important; /* Better blue for operators */
-  }
-
-  .katex .mfrac .frac-line {
-    border-bottom-color: #ffffff !important;
-    border-bottom-width: 1px !important; /* Ensure visible fraction lines */
-  }
-
-  /* Enhanced spacing for text around math expressions */
-  .formatted-content .katex-display {
-    margin: 2rem 0 !important; /* Generous spacing around display math */
-  }
-
-  .formatted-content .katex-display + p {
-    margin-top: 1.5rem !important; /* Better spacing after display math */
-  }
-
-  .formatted-content p + .katex-display {
-    margin-top: 1.5rem !important; /* Better spacing before display math */
-  }
-
-  /* Improved spacing for inline math within text */
-  .formatted-content p .katex {
-    margin: 0 0.25rem !important; /* Better inline spacing */
-  }
-
-  /* Better spacing for mathematical content after headings */
+  /* Enhanced spacing for math expressions */
+  .formatted-content .katex-display { margin: 2rem 0 !important; }
+  .formatted-content .katex-display + p { margin-top: 1.5rem !important; }
+  .formatted-content p + .katex-display { margin-top: 1.5rem !important; }
+  .formatted-content p .katex { margin: 0 0.25rem !important; }
   .formatted-content h3 + .katex-display,
-  .formatted-content h4 + .katex-display {
-    margin-top: 1rem !important; /* Better spacing after headings with math */
-  }
+  .formatted-content h4 + .katex-display { margin-top: 1rem !important; }
 
   /* ==============================================
      SPACE/UI THEME COMPONENTS
      ============================================== */
 
-  /* Cosmic glow animation for the entire canvas */
   .cosmic-glow {
     position: relative;
     overflow: hidden;
@@ -366,17 +449,10 @@ body {
   }
   
   @keyframes cosmic-pulse {
-    0% { 
-      opacity: 0.3; 
-      transform: scale(1) rotate(0deg);
-    }
-    100% { 
-      opacity: 0.8; 
-      transform: scale(1.1) rotate(360deg);
-    }
+    0% { opacity: 0.3; transform: scale(1) rotate(0deg); }
+    100% { opacity: 0.8; transform: scale(1.1) rotate(360deg); }
   }
 
-  /* Enhanced text glow effects */
   .space-text-glow {
     text-shadow: 
       0 0 10px rgba(255, 255, 255, 0.8),
@@ -406,7 +482,6 @@ body {
     }
   }
 
-  /* Spectacular button glow */
   .cosmic-button {
     position: relative;
     overflow: hidden;
@@ -447,11 +522,8 @@ body {
     transform: scale(1.05);
   }
   
-  .cosmic-button:hover::before {
-    opacity: 1;
-  }
+  .cosmic-button:hover::before { opacity: 1; }
 
-  /* Content overlay backdrop with enhanced glow */
   .space-backdrop {
     background: linear-gradient(135deg, 
       rgba(0, 0, 0, 0.4) 0%,
@@ -485,7 +557,6 @@ body {
     }
   }
 
-  /* Rocket trail glow effect */
   .rocket-trail {
     position: absolute;
     width: 100%;
@@ -506,7 +577,6 @@ body {
     100% { opacity: 1; transform: scale(1.1); }
   }
 
-  /* Enhanced star field effect */
   .star-field {
     position: fixed;
     top: 0;
@@ -531,7 +601,6 @@ body {
     50% { opacity: 1; }
   }
 
-  /* Glass morphism card styling to match the design */
   .glass-strong {
     background: rgba(20, 25, 35, 0.85);
     backdrop-filter: blur(20px);
@@ -543,7 +612,6 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
-  /* Alternative glass effects */
   .glass-panel {
     background: rgba(26, 30, 40, 0.75);
     backdrop-filter: blur(16px);
@@ -562,7 +630,6 @@ body {
     box-shadow: 0 6px 40px rgba(0, 0, 0, 0.4);
   }
 
-  /* Hover effects for interactive cards */
   .glass-strong:hover {
     border-color: rgba(255, 255, 255, 0.12);
     box-shadow: 
@@ -571,7 +638,6 @@ body {
     transition: all 0.3s ease;
   }
 
-  /* Noise texture for subtle detail */
   .noise-bg {
     position: relative;
   }
@@ -590,7 +656,6 @@ body {
     border-radius: inherit;
   }
 
-  /* Panel dividers */
   .panel-divider-v {
     width: 1px;
     background: rgba(255, 255, 255, 0.08);
@@ -603,7 +668,6 @@ body {
     position: relative;
   }
 
-  /* Ensure content doesn't break out of containers */
   .formatted-content * {
     max-width: 100%;
     box-sizing: border-box;
@@ -612,93 +676,5 @@ body {
   .writing-mode-vertical {
     writing-mode: vertical-rl;
     text-orientation: mixed;
-  }
-
-  /* Lists - enhanced spacing and readability */
-  .formatted-content ul, 
-  .formatted-content ol {
-    margin: 1rem 0; /* Increased margin */
-    padding-left: 1.5rem; /* Slightly more indentation */
-  }
-
-  .formatted-content li {
-    margin: 0.4rem 0; /* Increased margin between list items */
-    line-height: 1.6; /* Better line height for list items */
-    color: rgba(255, 255, 255, 0.9);
-    display: list-item;
-  }
-
-  .formatted-content ul li {
-    list-style-type: disc;
-  }
-
-  .formatted-content ol li {
-    list-style-type: decimal;
-  }
-
-  /* Nested lists - improved spacing */
-  .formatted-content li ul,
-  .formatted-content li ol {
-    margin: 0.5rem 0; /* Reduced margin for nested lists */
-    padding-left: 1.25rem;
-  }
-
-  /* Strong emphasis - better visibility */
-  .formatted-content strong,
-  .formatted-content b {
-    color: #ffffff;
-    font-weight: 600;
-  }
-
-  /* Emphasis - subtle but visible */
-  .formatted-content em,
-  .formatted-content i {
-    color: #e2e8f0;
-    font-style: italic;
-  }
-
-  /* Enhanced section spacing for numbered sections */
-  .formatted-content h2 + p,
-  .formatted-content h3 + p {
-    margin-top: 0.6rem; /* Slightly more space after section headings */
-  }
-
-  /* Better spacing between different content types */
-  .formatted-content ol + h3,
-  .formatted-content ul + h3,
-  .formatted-content p + h3 {
-    margin-top: 2rem; /* More space before new sections */
-  }
-
-  .formatted-content ol + h2,
-  .formatted-content ul + h2,
-  .formatted-content p + h2 {
-    margin-top: 2.5rem; /* Even more space before major sections */
-  }
-
-  /* Mathematical variables and symbols - enhanced styling */
-  .formatted-content .katex .mord.mathit {
-    color: #fbbf24 !important; /* Golden color for variables */
-  }
-
-  .formatted-content .katex .mord.mathrm {
-    color: #ffffff !important; /* White for text in math */
-  }
-
-  /* Better spacing for definition lists (if used) */
-  .formatted-content dl {
-    margin: 1rem 0;
-  }
-
-  .formatted-content dt {
-    font-weight: 600;
-    color: #ffffff;
-    margin-top: 0.75rem;
-  }
-
-  .formatted-content dd {
-    margin-left: 1.5rem;
-    margin-bottom: 0.5rem;
-    color: rgba(255, 255, 255, 0.9);
   }
 } 

@@ -29,19 +29,17 @@ interface FormattedMessageProps {
   className?: string;
 }
 
-// Simplified preprocessing - let the libraries handle LaTeX automatically
+// Minimal preprocessing - LaTeX unescaping now handled at JSON parsing level
 const preprocessContent = (content: string): string => {
   let processed = content.trim();
   
-  // 1. Remove raw JSON actions that shouldn't be displayed
+  // ONLY remove JSON garbage that shouldn't be displayed
   processed = processed.replace(/\{"action":\s*"[^"]+[^}]*\}/g, '');
   processed = processed.replace(/```json\s*\{"action":\s*"[^"]+[^}]*\}\s*```/g, '');
-  
-  // 2. Convert action indicators to human-readable text
   processed = processed.replace(/Simulation Results\s*\{"action":\s*"run_simulation"[^}]*\}/g, '✅ Simulation completed successfully!');
   
-  // 3. Basic cleanup
-  processed = processed.replace(/\n{3,}/g, '\n\n'); // Limit excessive line breaks
+  // Basic cleanup only
+  processed = processed.replace(/\n{3,}/g, '\n\n');
   
   return processed.trim();
 };
@@ -86,12 +84,26 @@ const customDarkTheme = {
     border: 'none',
     outline: 'none',
   },
-  // Remove any potential line separators or borders
+  // Comprehensive line styling to prevent any borders or highlighting
   '.token-line': {
     background: 'transparent !important',
     border: 'none !important',
     outline: 'none !important',
     boxShadow: 'none !important',
+  },
+  'span.token-line': {
+    background: 'transparent !important',
+    border: 'none !important',
+    outline: 'none !important',
+    boxShadow: 'none !important',
+  },
+  '.linenumber': {
+    background: 'transparent !important',
+    border: 'none !important',
+  },
+  '.highlight-line': {
+    background: 'transparent !important',
+    border: 'none !important',
   },
   // Syntax highlighting colors
   'comment': { color: '#6a9955' },
@@ -134,37 +146,54 @@ const MarkdownComponents = {
     
     if (!inline && language) {
       return (
-        <div className="my-3 overflow-x-auto">
-          <SyntaxHighlighter
-            style={customDarkTheme}
-            language={language}
-            PreTag="div"
-            className="rounded-md text-xs !m-0"
-            customStyle={{
-              margin: 0,
-              padding: '12px',
-              fontSize: '12px',
-              lineHeight: '1.4',
+        <SyntaxHighlighter
+          language={language}
+          PreTag="div"
+          className="text-xs"
+          customStyle={{
+            margin: '1rem 0', // Only top/bottom margin, same as text
+            padding: '12px',
+            fontSize: '12px',
+            lineHeight: '1.4',
+            background: '#1a1a1a',
+            border: 'none',
+            outline: 'none',
+            boxShadow: 'none',
+            borderRadius: '6px',
+            width: '100%', // Full width to match text
+            minWidth: '100%', // Ensure background extends on scroll
+            display: 'block',
+            overflowX: 'auto',
+            color: '#f8f8f2',
+            fontFamily: 'Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace'
+          }}
+          codeTagProps={{
+            style: {
               background: '#1a1a1a',
               border: 'none',
               outline: 'none',
-              boxShadow: 'none'
-            }}
-            codeTagProps={{
-              style: {
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontFamily: 'Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace'
-              }
-            }}
-            wrapLines={false}
-            showLineNumbers={false}
-            {...props}
-          >
-            {String(children).replace(/\n$/, '')}
-          </SyntaxHighlighter>
-        </div>
+              boxShadow: 'none',
+              display: 'block',
+              minWidth: '100%',
+              fontFamily: 'Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace'
+            }
+          }}
+          wrapLines={false}
+          wrapLongLines={false}
+          showLineNumbers={false}
+          lineProps={() => ({
+            style: {
+              background: 'transparent !important',
+              border: 'none !important',
+              outline: 'none !important',
+              boxShadow: 'none !important',
+              display: 'block'
+            }
+          })}
+          {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
       );
     }
     

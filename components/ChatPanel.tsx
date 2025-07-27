@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRocket } from '@/lib/store'
 import { dispatchActions } from '@/lib/ai/actions'
 import { useAuth } from '@/lib/auth/AuthContext'
@@ -43,6 +43,105 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
   const [lastUsedAgent, setLastUsedAgent] = useState<string>('master');
   const [currentlyRunningAgent, setCurrentlyRunningAgent] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  
+  // Chat scroll position persistence
+  const [scrollPosition, setScrollPosition] = useState<number>(0);
+  const [isManuallyScrolling, setIsManuallyScrolling] = useState(false);
+  const scrollPositionKey = `chat-scroll-${projectId || 'default'}`;
+  
+  // Restore scroll position on mount and when returning from analysis
+  useEffect(() => {
+    if (!activeAnalysis && chatContainerRef.current) {
+      const savedPosition = sessionStorage.getItem(scrollPositionKey);
+      if (savedPosition) {
+        const position = parseInt(savedPosition, 10);
+        // Restore scroll position after a brief delay to ensure content is rendered
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = position;
+            // Reset manual scrolling flag after restoration
+            setIsManuallyScrolling(false);
+            // Update shouldScrollToBottom based on restored position
+            const { scrollHeight, clientHeight } = chatContainerRef.current;
+            const isNearBottom = scrollHeight - position - clientHeight < 100;
+            setShouldScrollToBottom(isNearBottom);
+          }
+        }, 150);
+      } else {
+        // No saved position, reset manual scrolling flag
+        setIsManuallyScrolling(false);
+      }
+    }
+  }, [activeAnalysis, scrollPositionKey]);
+  
+  // Save scroll position when switching to analysis or component unmounts
+  useEffect(() => {
+    const saveScrollPosition = () => {
+      if (chatContainerRef.current) {
+        const currentPosition = chatContainerRef.current.scrollTop;
+        sessionStorage.setItem(scrollPositionKey, currentPosition.toString());
+        setScrollPosition(currentPosition);
+      }
+    };
+
+    // Save position when switching to analysis
+    if (activeAnalysis) {
+      saveScrollPosition();
+    }
+
+    // Save position on page unload/refresh
+    const handleBeforeUnload = () => {
+      saveScrollPosition();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      saveScrollPosition(); // Save on component unmount
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [activeAnalysis, scrollPositionKey]);
+  
+  // Track scroll position continuously for better UX
+  const handleScroll = useCallback(() => {
+    if (chatContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+      const currentPosition = scrollTop;
+      
+      // Update scroll position state
+      setScrollPosition(currentPosition);
+      
+      // Determine if user is near bottom (within 100px)
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      
+      // Set manual scrolling flag when user scrolls away from bottom
+      if (!isNearBottom && shouldScrollToBottom) {
+        setIsManuallyScrolling(true);
+      } else if (isNearBottom) {
+        setIsManuallyScrolling(false);
+      }
+      
+      setShouldScrollToBottom(isNearBottom);
+      
+      // Debounced save to sessionStorage (save every 500ms when scrolling stops)
+      clearTimeout((window as any).scrollSaveTimeout);
+      (window as any).scrollSaveTimeout = setTimeout(() => {
+        sessionStorage.setItem(scrollPositionKey, currentPosition.toString());
+      }, 500);
+    }
+  }, [scrollPositionKey, shouldScrollToBottom]);
+
+  // Add scroll listener
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll, { passive: true });
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+      };
+    }
+  }, [handleScroll]);
   
   // Load chat history when component mounts
   useEffect(() => {
@@ -70,25 +169,46 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     }
   }, [currentProject, user]);
   
-  // Auto-scroll chat to bottom on new messages (improved to preserve scroll position)
+  // Auto-scroll to bottom for new messages (improved logic)
   useEffect(() => {
-    if (chatContainerRef.current) {
+    if (chatContainerRef.current && !isManuallyScrolling) {
       const container = chatContainerRef.current;
-      const { scrollTop, scrollHeight, clientHeight } = container;
       
-      // Only auto-scroll if user is already near the bottom (within 100px)
-      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
-      
-      if (isNearBottom) {
-        // Smooth scroll to bottom
-        container.scrollTo({
-          top: scrollHeight,
-          behavior: 'smooth'
-        });
+      // Only auto-scroll if user is near the bottom and not manually scrolling
+      if (shouldScrollToBottom) {
+        // Small delay to prevent interfering with manual scrolling
+        setTimeout(() => {
+          if (chatContainerRef.current && !isManuallyScrolling) {
+            container.scrollTo({
+              top: container.scrollHeight,
+              behavior: 'smooth'
+            });
+            
+            // Update saved position to bottom
+            const newPosition = container.scrollHeight;
+            sessionStorage.setItem(scrollPositionKey, newPosition.toString());
+            setScrollPosition(newPosition);
+          }
+        }, 100);
       }
     }
-  }, [messages]);
-  
+  }, [messages, shouldScrollToBottom, scrollPositionKey, isManuallyScrolling]);
+
+  // Handle typing indicator scroll
+  useEffect(() => {
+    if (isLoading && shouldScrollToBottom && !isManuallyScrolling && chatContainerRef.current) {
+      const container = chatContainerRef.current;
+      setTimeout(() => {
+        if (chatContainerRef.current && !isManuallyScrolling) {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 50);
+    }
+  }, [isLoading, shouldScrollToBottom, isManuallyScrolling]);
+
   // Load previous chat messages from database
   const loadChatHistory = async () => {
     if (!user || !userSession) return;
@@ -419,6 +539,68 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
       const json = await res.json();
       console.log('Received response from agent:', JSON.stringify(json, null, 2));
       
+      // FIX: Unescape LaTeX that was double-escaped during JSON serialization
+      // This is the most robust place to fix it - right after JSON parsing
+      if (json.final_output) {
+        console.log('🔍 BEFORE LaTeX unescaping:', json.final_output);
+        console.log('🔍 Looking for patterns like \\\\( and \\\\)');
+        
+        let processed = json.final_output;
+        
+        // Test specific patterns that we're seeing in the logs
+        const testPatterns = [
+          /\\\\\(/g,  // \\( pattern
+          /\\\\\)/g,  // \\) pattern
+          /\\\\rho/g, // \\rho pattern
+          /\\\\text/g // \\text pattern
+        ];
+        
+        testPatterns.forEach((pattern, index) => {
+          const matches = processed.match(pattern);
+          if (matches) {
+            console.log(`🎯 Found pattern ${index}: ${pattern} - ${matches.length} matches`);
+          }
+        });
+        
+        // More comprehensive LaTeX unescaping
+        // Handle all double-escaped LaTeX commands and symbols
+        processed = processed
+          // LaTeX delimiters (most important - these are the main issue)
+          .replace(/\\\\\(/g, '\\(')     // \\( -> \(
+          .replace(/\\\\\)/g, '\\)')     // \\) -> \)
+          .replace(/\\\\\[/g, '\\[')     // \\[ -> \[
+          .replace(/\\\\\]/g, '\\]')     // \\] -> \]
+          .replace(/\\\\\{/g, '\\{')     // \\{ -> \{
+          .replace(/\\\\\}/g, '\\}')     // \\} -> \}
+          // Common LaTeX commands  
+          .replace(/\\\\(frac|text|mathbf|mathrm|sqrt|sum|int|lim|log|ln|sin|cos|tan)/g, '\\$1')
+          // Greek letters (comprehensive list)
+          .replace(/\\\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)/g, '\\$1')
+          .replace(/\\\\(Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)/g, '\\$1')
+          // Math operators and symbols
+          .replace(/\\\\(cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|in|subset|supset|infty|partial|nabla|exists|forall)/g, '\\$1')
+          // Arrows and relations
+          .replace(/\\\\(rightarrow|leftarrow|leftrightarrow|Rightarrow|Leftarrow|Leftrightarrow)/g, '\\$1')
+          // Miscellaneous
+          .replace(/\\\\(quad|qquad|space|,|;|!)/g, '\\$1');
+        
+        console.log('🔍 AFTER LaTeX unescaping:', processed);
+        console.log('🔍 Changes made:', processed !== json.final_output);
+        
+        // FALLBACK: Convert \( \) format to $ $ format if the agents are still using the old format
+        const beforeFallback = processed;
+        processed = processed
+          .replace(/\\\(/g, '$')    // \( -> $
+          .replace(/\\\)/g, '$');   // \) -> $
+        
+        if (processed !== beforeFallback) {
+          console.log('🔄 FALLBACK: Converted \\( \\) format to $ $ format');
+          console.log('🔍 After fallback conversion:', processed);
+        }
+        
+        json.final_output = processed;
+      }
+      
       // If agent changed during processing, show a transition animation
       if (json.agent_used && json.agent_used !== lastUsedAgent) {
         setCurrentlyRunningAgent(json.agent_used);
@@ -530,7 +712,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
                 "rounded-2xl backdrop-blur-xl relative shadow-sm transition-all duration-200",
                 message.role === "user"
                   ? "bg-gray-900/95 text-white max-w-[80%] px-3 py-2 text-sm border border-gray-700/30"
-                  : "bg-gray-700/80 text-gray-100 border border-gray-600/40 w-full px-4 py-4",
+                  : "text-gray-100 border border-gray-600/40 w-full px-4 py-4",
               )}
               style={{
                 // Ensure proper containment
@@ -587,8 +769,8 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
           >
-            <div className="bg-black/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg border border-gray-600/50">
-              🤖 Switching to {currentlyRunningAgent.replace('_', ' ')} agent...
+            <div className="text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg border border-gray-600/50">
+              Switching to {currentlyRunningAgent.replace('_', ' ')} agent...
             </div>
           </motion.div>
         )}
@@ -600,7 +782,7 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="bg-gray-800/90 text-gray-100 max-w-[85%] rounded-2xl px-3 py-2.5 border border-gray-700/50">
+            <div className="text-gray-100 max-w-[85%] rounded-2xl px-3 py-2.5 border border-gray-700/50">
               <div className="flex items-center space-x-2">
                 <div className="flex space-x-1">
                   <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>

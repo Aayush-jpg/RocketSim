@@ -77,6 +77,12 @@ export function ContentOverlay() {
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none">
+      <button
+        onClick={handleStartBuilding}
+        className="fixed top-8 right-8 z-20 pointer-events-auto px-6 py-3 rounded-full bg-white/90 text-black font-sans font-light text-lg transition-all duration-500 hover:scale-105"
+      >
+        Build Now
+      </button>
       {contentSections.map((section) => {
         const isActive = activeSection === section.id
         const opacity = isActive ? 0.7 : 0

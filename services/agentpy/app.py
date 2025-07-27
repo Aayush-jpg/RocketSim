@@ -255,9 +255,17 @@ You are an expert master agent for rocket design coordination. You help users de
 When including mathematical formulas, equations, or LaTeX expressions in your responses:
 - ALWAYS wrap inline math in single dollar signs: $equation$
 - ALWAYS wrap block math in double dollar signs: $$equation$$
+
+**CRITICAL: Variable Definitions in "Where:" Sections**
+When explaining what variables mean (like in "where:" sections), ALWAYS use $ $ format:
+- CORRECT: "$F_d$ = drag force (N)"
+- CORRECT: "$\rho$ = air density (kg/m³)" 
+- WRONG: "\( F_d \) = drag force (N)" ← NEVER use this format
+
 - Examples:
   - Inline: The drag force is $F_d = \frac{1}{2} \rho v^2 C_d A$
   - Block: $$\text{Stability Margin} = \frac{\text{Distance from CoG to CoP}}{D}$$ 
+  - Variable definitions: $F_d$ = drag force (N), $\rho$ = air density (kg/m³)
 - Never include raw LaTeX commands without proper delimiters
 - Use proper LaTeX syntax: \frac{numerator}{denominator}, \mathbf{bold}, \text{text}
 

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/database/supabase';
-import { markAuthAttempt, autoRecoverFromAuthTimeout } from '@/lib/utils/authHelpers';
+import { initializeSessionManagement } from '@/lib/utils/authHelpers';
 
 interface AuthContextType {
   user: User | null;
@@ -30,129 +30,76 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [userSession, setUserSession] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [minLoadingTime, setMinLoadingTime] = useState(true);
-
-  // Ensure minimum loading time for session restoration
-  useEffect(() => {
-    const minLoadingTimer = setTimeout(() => {
-      setMinLoadingTime(false);
-    }, 1500); // Minimum 1.5 seconds to allow session restoration
-
-    return () => clearTimeout(minLoadingTimer);
-  }, []);
 
   useEffect(() => {
-    // Timeout references for cleanup
-    let authTimeoutRef: NodeJS.Timeout | null = null;
-    let safetyTimeoutRef: NodeJS.Timeout | null = null;
-    let initSessionTimeoutRef: NodeJS.Timeout | null = null;
-    let onChangeTimeoutRef: NodeJS.Timeout | null = null;
+    let mounted = true;
     
-    // Check for previous auth timeout issues and auto-recover
-    autoRecoverFromAuthTimeout();
+    // Initialize session management (cleanup old data)
+    initializeSessionManagement();
     
-    // Mark this auth attempt
-    markAuthAttempt();
-    
-    // Get initial session with timeout protection
-    const getInitialSession = async () => {
+    // Simplified session initialization
+    const initializeAuth = async () => {
       try {
-        // Create timeout with reference for cleanup
-        const timeoutPromise = new Promise((_, reject) => {
-          authTimeoutRef = setTimeout(() => reject(new Error('Auth initialization timeout')), 5000);
-        });
+        // Get session with simple timeout
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
-        const sessionPromise = supabase.auth.getSession();
-        
-        const { data: { session: initialSession }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any;
-        
-        // Clear timeout on success
-        if (authTimeoutRef) {
-          clearTimeout(authTimeoutRef);
-          authTimeoutRef = null;
-        }
+        if (!mounted) return;
         
         if (error) {
-          console.error('Error getting session:', error);
-        } else {
+          console.error('Session error:', error);
+        } else if (initialSession) {
           setSession(initialSession);
-          setUser(initialSession?.user ?? null);
-          
-          // Only initialize user session after a brief delay to avoid race conditions
-          if (initialSession?.user) {
-            initSessionTimeoutRef = setTimeout(() => {
-              if (!initialSession?.user) return; // Double-check user still exists
-              initializeUserSession(initialSession.user);
-            }, 500);
-          }
+          setUser(initialSession.user);
+          // Initialize user session without complex retries
+          initializeUserSession(initialSession.user);
         }
       } catch (error) {
-        console.warn('Session initialization error (non-blocking):', error);
-        // Clear timeout on error
-        if (authTimeoutRef) {
-          clearTimeout(authTimeoutRef);
-          authTimeoutRef = null;
-        }
-        // Set to not loading even on error to prevent infinite loading
-        setSession(null);
-        setUser(null);
+        console.warn('Auth initialization error:', error);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
+    
+    // Initialize auth immediately
+    initializeAuth();
 
-    getInitialSession();
-
-    // Listen for auth changes
+    // Listen for auth changes - simplified
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
       console.log('Auth state changed:', event, session?.user?.email);
       setSession(session);
       setUser(session?.user ?? null);
       
-      // Clear any existing timeout before setting new one
-      if (onChangeTimeoutRef) {
-        clearTimeout(onChangeTimeoutRef);
-        onChangeTimeoutRef = null;
-      }
-      
       if (session?.user) {
-        // Add delay to prevent race conditions with user record creation
-        onChangeTimeoutRef = setTimeout(() => {
-          if (!session?.user) return; // Double-check user still exists
-          initializeUserSession(session.user);
-        }, 300);
+        initializeUserSession(session.user);
       } else {
         setUserSession(null);
       }
       
-      // Always ensure loading is false after auth state change
       setLoading(false);
       
-      // Notify store of auth change (for database initialization)
+      // Notify store of auth change
       if (typeof window !== 'undefined' && (window as any).__rocketAuthChanged) {
         (window as any).__rocketAuthChanged();
       }
     });
 
-    // Safety timeout with reference for cleanup
-    safetyTimeoutRef = setTimeout(() => {
-      console.warn('Auth loading timeout - forcing loading to false');
-      setLoading(false);
-    }, 6000);
+    // Simple safety timeout - reduced from 6s to 3s
+    const safetyTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth safety timeout - setting loading to false');
+        setLoading(false);
+      }
+    }, 3000);
 
     return () => {
-      // Clean up all timeouts
-      if (authTimeoutRef) clearTimeout(authTimeoutRef);
-      if (safetyTimeoutRef) clearTimeout(safetyTimeoutRef);
-      if (initSessionTimeoutRef) clearTimeout(initSessionTimeoutRef);
-      if (onChangeTimeoutRef) clearTimeout(onChangeTimeoutRef);
-      
-      // Unsubscribe from auth changes
+      mounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -197,21 +144,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Initialize user session - now with better error handling
+  // Simplified user session initialization
   const initializeUserSession = async (user: User) => {
     try {
       // First ensure user exists in public.users table
       await ensureUserRecord(user);
       
-      // Create a new session record for tracking user activity
-      const sessionId = crypto.randomUUID(); // Use proper UUID format
+      // Create session with simple logic
+      const sessionId = crypto.randomUUID();
       
-      // Reduce timeout from 5000ms to 3000ms (3 seconds)
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session creation timeout')), 3000)
-      );
-      
-      const sessionPromise = supabase
+      const { data: session, error } = await supabase
         .from('user_sessions')
         .insert({
           user_id: user.id,
@@ -227,77 +169,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .select()
         .single();
 
-      const { data: session, error: sessionError } = await Promise.race([
-        sessionPromise,
-        timeoutPromise
-      ]) as any;
-
-      if (sessionError) {
-        console.warn('Could not create session record:', sessionError);
-        
-        // Check if it's a foreign key constraint error specifically
-        if (sessionError.code === '23503') {
-          console.error('Foreign key constraint violation - user may not exist in database');
-          console.log('Attempting to resolve user synchronization issue...');
-          
-          // Try to sync the user again and retry session creation ONCE
-          await ensureUserRecord(user);
-          
-          // Single retry with shorter timeout
-          try {
-            const retryPromise = supabase
-              .from('user_sessions')
-              .insert({
-                user_id: user.id,
-                session_id: crypto.randomUUID(),
-                metadata: {
-                  userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'server',
-                  timestamp: new Date().toISOString(),
-                  email: user.email
-                },
-                started_at: new Date().toISOString(),
-                last_activity: new Date().toISOString()
-              })
-              .select()
-              .single();
-
-            const retryTimeout = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Retry timeout')), 2000)
-            );
-
-            const { data: retrySession, error: retryError } = await Promise.race([
-              retryPromise,
-              retryTimeout
-            ]) as any;
-
-            if (retryError) {
-              throw retryError;
-            }
-            
-            setUserSession(retrySession);
-            console.log('✅ Successfully created session after user sync');
-            return;
-          } catch (retryError) {
-            console.error('Retry session creation also failed:', retryError);
-          }
-        }
-        
-        // Create a fallback session object with proper UUID
-        const fallbackSessionId = crypto.randomUUID();
+      if (error) {
+        console.warn('Session creation failed, using fallback:', error);
+        // Simple fallback without complex retry logic
         setUserSession({
-          id: fallbackSessionId,
+          id: sessionId,
           user_id: user.id,
-          session_id: fallbackSessionId,
+          session_id: sessionId,
           started_at: new Date().toISOString()
         });
-        return;
+      } else {
+        setUserSession(session);
+        console.log('✅ User session created');
       }
-
-      setUserSession(session);
-      console.log('✅ Successfully created user session');
     } catch (error) {
-      console.warn('Error initializing user session:', error);
-      // Fallback to a basic session object with proper UUID
+      console.warn('User session initialization error:', error);
+      // Fallback session
       const fallbackSessionId = crypto.randomUUID();
       setUserSession({
         id: fallbackSessionId,
