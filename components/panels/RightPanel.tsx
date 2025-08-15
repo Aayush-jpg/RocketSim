@@ -14,6 +14,7 @@ import MonteCarloTab from './pro-mode/MonteCarloTab'
 import MotorTab from './pro-mode/MotorTab'
 import TrajectoryTab from './pro-mode/TrajectoryTab'
 import RecoveryTab from './pro-mode/RecoveryTab'
+import PrintingTab from './pro-mode/PrintingTab'
 import WeatherStatus from '@/components/WeatherStatus'
 import VersionHistoryTab from './pro-mode/VersionHistoryTab'
 import AtmosphericModelSelector from '@/components/AtmosphericModelSelector'
@@ -38,6 +39,7 @@ const analysisTypes = [
   { id: "recovery", label: "Recovery", icon: "🪂", description: "Parachute deployment" },
   { id: "monte-carlo", label: "Monte Carlo", icon: "🎲", description: "Statistical analysis" },
   { id: "motor", label: "Motor", icon: "🔥", description: "Engine performance" },
+  { id: "3d-printing", label: "3D Printing", icon: "🖨️", description: "Export for printing" },
   { id: "environment", label: "Environment", icon: "🌍", description: "Weather conditions" },
   { id: "versions", label: "Versions", icon: "🕐", description: "Design history" },
 ];
@@ -206,6 +208,8 @@ export default function RightPanel({ onCollapse, isCollapsed, loadSessionId, onC
         return <MonteCarloTab />
       case "motor":
         return <MotorTab />
+      case "3d-printing":
+        return <PrintingTab />
       case "environment":
         return <EnvironmentTab environment={environment} setEnvironment={setEnvironment} />
       case "versions":

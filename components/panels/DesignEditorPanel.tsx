@@ -3,7 +3,10 @@
 import React, { useEffect, useState } from "react"
 import { useRocket } from "@/lib/store"
 import { dispatchActions } from "@/lib/ai/actions"
-import { MATERIAL_DATABASE, getRecommendedMaterials, MaterialSpec } from "@/lib/data/materials"
+import { MATERIAL_DATABASE, getRecommendedMaterials, MaterialSpec, PrintingMaterialSpec } from "@/lib/data/materials"
+import { ComponentExportPanel } from "@/components/ui/ComponentExportPanel";
+import { ExportPortal } from "@/components/ui/ExportPortal";
+import { NoseComponent, BodyComponent, FinComponent } from "@/types/rocket"
 
 type NumberInputProps = {
   label: string
@@ -138,6 +141,11 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
   const [motorOptions, setMotorOptions] = useState<Array<{id: string; name?: string}>>([])
   const [isLoadingMotors, setIsLoadingMotors] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
+  
+  // 3D Printing Export State
+  const [showExportPanel, setShowExportPanel] = useState(false)
+  const [exportComponent, setExportComponent] = useState<NoseComponent | BodyComponent | FinComponent | null>(null)
+  const [exportComponentType, setExportComponentType] = useState<'nose_cone' | 'body_tube' | 'fin'>('nose_cone')
 
   useEffect(() => {
     let mounted = true
@@ -201,6 +209,18 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
     fins.forEach((fin, index) => validateFinSet(fin, index));
   }, [fins]);
 
+  // Handle 3D printing export
+  const handleExportComponent = (component: NoseComponent | BodyComponent | FinComponent, componentType: 'nose_cone' | 'body_tube' | 'fin') => {
+    setExportComponent(component);
+    setExportComponentType(componentType);
+    setShowExportPanel(true);
+  };
+
+  const handleCloseExport = () => {
+    setShowExportPanel(false);
+    setExportComponent(null);
+  };
+
   return (
     <div className="absolute top-6 left-6 z-40 w-[320px] max-h-[82vh] overflow-y-auto glass-panel rounded-lg p-4 border border-white/10 bg-black/40 backdrop-blur-xl">
       <div className="flex items-center justify-between mb-2">
@@ -215,7 +235,17 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
 
       {/* Nose cone */}
       <div className="mb-3 p-3 rounded-lg bg-white/5 border border-white/10">
-        <div className="text-xs font-semibold text-white mb-2">Nose Cone</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-white">Nose Cone</div>
+          {rocket.nose_cone && (
+            <button
+              onClick={() => handleExportComponent(rocket.nose_cone!, 'nose_cone')}
+              className="px-2 py-1 text-xs rounded bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 hover:border-cyan-400/50 transition-colors"
+            >
+              🖨️ Export
+            </button>
+          )}
+        </div>
         <SelectInput
           label="Shape"
           value={noseShape}
@@ -284,14 +314,22 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
           <div key={b.id} className="mb-2 p-2 rounded bg-black/30 border border-white/10">
             <div className="flex items-center justify-between mb-1">
               <div className="text-[11px] text-white/80">Tube #{i + 1}</div>
-              {bodyTubes.length > 1 && (
+              <div className="flex items-center gap-1">
                 <button
-                  onClick={() => dispatchActions([{ action: "remove_body_tube", index: i }])}
-                  className="px-2 py-0.5 text-[11px] rounded bg-white/5 hover:bg-white/15 text-white border border-white/10"
+                  onClick={() => handleExportComponent(b, 'body_tube')}
+                  className="px-2 py-0.5 text-[11px] rounded bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 hover:border-cyan-400/50 transition-colors"
                 >
-                  Remove
+                  🖨️
                 </button>
-              )}
+                {bodyTubes.length > 1 && (
+                  <button
+                    onClick={() => dispatchActions([{ action: "remove_body_tube", index: i }])}
+                    className="px-2 py-0.5 text-[11px] rounded bg-white/5 hover:bg-white/15 text-white border border-white/10"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
             <NumberInput
               label="Length (m)"
@@ -381,7 +419,15 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
           <div key={f.id} className={`mb-2 p-2 rounded border ${
             validationErrors[`fin-${i}`] ? 'bg-red-900/20 border-red-400/30' : 'bg-black/30 border-white/10'
           }`}>
-            <div className="text-[11px] text-white/80 mb-1">Fin Set #{i + 1}</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[11px] text-white/80">Fin Set #{i + 1}</div>
+              <button
+                onClick={() => handleExportComponent(f, 'fin')}
+                className="px-2 py-0.5 text-[11px] rounded bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-400 border border-cyan-400/30 hover:border-cyan-400/50 transition-colors"
+              >
+                🖨️
+              </button>
+            </div>
             {validationErrors[`fin-${i}`] && (
               <div className="text-[10px] text-red-400/80 mb-2 px-2 py-1 bg-red-900/20 rounded">
                 ⚠️ {validationErrors[`fin-${i}`]}
@@ -548,6 +594,17 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
           </div>
         ))}
       </div>
+      
+      {/* 3D Printing Export Panel */}
+      {showExportPanel && exportComponent && (
+        <ExportPortal isOpen={showExportPanel}>
+          <ComponentExportPanel
+            component={exportComponent}
+            originalMaterial={MATERIAL_DATABASE[exportComponent.material_id] as PrintingMaterialSpec || MATERIAL_DATABASE.pla as PrintingMaterialSpec}
+            onClose={handleCloseExport}
+          />
+        </ExportPortal>
+      )}
     </div>
   )
 }
