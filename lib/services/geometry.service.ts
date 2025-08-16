@@ -7,9 +7,9 @@
  */
 
 import * as THREE from 'three';
+import { CSG } from 'three-csg-ts';
 import { NoseComponent, BodyComponent, FinComponent } from '@/types/rocket';
 import { PrintingMaterialSpec, calculateOptimalWallThickness } from '@/lib/data/materials';
-import { csgService } from './csg.service';
 
 export interface GeometryResult {
   geometry: THREE.BufferGeometry;
@@ -115,47 +115,30 @@ export class ComponentGeometryGenerator {
     const baseRadius = component.base_radius_m || 0.025;
     const wallThickness_m = wallThickness / 1000; // Convert mm to m
     
-    // Calculate tangent ogive radius
-    const rho = (baseRadius * baseRadius + length * length) / (2 * baseRadius);
+    // Create seamless hollow ogive using CSG operations
+    const segments = 64; // High segment count for smooth appearance
     
-    // Create proper hollow ogive shell using LatheGeometry
-    const segments = 32;
-    const points: THREE.Vector3[] = [];
+    // Create outer cone
+    const outerGeometry = new THREE.ConeGeometry(
+      baseRadius, length, segments, 1, false
+    );
+    const outerMesh = new THREE.Mesh(outerGeometry);
     
-    // Generate points for ogive profile
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const x = length * (1 - t);
-      
-      // Parametric equations for tangent ogive
-      const y = Math.sqrt(rho * rho - (length - x) * (length - x)) + rho - length;
-      
-      // Outer surface
-      points.push(new THREE.Vector3(x, y, 0));
-      // Inner surface (wall thickness)
-      const innerY = Math.max(0, y - wallThickness_m);
-      points.push(new THREE.Vector3(x, innerY, 0));
-    }
+    // Create inner cone (to be subtracted)
+    const innerRadius = Math.max(0, baseRadius - wallThickness_m);
+    const innerGeometry = new THREE.ConeGeometry(
+      innerRadius, length, segments, 1, false
+    );
+    const innerMesh = new THREE.Mesh(innerGeometry);
     
-    // Create lathe geometry for hollow ogive shell
-    const shape = new THREE.Shape();
-    shape.moveTo(points[0].x, points[0].y);
+    // Perform CSG subtraction to create hollow shell
+    const outerCSG = CSG.fromMesh(outerMesh);
+    const innerCSG = CSG.fromMesh(innerMesh);
+    const hollowCSG = outerCSG.subtract(innerCSG);
     
-    // Create the outer wall
-    for (let i = 0; i < points.length; i += 2) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
-    
-    // Create the inner wall (reverse direction)
-    for (let i = points.length - 1; i >= 1; i -= 2) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
-    
-    // Close the shape
-    shape.lineTo(points[0].x, points[0].y);
-    
-    const geometry = new THREE.LatheGeometry(shape.getPoints(segments), segments);
-    return geometry;
+    // Convert back to Three.js geometry
+    const hollowMesh = hollowCSG.toMesh(outerMesh.matrix);
+    return hollowMesh.geometry;
   }
   
   /**
@@ -169,42 +152,30 @@ export class ComponentGeometryGenerator {
     const baseRadius = component.base_radius_m || 0.025;
     const wallThickness_m = wallThickness / 1000; // Convert mm to m
     
-    // Create proper hollow conical shell using LatheGeometry
-    const segments = 32;
-    const points: THREE.Vector3[] = [];
+    // Create seamless hollow cone using CSG operations
+    const segments = 64; // High segment count for smooth appearance
     
-    // Generate points for conical profile
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const x = length * (1 - t);
-      const y = baseRadius * t;
-      
-      // Outer surface
-      points.push(new THREE.Vector3(x, y, 0));
-      // Inner surface (wall thickness)
-      const innerY = Math.max(0, y - wallThickness_m);
-      points.push(new THREE.Vector3(x, innerY, 0));
-    }
+    // Create outer cone
+    const outerGeometry = new THREE.ConeGeometry(
+      baseRadius, length, segments, 1, false
+    );
+    const outerMesh = new THREE.Mesh(outerGeometry);
     
-    // Create lathe geometry for hollow conical shell
-    const shape = new THREE.Shape();
-    shape.moveTo(points[0].x, points[0].y);
+    // Create inner cone (to be subtracted)
+    const innerRadius = Math.max(0, baseRadius - wallThickness_m);
+    const innerGeometry = new THREE.ConeGeometry(
+      innerRadius, length, segments, 1, false
+    );
+    const innerMesh = new THREE.Mesh(innerGeometry);
     
-    // Create the outer wall
-    for (let i = 0; i < points.length; i += 2) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
+    // Perform CSG subtraction to create hollow shell
+    const outerCSG = CSG.fromMesh(outerMesh);
+    const innerCSG = CSG.fromMesh(innerMesh);
+    const hollowCSG = outerCSG.subtract(innerCSG);
     
-    // Create the inner wall (reverse direction)
-    for (let i = points.length - 1; i >= 1; i -= 2) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
-    
-    // Close the shape
-    shape.lineTo(points[0].x, points[0].y);
-    
-    const geometry = new THREE.LatheGeometry(shape.getPoints(segments), segments);
-    return geometry;
+    // Convert back to Three.js geometry
+    const hollowMesh = hollowCSG.toMesh(outerMesh.matrix);
+    return hollowMesh.geometry;
   }
   
   /**
@@ -322,38 +293,29 @@ export class ComponentGeometryGenerator {
     const wallThickness_m = wallThickness / 1000; // Convert mm to m
     const innerRadius = Math.max(0, outerRadius - wallThickness_m);
     
-    // Create proper hollow cylindrical shell using LatheGeometry
-    const segments = 32;
-    const points: THREE.Vector3[] = [];
+    // Create seamless hollow cylindrical shell using CSG operations
+    const segments = 64; // High segment count for smooth appearance
     
-    // Generate points for cylindrical shell profile
-    // Outer wall
-    points.push(new THREE.Vector3(0, outerRadius, 0));           // Base outer
-    points.push(new THREE.Vector3(length, outerRadius, 0));      // Top outer
+    // Create outer cylinder
+    const outerGeometry = new THREE.CylinderGeometry(
+      outerRadius, outerRadius, length, segments, 1, false
+    );
+    const outerMesh = new THREE.Mesh(outerGeometry);
     
-    // Inner wall (reverse direction to create hollow)
-    points.push(new THREE.Vector3(length, innerRadius, 0));      // Top inner
-    points.push(new THREE.Vector3(0, innerRadius, 0));           // Base inner
+    // Create inner cylinder (to be subtracted)
+    const innerGeometry = new THREE.CylinderGeometry(
+      innerRadius, innerRadius, length, segments, 1, false
+    );
+    const innerMesh = new THREE.Mesh(innerGeometry);
     
-    // Create lathe geometry for hollow shell
-    const shape = new THREE.Shape();
-    shape.moveTo(points[0].x, points[0].y);
+    // Perform CSG subtraction to create hollow shell
+    const outerCSG = CSG.fromMesh(outerMesh);
+    const innerCSG = CSG.fromMesh(innerMesh);
+    const hollowCSG = outerCSG.subtract(innerCSG);
     
-    // Create the outer wall
-    for (let i = 0; i < 2; i++) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
-    
-    // Create the inner wall (reverse direction)
-    for (let i = 3; i >= 2; i--) {
-      shape.lineTo(points[i].x, points[i].y);
-    }
-    
-    // Close the shape
-    shape.lineTo(points[0].x, points[0].y);
-    
-    const geometry = new THREE.LatheGeometry(shape.getPoints(segments), segments);
-    return geometry;
+    // Convert back to Three.js geometry
+    const hollowMesh = hollowCSG.toMesh(outerMesh.matrix);
+    return hollowMesh.geometry;
   }
   
   /**
@@ -370,7 +332,29 @@ export class ComponentGeometryGenerator {
     const sweepLength = component.sweep_length_m;
     const wallThickness_m = wallThickness / 1000; // Convert mm to m
     
-    // Create fin shape
+    // Check if fin should be hollow (for advanced designs)
+    const shouldBeHollow = wallThickness_m > 0 && wallThickness_m < thickness / 2;
+    
+    if (shouldBeHollow) {
+      // Create hollow fin using CSG operations
+      return this.generateHollowFinGeometry(component, wallThickness);
+    } else {
+      // Create solid fin (standard approach)
+      return this.generateSolidFinGeometry(component);
+    }
+  }
+  
+  /**
+   * Generate solid fin geometry (standard approach)
+   */
+  private generateSolidFinGeometry(component: FinComponent): THREE.BufferGeometry {
+    const rootChord = component.root_chord_m;
+    const tipChord = component.tip_chord_m;
+    const span = component.span_m;
+    const thickness = component.thickness_m;
+    const sweepLength = component.sweep_length_m;
+    
+    // Create optimized fin shape for 3D printing
     const shape = new THREE.Shape();
     
     // Start at root leading edge
@@ -388,10 +372,14 @@ export class ComponentGeometryGenerator {
     // Close shape
     shape.lineTo(0, 0);
     
-    // Extrude to create 3D fin
+    // Extrude to create 3D fin with optimized settings
     const extrudeSettings = {
       depth: thickness,
-      bevelEnabled: false
+      bevelEnabled: true,
+      bevelThickness: 0.001, // Small bevel for better 3D printing
+      bevelSize: 0.001,
+      bevelSegments: 3,
+      steps: 1
     };
     
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
@@ -399,7 +387,71 @@ export class ComponentGeometryGenerator {
     // Center the geometry
     geometry.center();
     
+    // Ensure proper normals for smooth rendering
+    geometry.computeVertexNormals();
+    
     return geometry;
+  }
+  
+  /**
+   * Generate hollow fin geometry using CSG operations
+   */
+  private generateHollowFinGeometry(
+    component: FinComponent, 
+    wallThickness: number
+  ): THREE.BufferGeometry {
+    const rootChord = component.root_chord_m;
+    const tipChord = component.tip_chord_m;
+    const span = component.span_m;
+    const thickness = component.thickness_m;
+    const sweepLength = component.sweep_length_m;
+    const wallThickness_m = wallThickness / 1000; // Convert mm to m
+    
+    // Create outer fin shape
+    const outerShape = new THREE.Shape();
+    outerShape.moveTo(0, 0);
+    outerShape.lineTo(rootChord, 0);
+    outerShape.lineTo(rootChord - sweepLength + tipChord, span);
+    outerShape.lineTo(-sweepLength, span);
+    outerShape.lineTo(0, 0);
+    
+    // Create inner fin shape (smaller)
+    const innerShape = new THREE.Shape();
+    const innerRootChord = Math.max(0.01, rootChord - wallThickness_m * 2);
+    const innerTipChord = Math.max(0.01, tipChord - wallThickness_m * 2);
+    const innerSpan = Math.max(0.01, span - wallThickness_m * 2);
+    const innerSweepLength = Math.max(0, sweepLength - wallThickness_m);
+    
+    innerShape.moveTo(wallThickness_m, wallThickness_m);
+    innerShape.lineTo(innerRootChord + wallThickness_m, wallThickness_m);
+    innerShape.lineTo(innerRootChord + wallThickness_m - innerSweepLength + innerTipChord, innerSpan + wallThickness_m);
+    innerShape.lineTo(-innerSweepLength + wallThickness_m, innerSpan + wallThickness_m);
+    innerShape.lineTo(wallThickness_m, wallThickness_m);
+    
+    // Create outer and inner geometries
+    const extrudeSettings = {
+      depth: thickness,
+      bevelEnabled: true,
+      bevelThickness: 0.001,
+      bevelSize: 0.001,
+      bevelSegments: 3,
+      steps: 1
+    };
+    
+    const outerGeometry = new THREE.ExtrudeGeometry(outerShape, extrudeSettings);
+    const innerGeometry = new THREE.ExtrudeGeometry(innerShape, extrudeSettings);
+    
+    const outerMesh = new THREE.Mesh(outerGeometry);
+    const innerMesh = new THREE.Mesh(innerGeometry);
+    
+    // Perform CSG subtraction to create hollow fin
+    const outerCSG = CSG.fromMesh(outerMesh);
+    const innerCSG = CSG.fromMesh(innerMesh);
+    const hollowCSG = outerCSG.subtract(innerCSG);
+    
+    // Convert back to Three.js geometry
+    const hollowMesh = hollowCSG.toMesh(outerMesh.matrix);
+    return hollowMesh.geometry;
   }
   
   /**

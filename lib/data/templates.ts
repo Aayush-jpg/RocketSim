@@ -64,6 +64,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
         span_m: 0.12,
         sweep_length_m: 0.06,
         thickness_m: 0.006,
+        wall_thickness_m: 0, // Solid fin by default
         material_id: "birch_plywood",
         material_density_kg_m3: MATERIALS.PLYWOOD.density_kg_m3,
         airfoil: "symmetric",
@@ -133,6 +134,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
         span_m: 0.10,
         sweep_length_m: 0.05,
         thickness_m: 0.006,
+        wall_thickness_m: 0, // Solid fin by default
         material_id: "birch_plywood",
         material_density_kg_m3: MATERIALS.PLYWOOD.density_kg_m3,
         airfoil: "symmetric",
@@ -202,6 +204,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
         span_m: 0.10,
         sweep_length_m: 0.04,
         thickness_m: 0.008,
+        wall_thickness_m: 0, // Solid fin by default
         material_id: "carbon_fiber",
         material_density_kg_m3: MATERIALS.CARBON_FIBER.density_kg_m3,
         airfoil: "symmetric",
@@ -286,6 +289,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
         span_m: 0.08,
         sweep_length_m: 0.05,
         thickness_m: 0.004,
+        wall_thickness_m: 0, // Solid fin by default
         material_id: "carbon_fiber",
         material_density_kg_m3: MATERIALS.CARBON_FIBER.density_kg_m3,
         airfoil: "symmetric",
@@ -355,6 +359,7 @@ export const ROCKET_TEMPLATES: Record<string, RocketTemplate> = {
         span_m: 0.12,
         sweep_length_m: 0.06,
         thickness_m: 0.010,
+        wall_thickness_m: 0, // Solid fin by default
         material_id: "aluminum_6061",
         material_density_kg_m3: MATERIALS.ALUMINUM.density_kg_m3,
         airfoil: "symmetric",

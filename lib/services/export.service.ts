@@ -92,7 +92,10 @@ export class ComponentExportService {
     const totalVolume = accurateVolume + supportVolume;
     const estimatedPrintTime = calculateEstimatedPrintTime(totalVolume, material) + supportPrintTime;
     const estimatedCost = calculateMaterialCost(totalVolume, material);
-    const mass = (totalVolume / 1000) * material.density_kg_m3; // Convert cm³ to kg (density is kg/m³, so divide by 1000)
+    
+    // Calculate mass: volume in cm³, density in kg/m³, so convert cm³ to m³
+    const volumeInM3 = totalVolume / 1000000; // Convert cm³ to m³
+    const mass = volumeInM3 * material.density_kg_m3;
     
     // Analyze optimal print orientation
     const orientationAnalysis = printOrientationService.analyzeOptimalOrientation(finalGeometry);
@@ -126,14 +129,35 @@ export class ComponentExportService {
       material
     );
     
-    // Export to requested format
-    const fileData = await this.exportToFormat(adjustedGeometry, options);
+    // Generate support structures if requested
+    let finalGeometry = adjustedGeometry;
+    let supportVolume = 0;
+    let supportPrintTime = 0;
     
-    // Calculate estimates using accurate volume calculation
+    if (options.includeSupports && options.supportOptions) {
+      const supportStructure = supportService.generateSupportStructures(
+        adjustedGeometry,
+        options.supportOptions
+      );
+      
+      // Combine component and support geometries
+      finalGeometry = this.combineGeometries([adjustedGeometry, supportStructure.geometry]);
+      supportVolume = supportStructure.volume_cm3;
+      supportPrintTime = supportStructure.print_time_addition;
+    }
+    
+    // Export to requested format
+    const fileData = await this.exportToFormat(finalGeometry, options);
+    
+    // Calculate estimates
     const accurateVolume = this.calculateComponentVolume(component);
-    const estimatedPrintTime = calculateEstimatedPrintTime(accurateVolume, material);
-    const estimatedCost = calculateMaterialCost(accurateVolume, material);
-    const mass = (accurateVolume / 1000) * material.density_kg_m3; // Convert cm³ to kg (density is kg/m³, so divide by 1000)
+    const totalVolume = accurateVolume + supportVolume;
+    const estimatedPrintTime = calculateEstimatedPrintTime(totalVolume, material) + supportPrintTime;
+    const estimatedCost = calculateMaterialCost(totalVolume, material);
+    
+    // Calculate mass: volume in cm³, density in kg/m³, so convert cm³ to m³
+    const volumeInM3 = totalVolume / 1000000; // Convert cm³ to m³
+    const mass = volumeInM3 * material.density_kg_m3;
     
     return {
       fileData,
@@ -141,7 +165,7 @@ export class ComponentExportService {
       estimatedPrintTime,
       estimatedCost,
       mass,
-      volume: accurateVolume,
+      volume: totalVolume,
       material
     };
   }
@@ -163,14 +187,35 @@ export class ComponentExportService {
       material
     );
     
-    // Export to requested format
-    const fileData = await this.exportToFormat(adjustedGeometry, options);
+    // Generate support structures if requested
+    let finalGeometry = adjustedGeometry;
+    let supportVolume = 0;
+    let supportPrintTime = 0;
     
-    // Calculate estimates using accurate volume calculation
+    if (options.includeSupports && options.supportOptions) {
+      const supportStructure = supportService.generateSupportStructures(
+        adjustedGeometry,
+        options.supportOptions
+      );
+      
+      // Combine component and support geometries
+      finalGeometry = this.combineGeometries([adjustedGeometry, supportStructure.geometry]);
+      supportVolume = supportStructure.volume_cm3;
+      supportPrintTime = supportStructure.print_time_addition;
+    }
+    
+    // Export to requested format
+    const fileData = await this.exportToFormat(finalGeometry, options);
+    
+    // Calculate estimates
     const accurateVolume = this.calculateComponentVolume(component);
-    const estimatedPrintTime = calculateEstimatedPrintTime(accurateVolume, material);
-    const estimatedCost = calculateMaterialCost(accurateVolume, material);
-    const mass = (accurateVolume / 1000) * material.density_kg_m3; // Convert cm³ to kg (density is kg/m³, so divide by 1000)
+    const totalVolume = accurateVolume + supportVolume;
+    const estimatedPrintTime = calculateEstimatedPrintTime(totalVolume, material) + supportPrintTime;
+    const estimatedCost = calculateMaterialCost(totalVolume, material);
+    
+    // Calculate mass: volume in cm³, density in kg/m³, so convert cm³ to m³
+    const volumeInM3 = totalVolume / 1000000; // Convert cm³ to m³
+    const mass = volumeInM3 * material.density_kg_m3;
     
     return {
       fileData,
@@ -178,7 +223,7 @@ export class ComponentExportService {
       estimatedPrintTime,
       estimatedCost,
       mass,
-      volume: accurateVolume,
+      volume: totalVolume,
       material
     };
   }
@@ -450,7 +495,7 @@ export class ComponentExportService {
     // Calculate volume based on component type and dimensions
     // For hollow components, calculate the volume of the shell (outer - inner)
     
-    if (component.type === 'nose') {
+    if (component.type === 'nose' || 'shape' in component) {
       const length = component.length_m * 100; // Convert to cm
       const baseRadius = (component.base_radius_m || 0.025) * 100; // Convert to cm
       const wallThickness = (component.wall_thickness_m || 0.001) * 100; // Convert to cm
@@ -463,7 +508,7 @@ export class ComponentExportService {
       return outerVolume - innerVolume; // Hollow shell volume
     }
     
-    if (component.type === 'body') {
+    if (component.type === 'body' || 'outer_radius_m' in component) {
       const length = component.length_m * 100; // Convert to cm
       const outerRadius = component.outer_radius_m * 100; // Convert to cm
       const wallThickness = (component.wall_thickness_m || 0.001) * 100; // Convert to cm
@@ -476,7 +521,7 @@ export class ComponentExportService {
       return outerVolume - innerVolume; // Hollow shell volume
     }
     
-    if (component.type === 'fin') {
+    if (component.type === 'fin' || 'root_chord_m' in component) {
       // For fins, calculate as solid volume (they're typically solid)
       const rootChord = component.root_chord_m * 100; // Convert to cm
       const tipChord = component.tip_chord_m * 100; // Convert to cm

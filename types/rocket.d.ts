@@ -61,6 +61,7 @@ export interface FinComponent {
   span_m: number;                     // Fin span in meters
   sweep_length_m: number;             // Sweep length in meters
   thickness_m: number;                // Fin thickness in meters
+  wall_thickness_m?: number;          // Wall thickness for hollow fins (0 = solid)
   material_id: string;                 // Material ID from materials database
   material_density_kg_m3: number;     // Material density in kg/m³ (calculated from material_id)
   airfoil?: string;                   // Airfoil type (e.g., "symmetric")

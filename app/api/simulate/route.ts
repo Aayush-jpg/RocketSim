@@ -11,6 +11,11 @@ function validateRocketComponents(rocket: any): any {
   if (validatedRocket.fins && Array.isArray(validatedRocket.fins)) {
     validatedRocket.fins = validatedRocket.fins.map((fin: any) => {
       const correctedFin = { ...fin };
+      
+      // Remove wall_thickness_m property for backend (backend treats all fins as solid)
+      if ('wall_thickness_m' in correctedFin) {
+        delete correctedFin.wall_thickness_m;
+      }
   
       // Ensure sweep_length_m <= span_m (RocketPy requirement)
       if (correctedFin.sweep_length_m > correctedFin.span_m) {

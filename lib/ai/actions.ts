@@ -269,6 +269,7 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
       span_m: props.span_m || 0.06,
       sweep_length_m: props.sweep_length_m || 0.02,
       thickness_m: props.thickness_m || 0.006,
+      wall_thickness_m: props.wall_thickness_m !== undefined ? props.wall_thickness_m : 0, // Solid by default
       material_id: props.material_id || "birch_plywood",
       material_density_kg_m3: props.material_density_kg_m3 || MATERIALS.PLYWOOD.density_kg_m3,
       airfoil: props.airfoil || "symmetric",
@@ -287,6 +288,7 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
       span_m: props.span_m !== undefined ? props.span_m : existingFin.span_m,
       sweep_length_m: props.sweep_length_m !== undefined ? props.sweep_length_m : existingFin.sweep_length_m,
       thickness_m: props.thickness_m !== undefined ? props.thickness_m : existingFin.thickness_m,
+      wall_thickness_m: props.wall_thickness_m !== undefined ? props.wall_thickness_m : existingFin.wall_thickness_m,
       material_density_kg_m3: props.material_density_kg_m3 !== undefined ? props.material_density_kg_m3 : existingFin.material_density_kg_m3,
       airfoil: props.airfoil || existingFin.airfoil,
       cant_angle_deg: props.cant_angle_deg !== undefined ? props.cant_angle_deg : existingFin.cant_angle_deg,

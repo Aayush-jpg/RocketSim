@@ -481,6 +481,46 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
               max={0.02}
               onCommit={(thickness_m) => dispatchActions([{ action: "update_fins", index: i, props: { thickness_m } }])}
             />
+            
+            {/* Fin Type Toggle */}
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-xs text-white/70 whitespace-nowrap">Fin Type</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => dispatchActions([{ action: "update_fins", index: i, props: { wall_thickness_m: 0 } }])}
+                  className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+                    !f.wall_thickness_m || f.wall_thickness_m === 0
+                      ? 'bg-cyan-400/20 text-cyan-400 border-cyan-400/50'
+                      : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+                  }`}
+                >
+                  Solid
+                </button>
+                <button
+                  onClick={() => dispatchActions([{ action: "update_fins", index: i, props: { wall_thickness_m: f.thickness_m * 0.3 } }])}
+                  className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+                    f.wall_thickness_m && f.wall_thickness_m > 0
+                      ? 'bg-cyan-400/20 text-cyan-400 border-cyan-400/50'
+                      : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+                  }`}
+                >
+                  Hollow
+                </button>
+              </div>
+            </div>
+            
+            {/* Wall Thickness (only show for hollow fins) */}
+            {f.wall_thickness_m && f.wall_thickness_m > 0 && (
+              <NumberInput
+                label="Wall (m)"
+                value={f.wall_thickness_m}
+                step={0.0005}
+                min={0.001}
+                max={f.thickness_m * 0.5}
+                onCommit={(wall_thickness_m) => dispatchActions([{ action: "update_fins", index: i, props: { wall_thickness_m } }])}
+              />
+            )}
+            
             <NumberInput
               label="Cant (deg)"
               value={f.cant_angle_deg}

@@ -6,6 +6,19 @@ export async function POST(req: NextRequest) {
   try {
     const { history, rocket, environment, simulationHistory, analysisHistory, userPreferences, sessionInfo } = await req.json();
     
+    // Clean rocket data for backend compatibility
+    const cleanedRocket = { ...rocket };
+    if (cleanedRocket.fins && Array.isArray(cleanedRocket.fins)) {
+      cleanedRocket.fins = cleanedRocket.fins.map((fin: any) => {
+        const cleanedFin = { ...fin };
+        // Remove wall_thickness_m property for backend (backend treats all fins as solid)
+        if ('wall_thickness_m' in cleanedFin) {
+          delete cleanedFin.wall_thickness_m;
+        }
+        return cleanedFin;
+      });
+    }
+    
     // Call the Python agent service - append /reason to base URL
     // Force runtime reading of environment variable
     const agentUrl = process.env.AGENT_URL || "https://rocket-agentpy.internal.yellowhill-85e5bd96.eastus.azurecontainerapps.io";
@@ -16,7 +29,7 @@ export async function POST(req: NextRequest) {
     // Prepare the comprehensive request payload
     const requestPayload: any = { 
       messages: history, 
-      rocket 
+      rocket: cleanedRocket
     };
     
     // Add environment data if available
