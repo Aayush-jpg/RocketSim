@@ -19,6 +19,12 @@ type NumberInputProps = {
 
 function NumberInput({ label, value, step = 0.001, min, max, onCommit }: NumberInputProps) {
   const [error, setError] = useState<string | null>(null);
+  const [localValue, setLocalValue] = useState<string>((value ?? 0).toString());
+  
+  // Update local value when prop changes
+  useEffect(() => {
+    setLocalValue((value ?? 0).toString());
+  }, [value]);
   
   const handleCommit = (v: number) => {
     setError(null);
@@ -45,7 +51,8 @@ function NumberInput({ label, value, step = 0.001, min, max, onCommit }: NumberI
           step={step}
           min={min}
           max={max}
-          defaultValue={value ?? 0}
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
           onBlur={(e) => {
             const v = parseFloat(e.target.value)
             if (!Number.isNaN(v)) handleCommit(v)
@@ -68,7 +75,7 @@ function ColorInput({ label, value, onCommit }: { label: string; value?: string;
       <span className="text-xs text-white/70 whitespace-nowrap">{label}</span>
       <input
         type="color"
-        defaultValue={value ?? "#A0A7B8"}
+        value={value ?? "#A0A7B8"}
         onChange={(e) => onCommit(e.target.value)}
         className="w-10 h-6 rounded bg-black/40 border border-white/10 text-white text-xs outline-none"
       />
@@ -81,7 +88,7 @@ function SelectInput({ label, value, options, onCommit }: { label: string; value
     <div className="flex items-center justify-between gap-3 py-1.5">
       <span className="text-xs text-white/70 whitespace-nowrap">{label}</span>
       <select
-        defaultValue={value}
+        value={value}
         onChange={(e) => onCommit(e.target.value)}
         className="w-36 px-2 py-1 rounded bg-black/40 border border-white/10 text-white text-xs outline-none focus:border-cyan-400/50"
       >
@@ -569,8 +576,16 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
         <div className="flex items-center justify-between gap-3 py-1.5">
           <span className="text-xs text-white/70 whitespace-nowrap">Select</span>
           <select
-            defaultValue={rocket.motor?.motor_database_id}
-            onChange={(e) => dispatchActions([{ action: "update_motor", props: { motor_database_id: e.target.value } }])}
+            value={rocket.motor?.motor_database_id || ""}
+            onChange={(e) => {
+              console.log('🔍 Motor selection changed:', {
+                rocketId: rocket.id,
+                rocketName: rocket.name,
+                oldMotor: rocket.motor?.motor_database_id,
+                newMotor: e.target.value
+              });
+              dispatchActions([{ action: "update_motor", props: { motor_database_id: e.target.value } }]);
+            }}
             className="w-44 px-2 py-1 rounded bg-black/40 border border-white/10 text-white text-xs outline-none focus:border-cyan-400/50"
           >
             <option value="" disabled>{isLoadingMotors ? 'Loading…' : 'Choose motor'}</option>

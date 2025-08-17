@@ -214,31 +214,41 @@ export const useRocket = create<RocketState>()((set, get) => ({
   updateRocket: (fn, skipAutoSave) => {
     const newRocket = fn(structuredClone(get().rocket));
     console.log('🔍 Store: Rocket updated:', {
+      id: newRocket.id,
+      name: newRocket.name,
       fin_count: newRocket.fins?.[0]?.fin_count,
       parachute_cd_s: newRocket.parachutes?.[0]?.cd_s_m2,
-      motor_id: newRocket.motor?.motor_database_id
+      motor_id: newRocket.motor?.motor_database_id,
+      skipAutoSave: skipAutoSave
     });
     set({ rocket: newRocket });
     
     // Auto-save to database if connected (non-blocking)
     if (get().isDatabaseConnected && !skipAutoSave) {
-      // Check if this is an existing rocket (has a saved version) 
-      // Use a more robust check for existing rockets
+      // CRITICAL FIX: Use more robust logic to determine if rocket should be auto-saved
       const currentRocket = get().rocket;
-      const existingRocket = get().savedRockets.find(r => r.id === currentRocket.id);
       
-      if (existingRocket) {
-        // This is an existing rocket - save new version
-        console.log('🔄 Saving version for existing rocket:', currentRocket.name);
-        get().saveRocketVersionWithDescription('Auto-saved changes', 'user_edit');
-      } else {
-        // This is a new rocket - only save if it has a proper name and isn't a temporary rocket
-        if (currentRocket.name && !currentRocket.name.includes('Default') && !currentRocket.id.includes('local-')) {
-          console.log('💾 Saving new rocket:', currentRocket.name);
+      // Skip auto-save for temporary/default rockets
+      if (!currentRocket.name || currentRocket.name.includes('Default') || currentRocket.id.includes('local-') || currentRocket.id.includes('temp-')) {
+        console.log('⏭️ Skipping auto-save for temporary/default rocket');
+        return;
+      }
+      
+      // Check if this rocket has a valid database ID (not a local/temp ID)
+      const hasValidDatabaseId = currentRocket.id && 
+        !currentRocket.id.includes('local-') && 
+        !currentRocket.id.includes('temp-') && 
+        currentRocket.id.length > 20; // UUIDs are longer than 20 chars
+      
+      if (hasValidDatabaseId) {
+        // This is an existing rocket - update it directly instead of creating versions
+        console.log('🔄 Auto-updating existing rocket:', currentRocket.name);
+        // Use updateRocket instead of saveRocketVersion to prevent version proliferation
         get().saveCurrentRocket();
-        } else {
-          console.log('⏭️ Skipping auto-save for temporary/default rocket');
-        }
+      } else {
+        // This is a new rocket - save it
+        console.log('💾 Auto-saving new rocket:', currentRocket.name);
+        get().saveCurrentRocket();
       }
     }
   },
@@ -463,23 +473,42 @@ export const useRocket = create<RocketState>()((set, get) => ({
     
     set({ isSaving: true });
     try {
-      // Check if rocket already exists in database
-      const existingRocket = state.savedRockets.find(r => r.id === state.rocket.id);
+      // CRITICAL FIX: Better logic to determine if rocket exists in database
+      const currentRocket = state.rocket;
       
-      if (existingRocket) {
-        // Update existing rocket instead of creating new one
-        console.log('🔄 Updating existing rocket:', state.rocket.name);
-        await databaseService.updateRocket(state.rocket);
-        // Refresh saved rockets list
-        get().loadUserRockets();
+      // Check if rocket has a valid database ID
+      const hasValidDatabaseId = currentRocket.id && 
+        !currentRocket.id.includes('local-') && 
+        !currentRocket.id.includes('temp-') && 
+        currentRocket.id.length > 20; // UUIDs are longer than 20 chars
+      
+      if (hasValidDatabaseId) {
+        // This rocket has a database ID - try to update it first
+        console.log('🔄 Attempting to update existing rocket:', currentRocket.name);
+        const updatedRocket = await databaseService.updateRocket(currentRocket);
+        
+        if (updatedRocket) {
+          console.log('✅ Successfully updated existing rocket');
+          // Refresh saved rockets list
+          get().loadUserRockets();
+        } else {
+          // Update failed, might be a new rocket - try to save as new
+          console.log('⚠️ Update failed, trying to save as new rocket');
+          const saved = await saveRocketToDb(currentRocket);
+          if (saved) {
+            console.log('✅ Saved as new rocket successfully');
+            // Refresh saved rockets list
+            get().loadUserRockets();
+          }
+        }
       } else {
-        // Save as new rocket
-        console.log('💾 Saving new rocket:', state.rocket.name);
-      const saved = await saveRocketToDb(state.rocket);
-      if (saved) {
-        console.log('Rocket saved to database successfully');
-        // Update saved rockets list
-        get().loadUserRockets();
+        // This is definitely a new rocket - save it
+        console.log('💾 Saving new rocket:', currentRocket.name);
+        const saved = await saveRocketToDb(currentRocket);
+        if (saved) {
+          console.log('✅ Rocket saved to database successfully');
+          // Refresh saved rockets list
+          get().loadUserRockets();
         }
       }
     } catch (error) {
@@ -684,9 +713,16 @@ export const useRocket = create<RocketState>()((set, get) => ({
     const state = get();
     if (!state.isDatabaseConnected) return;
     
-    // Check if current rocket is saved in database
-    const isRocketSaved = state.savedRockets.some(r => r.id === state.rocket.id);
-    if (!isRocketSaved) {
+    // CRITICAL FIX: Better logic to check if rocket is saved
+    const currentRocket = state.rocket;
+    
+    // Check if rocket has a valid database ID
+    const hasValidDatabaseId = currentRocket.id && 
+      !currentRocket.id.includes('local-') && 
+      !currentRocket.id.includes('temp-') && 
+      currentRocket.id.length > 20; // UUIDs are longer than 20 chars
+    
+    if (!hasValidDatabaseId) {
       console.log('Cannot create version for unsaved rocket, saving rocket first...');
       // Save the rocket first, then create a version
       await get().saveCurrentRocket();
