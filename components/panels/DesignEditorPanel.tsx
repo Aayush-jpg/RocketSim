@@ -482,6 +482,15 @@ export default function DesignEditorPanel({ onClose, activeFinIndex, setActiveFi
               onCommit={(thickness_m) => dispatchActions([{ action: "update_fins", index: i, props: { thickness_m } }])}
             />
             
+            <NumberInput
+              label="Pos from tail (m)"
+              value={f.position_from_tail_m}
+              step={0.001}
+              min={0}
+              max={10}
+              onCommit={(position_from_tail_m) => dispatchActions([{ action: "update_fins", index: i, props: { position_from_tail_m } }])}
+            />
+            
             {/* Fin Type Toggle */}
             <div className="flex items-center justify-between gap-3 py-1.5">
               <span className="text-xs text-white/70 whitespace-nowrap">Fin Type</span>

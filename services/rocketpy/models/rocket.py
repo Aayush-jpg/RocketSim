@@ -16,6 +16,7 @@ class RocketModel(BaseModel):
     """Complete rocket model with component-based architecture"""
     id: str
     name: str
+    rocket_type: str = Field("solid", description="Type of rocket propulsion", pattern="^(solid|liquid|hybrid)$")
     nose_cone: NoseComponentModel
     body_tubes: List[BodyComponentModel]
     fins: List[FinComponentModel]

@@ -50,6 +50,7 @@ class FinComponentModel(BaseModel):
     span_m: float = Field(..., description="Fin span in meters", gt=0, le=0.3)
     sweep_length_m: float = Field(0.0, description="Sweep length in meters", ge=0, le=0.2)
     thickness_m: float = Field(0.006, description="Fin thickness in meters", gt=0, le=0.02)
+    position_from_tail_m: float = Field(0.1, description="Position from rocket tail in meters", ge=0, le=10.0)
     material_id: str = Field("birch_plywood", description="Material ID from materials database")
     material_density_kg_m3: float = Field(650.0, description="Material density in kg/m³ (calculated from material_id)")
     airfoil: Optional[str] = Field("symmetric", description="Airfoil type")

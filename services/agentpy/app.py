@@ -447,7 +447,14 @@ async def reason(req: ChatRequest):
             
             # Create enhanced context for the specialized agent
             specialized_system_message = create_enhanced_system_message(primary_agent_name, req, latest_message)
-            specialized_messages = [specialized_system_message] + cleaned_messages
+            
+            # For QA agent, append rocket data to the message content
+            if primary_agent_name == "qa":
+                # Add rocket JSON to the latest message for QA agent
+                enhanced_message = f"{latest_message}\n\nCURRENT_ROCKET_JSON:\n```json\n{rocket_json_str}\n```"
+                specialized_messages = [specialized_system_message] + cleaned_messages[:-1] + [{"role": "user", "content": enhanced_message}]
+            else:
+                specialized_messages = [specialized_system_message] + cleaned_messages
             
             runner = Runner()
             primary_result = await runner.run(

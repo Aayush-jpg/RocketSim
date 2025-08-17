@@ -165,6 +165,8 @@ function RocketModel({
   const finParts = rocket.fins || [];
   const parachuteParts = rocket.parachutes || [];
   
+
+  
   // Get fin cant angle from component data (active set)
   const selectedFin = finParts[activeFinIndex] || finParts[0] || {};
   const finCantAngle = selectedFin?.cant_angle_deg || 0;
@@ -197,9 +199,9 @@ function RocketModel({
     const components = [
       rocket.nose_cone ? `nose-${rocket.nose_cone.id}-${rocket.nose_cone.length_m}-${rocket.nose_cone.base_radius_m}` : '',
       ...rocket.body_tubes.map((body: any) => `body-${body.id}-${body.outer_radius_m}-${body.length_m}`),
-      ...rocket.fins.map((fin: any) => `fin-${fin.id}-${fin.root_chord_m}-${fin.span_m}`),
+      ...rocket.fins.map((fin: any) => `fin-${fin.id}-${fin.root_chord_m}-${fin.span_m}-${fin.position_from_tail_m}`),
       rocket.motor ? `motor-${rocket.motor.motor_database_id}` : '',
-      ...rocket.parachutes.map((para: any) => `para-${para.id}`)
+      ...rocket.parachutes.map((para: any) => `para-${para.id}-${para.position_from_tail_m}-${para.cd_s_m2}`)
     ].filter(Boolean);
     return components.join('|');
   }, []);
@@ -301,6 +303,11 @@ function RocketModel({
   // ✅ Stack bounds
   const topOfUpperBodyY = stackBaseY + bodyLengthScaled;
   const bottomOfLowerBodyY = stackBaseY;
+  
+  // Calculate engine and flame positions
+  const motorPosition = (rocket.motor?.position_from_tail_m || 0) * 4; // Convert to visual units
+  const engineY = bottomOfLowerBodyY + motorPosition;
+  const flameComponentPlacementY = engineY - 0.4; // Position flame below the engine
 
   // Nose cone positioning - at the top of upper body, make it MUCH sharper
   const noseConeBaseY = topOfUpperBodyY;
@@ -322,21 +329,290 @@ function RocketModel({
     noseConeCenterY = noseConeBaseY - (R - h);
   }
 
-  // Electronics bay - place near the stack midline
-  const electronicsBayCenterY = stackBaseY + bodyLengthScaled * 0.5;
+  // Electronics bay positioning - use actual electronics bay data or default based on rocket type
+  const renderElectronicsBay = () => {
+    if (rocket.electronics_bay) {
+      // Use actual electronics bay configuration
+      const positionFromTail = (rocket.electronics_bay.position_from_tail_m || 0.5) * 4; // Convert to visual units
+      const electronicsY = bottomOfLowerBodyY + positionFromTail;
+      const electronicsLength = (rocket.electronics_bay.length_m || 0.15) * 4;
+      const electronicsRadius = (rocket.electronics_bay.diameter_m || bodyRadius) * 4;
+      
+      return (
+        <group position={[0, electronicsY, 0]} name="electronics">
+          <mesh>
+            <cylinderGeometry 
+              key={`electronics-${rocket.electronics_bay.id}`}
+              args={[electronicsRadius + 0.02, electronicsRadius + 0.02, electronicsLength, 32]} 
+            />
+            <meshStandardMaterial 
+              color={rocket.electronics_bay.color || "#B87333"}
+              metalness={0.4}
+              roughness={0.6}
+              emissive={getEmissive('electronics')}
+              emissiveIntensity={getEmissiveIntensity('electronics')}
+            />
+          </mesh>
+          
+          {/* Component indicators */}
+          {rocket.electronics_bay.components.map((component: string, i: number) => (
+            <mesh 
+              key={`component-${i}`}
+              position={[
+                Math.sin(i * (2 * Math.PI) / rocket.electronics_bay.components.length) * (electronicsRadius + 0.01),
+                0, 
+                Math.cos(i * (2 * Math.PI) / rocket.electronics_bay.components.length) * (electronicsRadius + 0.01)
+              ]}
+              rotation={[0, i * (2 * Math.PI) / rocket.electronics_bay.components.length, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.01, 0.01, 0.02, 8]} />
+              <meshStandardMaterial color="#8B4513" metalness={0.6} roughness={0.4} />
+            </mesh>
+          ))}
+        </group>
+      );
+    } else {
+      // Default electronics bay positioning based on rocket type
+      const rocketType = rocket.rocket_type || "solid";
+      let defaultPosition = 0.5; // Default at 50% of rocket length
+      
+      // Position electronics bay based on rocket type
+      switch (rocketType) {
+        case "solid":
+          defaultPosition = 0.6; // Near nose for easy recovery
+          break;
+        case "liquid":
+          defaultPosition = 0.4; // Mid-body for complex systems
+          break;
+        case "hybrid":
+          defaultPosition = 0.7; // Near nose for recovery
+          break;
+      }
+      
+      const electronicsY = stackBaseY + bodyLengthScaled * defaultPosition;
+      
+      return (
+        <group position={[0, electronicsY, 0]} name="electronics">
+          <mesh>
+            <cylinderGeometry 
+              key={dimensionKey + '-electronics'} 
+              args={[bodyRadius + 0.02, bodyRadius + 0.02, 0.15, 32]} 
+            />
+            <meshStandardMaterial 
+              color="#B87333"
+              metalness={0.4}
+              roughness={0.6}
+              emissive={getEmissive('electronics')}
+              emissiveIntensity={getEmissiveIntensity('electronics')}
+            />
+          </mesh>
+          
+          {/* Default component indicators */}
+          {[0, 1, 2, 3].map((i) => (
+            <mesh 
+              key={i}
+              position={[
+                Math.sin(i * Math.PI / 2) * (bodyRadius + 0.01),
+                0, 
+                Math.cos(i * Math.PI / 2) * (bodyRadius + 0.01)
+              ]}
+              rotation={[0, i * Math.PI / 2, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.01, 0.01, 0.02, 8]} />
+              <meshStandardMaterial color="#8B4513" metalness={0.6} roughness={0.4} />
+            </mesh>
+          ))}
+        </group>
+      );
+    }
+  };
 
-  // Engine positioning - FIXED: Attached directly to bottom of body stack
-  const engineGroupCenterY = bottomOfLowerBodyY - 0.3;
-  
-  // Parachute positioning - in upper portion of the stack
-  const parachuteCenterY = stackBaseY + bodyLengthScaled * 0.75;
+  // Engine positioning - dynamic based on rocket type and motor position
+  const renderEngine = () => {
+    const rocketType = rocket.rocket_type || "solid";
+    
+    // Different engine geometries based on rocket type
+    switch (rocketType) {
+      case "liquid":
+        return (
+          <group position={[0, engineY, 0]} name="engine">
+            {/* Liquid engine - more complex with tanks and pumps */}
+            <mesh position={[0, 0.2, 0]}>
+              <cylinderGeometry args={[bodyRadius * 0.8, bodyRadius * 0.8, 0.6, 32]} />
+              <meshStandardMaterial 
+                color="#C0C0C0" 
+                metalness={0.9} 
+                roughness={0.1} 
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
+            
+            {/* Fuel injectors */}
+            <mesh position={[0, 0.1, 0]}>
+              <cylinderGeometry args={[bodyRadius * 0.6, bodyRadius * 0.7, 0.2, 32]} />
+              <meshStandardMaterial color="#555555" metalness={0.8} roughness={0.2} />
+            </mesh>
+            
+            {/* Engine nozzle - bell-shaped */}
+            <mesh position={[0, -0.3, 0]}>
+              <coneGeometry args={[bodyRadius * 0.9, 0.8, 32, 1, true]} />
+              <meshStandardMaterial 
+                color="#A9A9A9" 
+                metalness={0.9} 
+                roughness={0.1}
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
+          </group>
+        );
+        
+      case "hybrid":
+        return (
+          <group position={[0, engineY, 0]} name="engine">
+            {/* Hybrid engine - solid fuel grain + oxidizer tank */}
+            <mesh position={[0, 0.15, 0]}>
+              <cylinderGeometry args={[bodyRadius * 0.85, bodyRadius * 0.85, 0.5, 32]} />
+              <meshStandardMaterial 
+                color="#C0C0C0" 
+                metalness={0.8} 
+                roughness={0.2} 
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
+            
+            {/* Oxidizer tank */}
+            <mesh position={[0, 0.4, 0]}>
+              <cylinderGeometry args={[bodyRadius * 0.7, bodyRadius * 0.7, 0.3, 32]} />
+              <meshStandardMaterial color="#4169E1" metalness={0.7} roughness={0.3} />
+            </mesh>
+            
+            {/* Engine nozzle */}
+            <mesh position={[0, -0.25, 0]}>
+              <coneGeometry args={[bodyRadius * 0.9, 0.6, 32, 1, true]} />
+              <meshStandardMaterial 
+                color="#A9A9A9" 
+                metalness={0.9} 
+                roughness={0.1}
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
+          </group>
+        );
+        
+      default: // solid
+        return (
+          <group position={[0, engineY, 0]} name="engine">
+            {/* Solid motor - simple design */}
+            <mesh position={[0, 0.1, 0]}>
+              <cylinderGeometry args={[bodyRadius, bodyRadius * 0.95, 0.4, 32]} />
+              <meshStandardMaterial 
+                color="#C0C0C0" 
+                metalness={0.8} 
+                roughness={0.2} 
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
 
-  // Flame positioning for the engine
-  const engineNozzleTipY = engineGroupCenterY - 0.95; 
-  const flameComponentPlacementY = engineNozzleTipY + 3;
-  
-  // Fins positioning - FIXED: Connect body to engine seamlessly (attach near bottom)
-  const finCenterY = bottomOfLowerBodyY - 0.15;
+            <mesh position={[0, -0.25, 0]}>
+              <coneGeometry args={[bodyRadius * 0.9, 0.6, 32, 1, true]} />
+              <meshStandardMaterial 
+                color="#A9A9A9" 
+                metalness={0.9} 
+                roughness={0.1}
+                emissive={getEmissive('engine')}
+                emissiveIntensity={getEmissiveIntensity('engine')}
+              />
+            </mesh>
+            
+            <mesh position={[0, -0.5, 0]} rotation={[Math.PI, 0, 0]}>
+              <cylinderGeometry args={[bodyRadius * 0.6, bodyRadius * 0.7, 0.25, 32]} />
+              <meshStandardMaterial color="#1C1C1C" metalness={0.5} roughness={0.8} />
+            </mesh>
+          </group>
+        );
+    }
+  };
+
+  // Parachute positioning - use actual parachute data and position_from_tail_m
+  const renderParachutes = () => {
+    if (!parachuteParts || parachuteParts.length === 0) return null;
+    
+    return parachuteParts.map((parachute: any, index: number) => {
+      // Calculate position from tail using position_from_tail_m
+      // Convert from meters to visual units and account for coordinate system
+      const positionFromTail = (parachute.position_from_tail_m || 0) * 4; // Convert to visual units
+      const parachuteY = bottomOfLowerBodyY + positionFromTail;
+      
+      // Calculate parachute size based on cd_s_m2 (drag coefficient × area)
+      const cd_s_m2 = parachute.cd_s_m2 || 1.0;
+      const parachuteRadius = Math.min(Math.max(cd_s_m2 * 0.15, 0.15), 0.6); // Slightly larger scale for better visibility
+      const parachuteHeight = 0.25; // Slightly taller for better visibility
+      
+      return (
+        <mesh 
+          key={`parachute-${parachute.id}-${index}`} 
+          position={[index * 0.1, parachuteY, 0]} // Slight X offset to distinguish multiple parachutes
+          name={`parachute-${index}`}
+        >
+          <cylinderGeometry args={[parachuteRadius, parachuteRadius, parachuteHeight, 16]} />
+          <meshStandardMaterial 
+            color={parachute.color || "#E74C3C"} 
+            metalness={0.2} 
+            roughness={0.5}
+            emissive={getEmissive('parachute')}
+            emissiveIntensity={getEmissiveIntensity('parachute')}
+          />
+        </mesh>
+      );
+    });
+  };
+
+  // Fins positioning - use actual fin data and position_from_tail_m
+  const renderFins = () => {
+    if (!finParts || finParts.length === 0) return null;
+    
+    return finParts.map((finSet: any, finSetIndex: number) => {
+      // Calculate position from tail using position_from_tail_m
+      const positionFromTail = (finSet.position_from_tail_m || 0.1) * 4; // Convert to visual units
+      const finY = bottomOfLowerBodyY + positionFromTail;
+      
+      // Get fin properties
+      const finCount = finSet.fin_count || 3;
+      const finCantAngle = finSet.cant_angle_deg || 0;
+      const finRootScaled = (finSet.root_chord_m || 0.08) * 4;
+      const finSpanScaled = (finSet.span_m || 0.06) * 4;
+      
+      return Array.from({ length: finCount }, (_, i) => (
+        <mesh 
+          key={`fin-${finSet.id}-${i}`}
+          position={[
+            Math.sin(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3), 
+            finY, 
+            Math.cos(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3)
+          ]}
+          rotation={[0, i * (2 * Math.PI) / finCount + (finCantAngle * Math.PI / 180), 0]}
+          name={`fins-${finSetIndex}`}
+        >
+          <boxGeometry 
+            key={`fin-${finSet.id}-${i}-${finRootScaled}-${finSpanScaled}`}
+            args={[0.05, finRootScaled, finSpanScaled]} 
+          />
+          <meshStandardMaterial 
+            color={finSet?.color || "#2C3E50"} 
+            metalness={0.4} 
+            roughness={0.3} 
+            emissive={getEmissive('fins')}
+            emissiveIntensity={getEmissiveIntensity('fins')}
+          />
+        </mesh>
+      ));
+    }).flat();
+  };
   
   // Trigger re-render when the bodyRadius changes
   const [prevBodyRadius, setPrevBodyRadius] = useState(bodyRadius);
@@ -445,6 +721,7 @@ function RocketModel({
             intersect.object.name.includes('airframe') || 
             intersect.object.name === 'fins' || 
             intersect.object.name === 'engine' || 
+            intersect.object.name.startsWith('parachute-') || 
             intersect.object.name === 'parachute' || 
             intersect.object.name === 'electronics'
           )
@@ -463,8 +740,13 @@ function RocketModel({
             'electronics': 'electronics'
           }
           
-          const partType = partNameMap[firstIntersect.object.name] || 
-                         (firstIntersect.object.name.includes('airframe') ? 'body' : null)
+          // Handle parachute-0, parachute-1, etc.
+          let partType = partNameMap[firstIntersect.object.name];
+          if (!partType && firstIntersect.object.name.startsWith('parachute-')) {
+            partType = 'parachute';
+          } else if (!partType && firstIntersect.object.name.includes('airframe')) {
+            partType = 'body';
+          }
           
           if (partType) {
             setHoveredPart(partType)
@@ -514,27 +796,24 @@ function RocketModel({
           stackBaseY={stackBaseY}
           bodyRadius={bodyRadius}
           topOfUpperBodyY={topOfUpperBodyY}
-          finCenterY={finCenterY}
-          finRootScaled={finRootScaled}
-          finSpanScaled={finSpanScaled}
-          finSweepScaled={finSweepScaled}
+          finParts={finParts}
+          bottomOfLowerBodyY={bottomOfLowerBodyY}
           noseLengthScaled={noseLengthScaled}
-          finCantDeg={finCantAngle}
-          activeFinIndex={activeFinIndex}
+          parachuteParts={parachuteParts}
         />
       )}
       {/* Body tubes stack */}
       {scaledTubes.length === 0 ? (
         <mesh position={[0, stackBaseY + bodyLengthScaled / 2, 0]} name="airframe">
           <cylinderGeometry key={dimensionKey + '-default'} args={[bodyRadius, bodyRadius, bodyLengthScaled, 32]} />
-          <meshStandardMaterial 
+        <meshStandardMaterial 
             color={"#FFFFFF"}
-            metalness={0.1}
-            roughness={0.3}
-            emissive={getEmissive('airframe')}
-            emissiveIntensity={getEmissiveIntensity('airframe')}
-          />
-        </mesh>
+          metalness={0.1} 
+          roughness={0.3} 
+          emissive={getEmissive('airframe')}
+          emissiveIntensity={getEmissiveIntensity('airframe')}
+        />
+      </mesh>
       ) : (
         (() => {
           const meshes: any[] = []
@@ -545,14 +824,14 @@ function RocketModel({
             meshes.push(
               <mesh position={[0, centerY, 0]} key={`tube-${idx}`} name={idx === scaledTubes.length - 1 ? 'lower-airframe' : 'upper-airframe'}>
                 <cylinderGeometry key={`${dimensionKey}-tube-${idx}`} args={[t.radius, t.radius, t.length, 32]} />
-                <meshStandardMaterial
+        <meshStandardMaterial 
                   color={t.color}
-                  metalness={0.1}
-                  roughness={0.3}
-                  emissive={getEmissive('airframe')}
-                  emissiveIntensity={getEmissiveIntensity('airframe')}
-                />
-              </mesh>
+          metalness={0.1} 
+          roughness={0.3} 
+          emissive={getEmissive('airframe')}
+          emissiveIntensity={getEmissiveIntensity('airframe')}
+        />
+      </mesh>
             )
           })
           return meshes
@@ -588,108 +867,16 @@ function RocketModel({
       </mesh>
       
       {/* Electronics bay - FIXED: More visible recovery/electronics section */}
-      <group position={[0, electronicsBayCenterY, 0]} name="electronics">
-        <mesh>
-          <cylinderGeometry 
-            key={dimensionKey + '-electronics'} 
-            args={[bodyRadius + 0.02, bodyRadius + 0.02, 0.15, 32]} 
-          /> {/* FIXED: More visible height 0.15 and slightly larger radius */}
-          <meshStandardMaterial 
-            color="#B87333"
-            metalness={0.4}
-            roughness={0.6}
-            emissive={getEmissive('electronics')}
-            emissiveIntensity={getEmissiveIntensity('electronics')}
-          />
-        </mesh>
-        
-        {/* Small recovery system ports */}
-        {[0, 1, 2, 3].map((i) => (
-          <mesh 
-            key={i}
-            position={[
-                Math.sin(i * Math.PI / 2) * (bodyRadius + 0.01),
-                0, 
-                Math.cos(i * Math.PI / 2) * (bodyRadius + 0.01)
-              ]}
-              rotation={[0, i * Math.PI / 2, Math.PI / 2]}
-            >
-              <cylinderGeometry args={[0.01, 0.01, 0.02, 8]} /> {/* Small recovery ports */}
-              <meshStandardMaterial color="#8B4513" metalness={0.6} roughness={0.4} />
-            </mesh>
-          ))}
-      </group>
+      {renderElectronicsBay()}
       
       {/* Realistic aerodynamic fins */}
-      {Array.from({ length: finCount }, (_, i) => (
-        <mesh 
-          key={i}
-          position={[
-            Math.sin(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3), 
-            finCenterY, 
-            Math.cos(i * (2 * Math.PI) / finCount) * (bodyRadius + finSpanScaled/3)
-          ]}
-          rotation={[0, i * (2 * Math.PI) / finCount + (finCantAngle * Math.PI / 180), 0]}
-          name="fins"
-        >
-          <boxGeometry 
-            key={`${finDimensionKey}-fin-${i}`} 
-            args={[0.05, finRootScaled, finSpanScaled]} 
-          />
-          <meshStandardMaterial 
-            color={selectedFin?.color || "#2C3E50"} 
-            metalness={0.4} 
-            roughness={0.3} 
-            emissive={getEmissive('fins')}
-            emissiveIntensity={getEmissiveIntensity('fins')}
-          />
-        </mesh>
-      ))}
+      {renderFins()}
       
       {/* Realistic rocket engine - Connected to body */}
-      <group position={[0, engineGroupCenterY, 0]} name="engine">
-        {/* Main engine chamber - connects directly to body */}
-        <mesh position={[0, 0.1, 0]}>
-          <cylinderGeometry args={[bodyRadius, bodyRadius * 0.95, 0.4, 32]} />
-          <meshStandardMaterial 
-            color="#C0C0C0" 
-            metalness={0.8} 
-            roughness={0.2} 
-            emissive={getEmissive('engine')}
-            emissiveIntensity={getEmissiveIntensity('engine')}
-          />
-        </mesh>
-
-        {/* Engine nozzle - realistic cone shape */}
-        <mesh position={[0, -0.25, 0]}>
-          <coneGeometry args={[bodyRadius * 0.9, 0.6, 32, 1, true]} />
-          <meshStandardMaterial 
-            color="#A9A9A9" 
-            metalness={0.9} 
-            roughness={0.1}
-            emissive={getEmissive('engine')}
-            emissiveIntensity={getEmissiveIntensity('engine')}
-          />
-        </mesh>
-        
-        {/* Engine throat - dark interior */}
-        <mesh position={[0, -0.5, 0]} rotation={[Math.PI, 0, 0]}>
-          <cylinderGeometry args={[bodyRadius * 0.6, bodyRadius * 0.7, 0.25, 32]} />
-          <meshStandardMaterial color="#1C1C1C" metalness={0.5} roughness={0.8} />
-        </mesh>
-      </group>
+      {renderEngine()}
 
       {/* Parachute */}
-      <mesh position={[0, parachuteCenterY, 0]} name="parachute">
-        <cylinderGeometry args={[0.2, 0.2, 0.3, 16]} />
-        <meshStandardMaterial 
-          color={parachuteParts[0]?.color || "#E74C3C"} 
-          metalness={0.2} 
-          roughness={0.5}
-          emissive={getEmissive('parachute')}
-          emissiveIntensity={getEmissiveIntensity('parachute')}
-        />
-      </mesh>
+      {renderParachutes()}
 
       {/* Flame - wrapped in a group to adjust its placement */}
       <group position={[0, flameComponentPlacementY, 0]}>
@@ -710,13 +897,10 @@ function GizmoHandles({
   stackBaseY,
   bodyRadius,
   topOfUpperBodyY,
-  finCenterY,
-  finRootScaled,
-  finSpanScaled,
-  finSweepScaled,
+  finParts,
+  bottomOfLowerBodyY,
   noseLengthScaled,
-  finCantDeg,
-  activeFinIndex,
+  parachuteParts,
 }: any) {
   const gizmoRef = useRef<any>(null)
   const sweepRef = useRef<any>(null)
@@ -766,91 +950,130 @@ function GizmoHandles({
         <mesh>
           <boxGeometry args={[0.06, 0.06, 0.06]} />
           <meshStandardMaterial color="#a78bfa" emissive="#7c3aed" emissiveIntensity={0.6} />
-        </mesh>
+            </mesh>
       </TransformControls>
 
-      {/* Fin span: drag outward in X */}
-      <TransformControls
-        mode="translate"
-        position={[bodyRadius + finSpanScaled, finCenterY, 0]}
-        showY={false}
-        showZ={false}
-        onObjectChange={(e: any) => {
-          const obj = (e?.target as any)?.object as THREE.Object3D
-          // take X distance from body surface
-          const x = (obj as any)?.position?.x ?? (bodyRadius + finSpanScaled)
-          const spanVis = Math.max(0.2, x - bodyRadius)
-          const span_m = spanVis / 4
-          dispatchActions([{ action: 'update_fins', index: activeFinIndex, props: { span_m } }])
-        }}
-      >
-        <mesh>
-          <boxGeometry args={[0.06, 0.06, 0.06]} />
-          <meshStandardMaterial color="#34d399" emissive="#059669" emissiveIntensity={0.6} />
+      {/* Fin positioning and manipulation gizmos */}
+      {finParts.map((finSet: any, finSetIndex: number) => {
+        const positionFromTail = (finSet.position_from_tail_m || 0.1) * 4; // Convert to visual units
+        const finY = bottomOfLowerBodyY + positionFromTail;
+        const finRootScaled = (finSet.root_chord_m || 0.08) * 4;
+        const finSpanScaled = (finSet.span_m || 0.06) * 4;
+        const finSweepScaled = (finSet.sweep_length_m || 0.02) * 4;
+        const finCantDeg = finSet.cant_angle_deg || 0;
+        
+        return (
+          <group key={`fin-gizmos-${finSet.id}`}>
+            {/* Fin position: drag along Y */}
+            <TransformControls
+              mode="translate"
+              position={[0, finY, 0]}
+              showX={false}
+              showZ={false}
+              onObjectChange={(e: any) => {
+                const obj = (e?.target as any)?.object as THREE.Object3D
+                const y = (obj as any)?.position?.y ?? finY
+                const positionFromTailVis = Math.max(0, y - bottomOfLowerBodyY)
+                const position_from_tail_m = positionFromTailVis / 4 // Convert back to meters
+                dispatchActions([{ action: 'update_fins', index: finSetIndex, props: { position_from_tail_m } }])
+              }}
+            >
+              <mesh>
+                <boxGeometry args={[0.06, 0.06, 0.06]} />
+                <meshStandardMaterial color="#10b981" emissive="#059669" emissiveIntensity={0.6} />
         </mesh>
-      </TransformControls>
+            </TransformControls>
 
-      {/* Fin root chord: drag upward in Y */}
-      <TransformControls
-        mode="translate"
-        position={[bodyRadius + 0.2, finCenterY + finRootScaled / 2, 0]}
-        showX={false}
-        showZ={false}
-        onObjectChange={(e: any) => {
-          const obj = (e?.target as any)?.object as THREE.Object3D
-          const y = (obj as any)?.position?.y ?? (finCenterY + finRootScaled / 2)
-          const rootVis = Math.max(0.2, 2 * (y - finCenterY))
-          const root_m = rootVis / 4
-          dispatchActions([{ action: 'update_fins', index: activeFinIndex, props: { root_chord_m: root_m } }])
-        }}
-      >
-        <mesh>
-          <boxGeometry args={[0.06, 0.06, 0.06]} />
-          <meshStandardMaterial color="#fbbf24" emissive="#d97706" emissiveIntensity={0.6} />
+            {/* Fin span: drag outward in X */}
+            <TransformControls
+              mode="translate"
+              position={[bodyRadius + finSpanScaled, finY, 0]}
+              showY={false}
+              showZ={false}
+              onObjectChange={(e: any) => {
+                const obj = (e?.target as any)?.object as THREE.Object3D
+                const x = (obj as any)?.position?.x ?? (bodyRadius + finSpanScaled)
+                const spanVis = Math.max(0.2, x - bodyRadius)
+                const span_m = spanVis / 4
+                dispatchActions([{ action: 'update_fins', index: finSetIndex, props: { span_m } }])
+              }}
+            >
+              <mesh>
+                <boxGeometry args={[0.06, 0.06, 0.06]} />
+                <meshStandardMaterial color="#34d399" emissive="#059669" emissiveIntensity={0.6} />
         </mesh>
-      </TransformControls>
+            </TransformControls>
 
-      {/* Fin sweep length: drag up in Y */}
-      <TransformControls
-        ref={sweepRef}
-        mode="translate"
-        position={[bodyRadius + 0.35, finCenterY + finSweepScaled, 0]}
-        showX={false}
-        showZ={false}
-        onObjectChange={() => {
-          const pos = sweepRef.current?.object?.position as THREE.Vector3
-          if (!pos) return
-          const sweepVis = Math.max(0, pos.y - finCenterY)
-          const sweep_length_m = sweepVis / 4
-          dispatchActions([{ action: 'update_fins', index: activeFinIndex, props: { sweep_length_m } }])
-        }}
-      >
-        <mesh>
-          <boxGeometry args={[0.06, 0.06, 0.06]} />
-          <meshStandardMaterial color="#60a5fa" emissive="#2563eb" emissiveIntensity={0.6} />
+            {/* Fin root chord: drag upward in Y */}
+            <TransformControls
+              mode="translate"
+              position={[bodyRadius + 0.2, finY + finRootScaled / 2, 0]}
+              showX={false}
+              showZ={false}
+              onObjectChange={(e: any) => {
+                const obj = (e?.target as any)?.object as THREE.Object3D
+                const y = (obj as any)?.position?.y ?? (finY + finRootScaled / 2)
+                const rootVis = Math.max(0.2, 2 * (y - finY))
+                const root_m = rootVis / 4
+                dispatchActions([{ action: 'update_fins', index: finSetIndex, props: { root_chord_m: root_m } }])
+              }}
+            >
+              <mesh>
+                <boxGeometry args={[0.06, 0.06, 0.06]} />
+                <meshStandardMaterial color="#fbbf24" emissive="#d97706" emissiveIntensity={0.6} />
         </mesh>
-      </TransformControls>
+            </TransformControls>
 
-      {/* Fin cant: rotate around Y */}
-      <TransformControls
-        ref={cantRef}
-        mode="rotate"
-        position={[bodyRadius + finSpanScaled / 2, finCenterY, 0]}
-        showX={false}
-        showZ={false}
-        onObjectChange={() => {
-          const obj = cantRef.current?.object as THREE.Object3D
-          if (!obj) return
-          const deg = THREE.MathUtils.radToDeg(obj.rotation.y || 0)
-          const cant_angle_deg = Math.max(-30, Math.min(30, deg))
-          dispatchActions([{ action: 'update_fins', index: activeFinIndex, props: { cant_angle_deg } }])
-        }}
-      >
-        <mesh rotation={[0, THREE.MathUtils.degToRad(finCantDeg || 0), 0] as any}>
-          <boxGeometry args={[0.06, 0.06, 0.06]} />
-          <meshStandardMaterial color="#ef4444" emissive="#b91c1c" emissiveIntensity={0.6} />
+            {/* Fin cant: rotate around Y */}
+            <TransformControls
+              mode="rotate"
+              position={[bodyRadius + finSpanScaled / 2, finY, 0]}
+              showX={false}
+              showZ={false}
+              onObjectChange={() => {
+                const obj = cantRef.current?.object as THREE.Object3D
+                if (!obj) return
+                const deg = THREE.MathUtils.radToDeg(obj.rotation.y || 0)
+                const cant_angle_deg = Math.max(-30, Math.min(30, deg))
+                dispatchActions([{ action: 'update_fins', index: finSetIndex, props: { cant_angle_deg } }])
+              }}
+            >
+              <mesh rotation={[0, THREE.MathUtils.degToRad(finCantDeg || 0), 0] as any}>
+                <boxGeometry args={[0.06, 0.06, 0.06]} />
+                <meshStandardMaterial color="#ef4444" emissive="#b91c1c" emissiveIntensity={0.6} />
         </mesh>
-      </TransformControls>
+            </TransformControls>
+      </group>
+        );
+      })}
+
+      {/* Parachute positioning gizmos */}
+      {parachuteParts.map((parachute: any, index: number) => {
+        const positionFromTail = (parachute.position_from_tail_m || 0) * 4; // Convert to visual units
+        const parachuteY = bottomOfLowerBodyY + positionFromTail;
+        
+        return (
+          <TransformControls
+            key={`parachute-gizmo-${parachute.id}`}
+            mode="translate"
+            position={[0, parachuteY, 0]}
+            showX={false}
+            showZ={false}
+            onObjectChange={(e: any) => {
+              const obj = (e?.target as any)?.object as THREE.Object3D
+              const y = (obj as any)?.position?.y ?? parachuteY
+              const positionFromTailVis = Math.max(0, y - bottomOfLowerBodyY)
+              const position_from_tail_m = positionFromTailVis / 4 // Convert back to meters
+              dispatchActions([{ action: 'update_parachute', index: index, props: { position_from_tail_m } }])
+            }}
+          >
+            <mesh>
+              <boxGeometry args={[0.06, 0.06, 0.06]} />
+              <meshStandardMaterial color="#8b5cf6" emissive="#7c3aed" emissiveIntensity={0.6} />
+            </mesh>
+          </TransformControls>
+        );
+      })}
     </group>
   )
 }
@@ -2359,7 +2582,7 @@ export default function MiddlePanel({
             setActiveFinIndex={setActiveFinIndex}
           />
         )}
-
+        
         {/* UI elements - absolutely positioned over the canvas */}
         <div className={viewportControlsClass}>
           <ViewportControls view={view} setView={setView} isMobile={isMobile} />

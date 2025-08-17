@@ -165,6 +165,7 @@ export class DatabaseService {
       id: dbRocket.id,
       project_id: dbRocket.project_id || undefined,
       name: dbRocket.name,
+      rocket_type: parts.rocket_type || "solid", // Default to solid if not specified
       nose_cone: parts.nose_cone,
       body_tubes: parts.body_tubes || [],
       fins: parts.fins || [],
@@ -1204,6 +1205,7 @@ export class DatabaseService {
       const revertedRocket: Rocket = {
         id: rocketId,
         name: version.name.replace(/ v\d+$/, ''), // Remove version suffix
+        rocket_type: versionPartsData.rocket_type || "solid", // Default to solid if not specified
         nose_cone: versionPartsData.nose_cone,
         body_tubes: versionPartsData.body_tubes || [],
         fins: versionPartsData.fins || [],

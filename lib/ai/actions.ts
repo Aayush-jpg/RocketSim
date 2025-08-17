@@ -257,6 +257,11 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
   const props = extractActionProps(action);
   const finIndex = action.index || 0;
   
+  // Debug: Log the fin update
+  console.log('🔍 updateFinSet: Updating fin at index', finIndex, 'with props:', props);
+  console.log('🔍 updateFinSet: Current fin count:', rocket.fins[finIndex]?.fin_count);
+  console.log('🔍 updateFinSet: New fin count:', props.fin_count);
+  
   const updatedFins = [...rocket.fins];
   
   if (finIndex >= updatedFins.length) {
@@ -270,6 +275,7 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
       sweep_length_m: props.sweep_length_m || 0.02,
       thickness_m: props.thickness_m || 0.006,
       wall_thickness_m: props.wall_thickness_m !== undefined ? props.wall_thickness_m : 0, // Solid by default
+      position_from_tail_m: props.position_from_tail_m !== undefined ? props.position_from_tail_m : 0.1, // Near tail by default
       material_id: props.material_id || "birch_plywood",
       material_density_kg_m3: props.material_density_kg_m3 || MATERIALS.PLYWOOD.density_kg_m3,
       airfoil: props.airfoil || "symmetric",
@@ -289,6 +295,7 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
       sweep_length_m: props.sweep_length_m !== undefined ? props.sweep_length_m : existingFin.sweep_length_m,
       thickness_m: props.thickness_m !== undefined ? props.thickness_m : existingFin.thickness_m,
       wall_thickness_m: props.wall_thickness_m !== undefined ? props.wall_thickness_m : existingFin.wall_thickness_m,
+      position_from_tail_m: props.position_from_tail_m !== undefined ? props.position_from_tail_m : existingFin.position_from_tail_m,
       material_density_kg_m3: props.material_density_kg_m3 !== undefined ? props.material_density_kg_m3 : existingFin.material_density_kg_m3,
       airfoil: props.airfoil || existingFin.airfoil,
       cant_angle_deg: props.cant_angle_deg !== undefined ? props.cant_angle_deg : existingFin.cant_angle_deg,
@@ -304,6 +311,11 @@ export function updateFinSet(rocket: Rocket, action: any): Rocket {
  */
 export function updateMotor(rocket: Rocket, action: any): Rocket {
   const props = extractActionProps(action);
+  
+  // Debug: Log the motor update
+  console.log('🔍 updateMotor: Updating motor with props:', props);
+  console.log('🔍 updateMotor: Current motor ID:', rocket.motor.motor_database_id);
+  console.log('🔍 updateMotor: New motor ID:', props.motor_database_id);
   
   let motorId = props.motor_database_id || rocket.motor.motor_database_id;
   if (props.motor_database_id) {
@@ -331,6 +343,11 @@ export function updateMotor(rocket: Rocket, action: any): Rocket {
 export function updateParachute(rocket: Rocket, action: any): Rocket {
   const props = extractActionProps(action);
   const parachuteIndex = action.index || 0;
+  
+  // Debug: Log the parachute update
+  console.log('🔍 updateParachute: Updating parachute at index', parachuteIndex, 'with props:', props);
+  console.log('🔍 updateParachute: Current cd_s_m2:', rocket.parachutes[parachuteIndex]?.cd_s_m2);
+  console.log('🔍 updateParachute: New cd_s_m2:', props.cd_s_m2);
   
   const updatedParachutes = [...rocket.parachutes];
   
@@ -435,6 +452,18 @@ function removeFinSetHelper(rocket: Rocket, index: number): Rocket {
 }
 
 function addParachuteHelper(rocket: Rocket, props: Partial<ParachuteComponent>): Rocket {
+  // Calculate a default position that's different from existing parachutes
+  let defaultPosition = 0.1; // Start at 0.1m from tail
+  if (rocket.parachutes.length > 0) {
+    // Find the highest position and add 0.1m to it
+    const maxPosition = Math.max(...rocket.parachutes.map(p => p.position_from_tail_m || 0));
+    defaultPosition = maxPosition + 0.1;
+  }
+  
+  // Generate different colors for each parachute
+  const parachuteColors = ['#FF6B35', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
+  const colorIndex = rocket.parachutes.length % parachuteColors.length;
+  
   const newPara: ParachuteComponent = {
     id: crypto.randomUUID(),
     name: props.name ?? 'Parachute',
@@ -445,8 +474,8 @@ function addParachuteHelper(rocket: Rocket, props: Partial<ParachuteComponent>):
     noise_bias: props.noise_bias ?? 0,
     noise_deviation: props.noise_deviation ?? 8.3,
     noise_correlation: props.noise_correlation ?? 0.5,
-    position_from_tail_m: props.position_from_tail_m ?? 0,
-    color: props.color ?? '#FF6B35'
+    position_from_tail_m: props.position_from_tail_m ?? defaultPosition,
+    color: props.color ?? parachuteColors[colorIndex]
   } as ParachuteComponent;
   return { ...rocket, parachutes: [...rocket.parachutes, newPara] };
 }

@@ -88,6 +88,7 @@ export class RocketService {
     return {
       id: dbRocket.id,
       name: dbRocket.name,
+      rocket_type: parts.rocket_type || "solid", // Default to solid if not specified
       nose_cone: parts.nose_cone,
       body_tubes: parts.body_tubes || [],
       fins: parts.fins || [],
@@ -844,6 +845,7 @@ export class RocketService {
     return {
       id: '',
       name: query,
+      rocket_type: "solid", // Default rocket type for query rockets
       nose_cone: {
         id: 'query-nose',
         shape: 'ogive',

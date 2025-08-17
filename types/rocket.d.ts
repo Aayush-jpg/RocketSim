@@ -62,6 +62,7 @@ export interface FinComponent {
   sweep_length_m: number;             // Sweep length in meters
   thickness_m: number;                // Fin thickness in meters
   wall_thickness_m?: number;          // Wall thickness for hollow fins (0 = solid)
+  position_from_tail_m: number;       // Position from rocket tail in meters
   material_id: string;                 // Material ID from materials database
   material_density_kg_m3: number;     // Material density in kg/m³ (calculated from material_id)
   airfoil?: string;                   // Airfoil type (e.g., "symmetric")
@@ -72,10 +73,22 @@ export interface FinComponent {
 /** Component-based motor with database reference and positioning */
 export interface MotorComponent {
   id: string;
-  motor_database_id: string;          // Reference to motor in database
-  position_from_tail_m: number;       // Position from rocket tail in meters
-  nozzle_expansion_ratio?: number;    // Nozzle expansion ratio
-  chamber_pressure_pa?: number;       // Chamber pressure in Pascals
+  motor_database_id: string;              // Reference to motor database
+  position_from_tail_m: number;           // Position from rocket tail in meters
+  rocket_type?: "solid" | "liquid" | "hybrid"; // Type of rocket propulsion
+  nozzle_expansion_ratio?: number;        // Nozzle expansion ratio (optional)
+  chamber_pressure_pa?: number;           // Chamber pressure in Pascals (optional)
+}
+
+/** Electronics bay component for avionics and recovery systems */
+export interface ElectronicsBayComponent {
+  id: string;
+  name: string;                           // Electronics bay name
+  position_from_tail_m: number;           // Position from rocket tail in meters
+  length_m: number;                       // Length of electronics bay in meters
+  diameter_m: number;                     // Diameter of electronics bay in meters
+  components: string[];                   // List of components (GPS, altimeter, etc.)
+  color?: string;                         // Optional color for rendering
 }
 
 /** Component-based parachute with deployment parameters */
@@ -116,11 +129,13 @@ export interface Rocket {
   id: string;
   project_id?: string;  // References the project this rocket belongs to
   name: string;
+  rocket_type: "solid" | "liquid" | "hybrid"; // Type of rocket propulsion
   nose_cone: NoseComponent;
   body_tubes: BodyComponent[];
   fins: FinComponent[];
   motor: MotorComponent;
   parachutes: ParachuteComponent[];
+  electronics_bay?: ElectronicsBayComponent; // Optional electronics bay
   coordinate_system: "tail_to_nose" | "nose_to_tail";
   rail_guides_position_m?: number[];  // Rail guide positions from tail in meters
 }

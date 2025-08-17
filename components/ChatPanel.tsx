@@ -442,6 +442,13 @@ export default function ChatPanel({ activeAnalysis, onAnalysisClick, loadSession
     try {
       // Get rocket data from store
       const rocket = useRocket.getState().rocket;
+      console.log('🔍 ChatPanel: Current rocket state when sending to AgentPy:', {
+        fin_count: rocket.fins?.[0]?.fin_count,
+        parachute_cd_s: rocket.parachutes?.[0]?.cd_s_m2,
+        motor_id: rocket.motor?.motor_database_id
+      });
+      console.log('🔍 ChatPanel: Sending rocket data to AgentPy');
+      console.log('🔍 ChatPanel: Rocket fins:', rocket.fins.map(f => ({ id: f.id, fin_count: f.fin_count })));
       console.log('Sending request to agent with rocket data:', JSON.stringify(rocket, null, 2));
       
       // Gather environment data from global state

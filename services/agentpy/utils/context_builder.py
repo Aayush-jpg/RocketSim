@@ -29,6 +29,9 @@ class RocketContextBuilder:
         Returns:
             Formatted context string for the agent
         """
+
+
+        
         context_parts = []
         
         # Header
@@ -99,7 +102,8 @@ class RocketContextBuilder:
             for i, parachute in enumerate(parachutes):
                 context_parts.append(f"{component_index}. PARACHUTE {i+1}:")
                 context_parts.append(f"   Name: {parachute.get('name', 'unknown')}")
-                context_parts.append(f"   Cd*S: {parachute.get('cd_s_m2', 0):.1f} m²")
+                cd_s_m2 = parachute.get('cd_s_m2', 0)
+                context_parts.append(f"   Cd*S: {cd_s_m2:.1f} m²")
                 trigger = parachute.get('trigger', 'unknown')
                 if isinstance(trigger, (int, float)):
                     context_parts.append(f"   Trigger: {trigger}m altitude")
@@ -122,6 +126,8 @@ class RocketContextBuilder:
             context_parts.append("")
         
         return "\n".join(context_parts)
+    
+
     
     def build_environment_context(self, env_data: Optional[EnvironmentData]) -> str:
         """Build context from environment and weather data."""
@@ -476,6 +482,13 @@ class RocketContextBuilder:
         # Add comprehensive instructions based on available data
         contexts.append("=== AGENT INSTRUCTIONS ===")
         contexts.append("You are an expert rocket design assistant with access to:")
+        contexts.append("")
+        contexts.append("⚠️ CRITICAL: When asked about current rocket configuration, you MUST:")
+        contexts.append("1. Read the CURRENT ROCKET CONFIGURATION section above")
+        contexts.append("2. Report the EXACT values shown in that section")
+        contexts.append("3. Do NOT use cached or default values")
+        contexts.append("4. Do NOT make assumptions about the configuration")
+        contexts.append("")
         
         instruction_items = ["- Current rocket configuration and design analysis"]
         

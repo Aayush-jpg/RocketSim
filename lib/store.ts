@@ -213,6 +213,11 @@ export const useRocket = create<RocketState>()((set, get) => ({
   // Core actions
   updateRocket: (fn, skipAutoSave) => {
     const newRocket = fn(structuredClone(get().rocket));
+    console.log('🔍 Store: Rocket updated:', {
+      fin_count: newRocket.fins?.[0]?.fin_count,
+      parachute_cd_s: newRocket.parachutes?.[0]?.cd_s_m2,
+      motor_id: newRocket.motor?.motor_database_id
+    });
     set({ rocket: newRocket });
     
     // Auto-save to database if connected (non-blocking)

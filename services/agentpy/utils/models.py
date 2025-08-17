@@ -79,6 +79,7 @@ class FinComponentModel(BaseModel):
     span_m: float = Field(..., description="Span in meters", gt=0, le=0.3)
     sweep_length_m: float = Field(0.0, description="Sweep length in meters", ge=0, le=0.2)
     thickness_m: float = Field(0.006, description="Thickness in meters", gt=0, le=0.02)
+    position_from_tail_m: float = Field(0.1, description="Position from rocket tail in meters", ge=0, le=10.0)
     material_id: str = Field("birch_plywood", description="Material ID from materials database")
     material_density_kg_m3: float = Field(650.0, description="Material density in kg/m³ (calculated from material_id)")
     airfoil: Optional[str] = Field("symmetric", description="Airfoil type")
@@ -111,6 +112,7 @@ class ComponentRocketModel(BaseModel):
     """Component-based rocket model."""
     id: str
     name: str
+    rocket_type: str = Field("solid", description="Type of rocket propulsion", pattern="^(solid|liquid|hybrid)$")
     nose_cone: NoseComponentModel
     body_tubes: List[BodyComponentModel]
     fins: List[FinComponentModel]

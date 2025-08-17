@@ -6,6 +6,8 @@ export async function POST(req: NextRequest) {
   try {
     const { history, rocket, environment, simulationHistory, analysisHistory, userPreferences, sessionInfo } = await req.json();
     
+
+    
     // Clean rocket data for backend compatibility
     const cleanedRocket = { ...rocket };
     if (cleanedRocket.fins && Array.isArray(cleanedRocket.fins)) {

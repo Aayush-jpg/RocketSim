@@ -27,7 +27,7 @@
   },
   "default-motor": {
     "id": "default-motor",
-    "name": "F32-6 Solid",
+    "name": "F-32-6 Solid",
     "manufacturer": "Generic",
     "type": "solid",
     "impulseClass": "F",
@@ -53,7 +53,7 @@
   },
   "high-power": {
     "id": "high-power",
-    "name": "H180-7",
+    "name": "H-180-7",
     "manufacturer": "Generic",
     "type": "solid",
     "impulseClass": "H",
@@ -77,9 +77,35 @@
       "grainInitialHeight_m": 0.065
     }
   },
+  "mid-power": {
+    "id": "mid-power",
+    "name": "G-80-4",
+    "manufacturer": "Generic",
+    "type": "solid",
+    "impulseClass": "G",
+    "totalImpulse_Ns": 160,
+    "avgThrust_N": 80,
+    "burnTime_s": 2.0,
+    "isp_s": 210,
+    "dimensions": {
+      "outerDiameter_m": 0.029,
+      "length_m": 0.124
+    },
+    "mass": {
+      "propellant_kg": 0.080,
+      "total_kg": 0.120
+    },
+    "grainConfig": {
+      "grainNumber": 2,
+      "grainDensity_kg_m3": 1815,
+      "grainOuterRadius_m": 0.0135,
+      "grainInitialInnerRadius_m": 0.004,
+      "grainInitialHeight_m": 0.060
+    }
+  },
   "super-power": {
     "id": "super-power",
-    "name": "I200-8",
+    "name": "I-200-8",
     "manufacturer": "Generic",
     "type": "solid",
     "impulseClass": "I",
