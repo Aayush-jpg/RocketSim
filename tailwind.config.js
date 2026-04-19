@@ -11,7 +11,7 @@ module.exports = {
         // Base colors
         'bg-deep': '#0A0C12',
         'bg-surface': '#1A1E28',
-        // Glass tint
+        // Glass tint 
         'glass': '#E0E5F2',
         // Neon colors
         'neon-primary': '#A0A7B8',
