@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.rocket_versions (
     units VARCHAR(10) DEFAULT 'metric',
     created_by_action VARCHAR(100), -- What AI action created this version
     is_current BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() 
 );
 
 -- Create indexes for performance
