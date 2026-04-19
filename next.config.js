@@ -17,7 +17,7 @@ const nextConfig = {
         destination: '/api/agent/:path*', 
       },
     ]
-  }
+  } 
 }
 
 module.exports = nextConfig 
