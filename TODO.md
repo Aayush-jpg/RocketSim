@@ -14,7 +14,7 @@ Test all rocket simulation types (standard, 3DOF, 6DOF, professional, Monte Carl
 - **Root Cause**: Using wrong motor IDs in tests (`liquid_bipropellant_medium` vs actual DB IDs)
 - **Solution**: Found correct motor IDs in `/lib/data/motors.json`:
   - `"medium-liquid"` (not `liquid_bipropellant_medium`)
-  - `"small-liquid"`, `"large-liquid"`, etc.
+  - `"small-liquid"`, `"large-liquid"`, etc. 
 - **Status**: Motor routing now correctly detects liquid vs solid motors
 
 ### 2. Flight Result Extraction - **PARTIALLY FIXED** ⚠️
