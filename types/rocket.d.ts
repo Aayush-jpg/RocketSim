@@ -15,7 +15,7 @@
  * These types ensure type safety across:
  * - Frontend React components and state management
  * - Backend API routes and database operations
- * - AI/ML services for design optimization
+ * - AI/ML services for design optimization 
  * - Physics simulation interfaces
  * - Database schema validation
  * 
