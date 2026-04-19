@@ -18,7 +18,7 @@ out/
 .github/
 .vscode/
 .idea/
-*.log
+*.log 
 *.logs
 logs/
 
