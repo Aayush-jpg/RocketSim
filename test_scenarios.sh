@@ -5,7 +5,7 @@ echo "=========================================================="
 
 # Test 1: NRLMSISE with Real Coordinates (Washington DC)
 echo ""
-echo "🌍 Test 1: NRLMSISE Model with Real Coordinates (Washington DC: 39°N, 77°W)"
+echo "🌍 Test 1: NRLMSISE Model with Real Coordinates (Washington DC: 39°N, 77°W)" 
 echo "Expected: Should work without set_date() errors, use real coordinates"
 
 curl -s -X POST http://localhost:8000/simulate/monte-carlo \
