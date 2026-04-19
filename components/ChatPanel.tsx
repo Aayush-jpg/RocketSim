@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
 import FormattedMessage from '@/components/ui/FormattedMessage'
 
-// Chat message type definition
+// Chat message type definition  
 export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
