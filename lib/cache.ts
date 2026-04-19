@@ -16,7 +16,7 @@ class MemoryCache {
     
     if (Date.now() > item.expiry) {
       this.cache.delete(key);
-      return null;
+      return null;  
     }
     
     return item.data;
