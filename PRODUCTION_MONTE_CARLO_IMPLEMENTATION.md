@@ -12,7 +12,7 @@ We have successfully implemented a **fully production-ready, space-grade Monte C
 - **Liquid motors**: Uses space-grade numerical integration with advanced ODE solvers
 - **Fallback handling**: Graceful degradation when components fail
 
-### ✅ **Space-Grade Liquid Motor Simulation**
+### ✅ **Space-Grade Liquid Motor Simulation** 
 - **Advanced ODE integration** using scipy's `solve_ivp` with RK45 method
 - **NASA-level atmospheric modeling** with real atmospheric data integration
 - **Liquid motor physics**: Chamber pressure dynamics, mass flow calculations, tank pressure drop
