@@ -7,7 +7,7 @@ A comprehensive rocket design and simulation platform that combines cutting-edge
 ```bash
 git clone https://github.com/your-org/rocketez.git
 cd rocketez
-```
+``
 
 ### 2. Set Up Environment
 Create a `.env` file:
