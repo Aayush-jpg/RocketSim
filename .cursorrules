@@ -17,7 +17,7 @@
 **Node side (unchanged):**
 
 ```bash
-pnpm add uuid zustand three @react-three/fiber @react-three/drei
+pnpm add uuid zustand three @react-three/fiber @r eact-three/drei
 ```
 
 **Python micro‑service:**
