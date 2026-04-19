@@ -14,7 +14,7 @@
       },
       "body_tubes": [
         {
-          "id": "body1",
+          "id": "body1", 
           "outer_radius_m": 0.025,
           "length_m": 0.4,
           "wall_thickness_m": 0.003,
