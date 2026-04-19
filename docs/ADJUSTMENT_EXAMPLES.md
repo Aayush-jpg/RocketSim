@@ -15,7 +15,7 @@ Try these specific commands with the AI agent to see all the adjustable properti
 ```
 "Use a high-power motor"
 "Switch to I-class super-power motor"
-"Install a liquid engine"
+"Install a liquid engines"
 ```
 
 ### Fin Adjustments
