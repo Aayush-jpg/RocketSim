@@ -13,7 +13,7 @@
     "docker:up": "docker-compose -f docker-compose.dev.yml up",
     "docker:down": "docker-compose -f docker-compose.dev.yml down",
     "docker:logs": "docker-compose -f docker-compose.dev.yml logs -f",
-    "docker:build": "docker-compose -f docker-compose.dev.yml build",
+    "docker:build": "docker-compose -f docker-compose.dev.yml build", 
     "services:up": "docker-compose -f docker-compose.dev.yml up -d agentpy rocketpy",
     "services:down": "docker-compose -f docker-compose.dev.yml down"
   },
