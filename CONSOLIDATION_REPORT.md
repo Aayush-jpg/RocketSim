@@ -13,7 +13,7 @@ Successfully **eliminated major data duplications** across the entire ROCKET sys
 - Frontend API (`app/api/motors/route.ts`) - 8 motors with legacy units
 - RocketPy Service (`services/rocketpy/app.py`) - Same motors with SI units  
 - Detailed Motor API (`app/api/motors/detailed/route.ts`) - Forward proxy
-- Agent references throughout system
+- Agent references throughout the system
 
 **Solution**: 
 - **Created**: `lib/data/motors.ts` - Single comprehensive motor database
