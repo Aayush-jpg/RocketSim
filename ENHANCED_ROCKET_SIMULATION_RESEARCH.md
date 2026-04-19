@@ -14,7 +14,7 @@ Our research has identified **multiple high-performance alternatives** beyond Ro
 ---
 
 ## ⚡ **KEY PERFORMANCE LIBRARIES**
-
+  
 ### **1. JAX - Solves Our Threading Issue**
 **Source**: [JAX Documentation](https://docs.jax.dev/en/latest/)
 
