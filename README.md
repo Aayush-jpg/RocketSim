@@ -5,9 +5,9 @@ A comprehensive rocket design and simulation platform that combines cutting-edge
 ## 🚀 Quick Start
     
 ```bash
-git clone https://github.com/your-org/rocketez.git
-cd rocketez
-``
+git clone https://github.com/Aayush-jpg/RocketSim.git
+cd RocketSim
+```
 
 ### 2. Set Up Environment
 Create a `.env` file:
